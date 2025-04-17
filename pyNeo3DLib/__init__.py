@@ -4,3 +4,5 @@
 # 모듈 명시
 # __all__ = ["pyNeo3DLib"]
 
+from .registration import Neo3DRegistration
+from .datainfo import dataInfo

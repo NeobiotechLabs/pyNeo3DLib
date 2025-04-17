@@ -28,6 +28,6 @@ pip install -e .
 
 ## 요구사항
 
-- Python 3.7 이상
+- Python 3.10 이상
 - numpy
 - 기타 필요한 의존성 패키지
