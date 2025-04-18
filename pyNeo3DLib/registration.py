@@ -1,4 +1,8 @@
 import json
+from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegistration
+
+
+LAMINATE_PATH = "D:/Projects/PyNeo3DLib/example/data/smile_arch_half.stl"
 
 class Neo3DRegistration:
     def __init__(self, json_string):
@@ -66,6 +70,14 @@ class Neo3DRegistration:
 
     def __ios_laminate_registration(self):
         print("ios_laminate_registration")
+        ios_data = self.file_info["ios"]
+        for ios in ios_data:
+            if ios["subType"] == "smileArch":
+                print(f'ios["path"]: {ios["path"]}')
+                print("Let's do it")
+                # 이제 이 파일과. 라미네이트 모델을 정합한다. 
+                ios_laminate_registration = IOSLaminateRegistration(ios["path"], LAMINATE_PATH)
+                ios_laminate_registration.run_registration()
         pass
 
     def __ios_upper_registration(self):
@@ -95,6 +107,3 @@ class Neo3DRegistration:
     def __ios_bow_registration(self):
         print("ios_bow_registration")
         pass
-    
-    
-

@@ -2,32 +2,32 @@
     "ios": [
         {
             "subType": "smileArch",
-            "path": "C:/Users/user/Desktop/smileArch.stl"
+            "path": "D:/Projects/PyNeo3DLib/example/data/smile_arch_origin.stl"
         },
         {
             "subType": "upper",
-            "path": "C:/Users/user/Desktop/upper.stl"
+            "path": "D:/Projects/PyNeo3DLib/example/data/smile_arch_origin.stl"
         },
         {
             "subType": "lower",
-            "path": "C:/Users/user/Desktop/lower.stl"
+            "path": "D:/Projects/PyNeo3DLib/example/data/smile_arch_origin.stl"
         }
     ],
     "facescan": [
         {
             "subType": "smile",
-            "path": "C:/Users/user/Desktop/smile.obj"
+            "path": "D:/Projects/PyNeo3DLib/example/data/smile_arch_origin.stl"
         },
         {
             "subType": "rest",
-            "path": "C:/Users/user/Desktop/rest.obj"
+            "path": "D:/Projects/PyNeo3DLib/example/data/smile_arch_origin.stl"
         },
         {
             "subType": "retraction",
-            "path": "C:/Users/user/Desktop/retraction.obj"
+            "path": "D:/Projects/PyNeo3DLib/example/data/smile_arch_origin.stl"
         }
     ],
     "cbct": {
-        "path": "C:/Users/user/Desktop/cbct/"
+        "path": "D:/Projects/PyNeo3DLib/example/data/cbct/"
     }
 }
