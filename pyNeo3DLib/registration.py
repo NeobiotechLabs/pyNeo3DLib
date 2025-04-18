@@ -30,6 +30,8 @@ class Neo3DRegistration:
 
         ios_bow_result = self.__ios_bow_registration()
 
+        print(ios_laminate_result)
+
 
     def __make_result_json(self, ios_laminate_result, 
                             ios_upper_result, 
@@ -74,10 +76,9 @@ class Neo3DRegistration:
         for ios in ios_data:
             if ios["subType"] == "smileArch":
                 print(f'ios["path"]: {ios["path"]}')
-                print("Let's do it")
                 # 이제 이 파일과. 라미네이트 모델을 정합한다. 
                 ios_laminate_registration = IOSLaminateRegistration(ios["path"], LAMINATE_PATH)
-                ios_laminate_registration.run_registration()
+                return ios_laminate_registration.run_registration()
         pass
 
     def __ios_upper_registration(self):

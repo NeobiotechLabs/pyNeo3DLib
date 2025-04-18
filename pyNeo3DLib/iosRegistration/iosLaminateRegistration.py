@@ -5,9 +5,10 @@ from scipy.spatial import ConvexHull
 
 
 class IOSLaminateRegistration:
-    def __init__(self, ios_path, laminate_path):
+    def __init__(self, ios_path, laminate_path, visualization=False):
         self.ios_path = ios_path
         self.laminate_path = laminate_path
+        self.visualization = visualization
         # 변환 행렬 초기화 (4x4 행렬로 설정)
         self.transform_matrix = np.eye(4)
 
@@ -16,7 +17,118 @@ class IOSLaminateRegistration:
     def run_registration(self):
         print("ios_laminate_registration")
         aligned_ios_mesh, ios_rotation_matrix = self.align_with_obb(self.ios_mesh)
-        pass
+    
+        if self.visualization:
+        # IOS 메쉬에 변환 행렬 적용
+            transformed_ios_mesh = copy.deepcopy(self.ios_mesh)
+            transformed_ios_mesh.vertices = np.dot(
+                self.ios_mesh.vertices,
+                self.transform_matrix[:3, :3].T
+            ) + self.transform_matrix[:3, 3]
+
+            self.visualize_meshes(
+                    [aligned_ios_mesh, transformed_ios_mesh, self.ios_mesh], 
+                    ["Aligned IOS", "Transformed IOS"], 
+                    title="IOS Compare"
+                )
+        
+        
+        # 변환 행렬 출력
+        print("\n=== 1. OBB 정렬 후 변환 행렬 ===")
+        print(self.transform_matrix)
+
+        # OBB 중심점과 무게 중심점 계산
+        # obb_center, weight_center = ios_laminate_registration.get_obb_center_and_weight_center(aligned_ios_mesh)
+        
+        # 2. Y 방향 정렬
+        y_aligned_ios_mesh, y_rotation_matrix = self.find_y_direction(aligned_ios_mesh)
+        
+        
+        if self.visualization:
+            self.visualize_meshes(
+                [aligned_ios_mesh, y_aligned_ios_mesh], 
+                ["Aligned IOS", "Y Aligned IOS"], 
+                title="IOS Compare"
+            )
+        
+        print("\n=== 2. Y 방향 정렬 후 변환 행렬 ===")
+        print(self.transform_matrix)
+
+        # 3. Z 방향 정렬
+        z_aligned_ios_mesh, z_rotation_matrix = self.find_z_direction(y_aligned_ios_mesh)
+
+        if self.visualization:
+            self.visualize_meshes(
+                [y_aligned_ios_mesh, z_aligned_ios_mesh], 
+                ["Y Aligned IOS", "Z Aligned IOS"], 
+                title="IOS Compare"
+            )
+        
+        print("\n=== 3. Z 방향 정렬 후 변환 행렬 ===")
+        print(self.transform_matrix)
+        
+        # 4. 영역 선택
+        selected_mesh = self.find_ray_mesh_intersection_approximate(z_aligned_ios_mesh)
+        if self.visualization:
+            self.visualize_meshes(
+                [z_aligned_ios_mesh, selected_mesh], 
+                ["Z Aligned IOS", "Selected Region"], 
+                title="IOS Compare"
+            )
+
+        # 5. Region growing
+        region_growing_mesh = self.region_growing(z_aligned_ios_mesh, selected_mesh)
+        if self.visualization:
+            self.visualize_meshes(
+                [z_aligned_ios_mesh, selected_mesh, region_growing_mesh], 
+                ["Z Aligned IOS", "Selected Region", "Region Growing"], 
+                title="IOS Compare"
+            )
+
+        if self.visualization:
+            self.visualize_meshes(
+                [self.laminate_mesh, region_growing_mesh], 
+                ["Laminate", "Region Growing"], 
+                title="IOS Compare"
+            )
+
+        # 6. 원점으로 이동
+        aligned_laminate_mesh, translation_matrix = self.move_mask_to_origin(region_growing_mesh)
+        if self.visualization:
+            self.visualize_meshes(
+                [self.laminate_mesh, aligned_laminate_mesh], 
+                ["Laminate", "Aligned Laminate"], 
+                title="IOS Compare"
+            )
+
+        print("\n=== 4. 원점 이동 후 변환 행렬 ===")
+        print(self.transform_matrix)
+
+        # 7. ICP 정합
+        transformed_mesh, fast_registration_transform_matrix = self.fast_registration(aligned_laminate_mesh, self.laminate_mesh)
+
+        print("\n=== 5. ICP 변환 행렬 ===")
+        print(fast_registration_transform_matrix)
+
+        # 원본 IOS 메시에 모든 변환을 순서대로 적용
+        final_ios_mesh = copy.deepcopy(self.ios_mesh)
+        
+        # 변환 행렬들을 순서대로 곱하기
+        # 1. OBB, Y, Z 정렬 (transform_matrix)
+        # 2. 원점 이동 (translation_matrix)
+        # 3. ICP 변환 (fast_registration_transform_matrix)
+        final_transform = np.dot(fast_registration_transform_matrix, 
+                                    self.transform_matrix)
+        
+        if self.visualization:
+            # 최종 변환 한번에 적용
+            final_ios_mesh.vertices = np.dot(
+                final_ios_mesh.vertices,
+                final_transform[:3, :3].T
+            ) + final_transform[:3, 3]
+
+        return final_transform
+        
 
     def __load_models(self):
         print(f"loading model from {self.ios_path} and {self.laminate_path}")
@@ -211,56 +323,7 @@ class IOSLaminateRegistration:
         pv_mesh.faces = face_list
         
         return pv_mesh
-    
-    def get_obb_center_and_weight_center(self, mesh):
-        """
-        주어진 메쉬의 OBB 중심점(Oriented Bounding Box center)과 무게 중심점(Weight center)을 계산합니다.
-        
-        Args:
-            mesh: Mesh 객체
-            
-        Returns:
-            obb_center: OBB 중심점 좌표 (numpy array)
-            weight_center: 무게 중심점 좌표 (numpy array)
-        """
-        # 정점 추출
-        vertices = mesh.vertices
-        
-        # 1. 무게 중심점 계산 (모든 정점의 평균)
-        weight_center = np.mean(vertices, axis=0)
-        
-        # 2. OBB 중심점 계산
-        # 2.1. 정점을 중심점으로 이동
-        centered_vertices = vertices - weight_center
-        
-        # 2.2. 공분산 행렬 계산
-        cov_matrix = np.cov(centered_vertices.T)
-        
-        # 2.3. 고유값 분해
-        eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
-        
-        # 2.4. 고유값을 기준으로 정렬 (내림차순)
-        idx = eigenvalues.argsort()[::-1]
-        eigenvalues = eigenvalues[idx]
-        eigenvectors = eigenvectors[:, idx]
-        
-        # 2.5. 정점을 주축 방향으로 투영
-        projected_vertices = np.dot(centered_vertices, eigenvectors)
-        
-        # 2.6. 각 축 방향의 최소/최대 좌표 계산
-        min_coords = np.min(projected_vertices, axis=0)
-        max_coords = np.max(projected_vertices, axis=0)
-        
-        # 2.7. OBB 중심점 계산 (최소/최대 좌표의 중간점)
-        obb_center_projected = (min_coords + max_coords) / 2
-        
-        # 2.8. OBB 중심점을 원래 좌표계로 변환
-        obb_center = np.dot(obb_center_projected, eigenvectors.T) + weight_center
-        
-        print(f"무게 중심점: {weight_center}")
-        print(f"OBB 중심점: {obb_center}")
-        
-        return obb_center, weight_center
+   
     
     def find_y_direction(self, mesh):
         """
@@ -473,9 +536,9 @@ class IOSLaminateRegistration:
         normalized_directions = directions / distances[:, np.newaxis]
         
         # 5. 각도 범위 설정 (여기서 범위 조절 가능)
-        vertical_angle = 10  # 위아래 각도 범위
-        horizontal_angle = 60  # 양옆 각도 범위
-        min_y_component = 0.85  # y방향 최소 성분 값 (cos(약 30도))
+        vertical_angle = 2  # 위아래 각도 범위
+        horizontal_angle = 30  # 양옆 각도 범위
+        min_y_component = 0.80  # y방향 최소 성분 값 (cos(약 30도))
         
         # 6. x축과 z축 방향 성분 계산
         x_components = np.abs(normalized_directions[:, 0])  # x축 성분
@@ -490,8 +553,21 @@ class IOSLaminateRegistration:
             (normalized_directions[:, 1] > 0)  # +y 방향만 선택
         )
         
-        # 8. 선택된 정점 인덱스
-        selected_vertices_idx = np.where(angle_mask)[0]
+        # 8. 각도 기준으로 점들을 그룹화
+        angle_groups = {}
+        for idx in np.where(angle_mask)[0]:
+            # 각도를 키로 사용 (적절한 정밀도로 반올림)
+            angle_key = tuple(np.round(normalized_directions[idx], decimals=3))
+            
+            # 같은 각도 그룹에서 거리가 더 큰 경우에만 업데이트
+            if angle_key not in angle_groups or distances[idx] > distances[angle_groups[angle_key]]:
+                angle_groups[angle_key] = idx
+        
+        # 9. 각 각도별로 가장 먼 점들만 선택
+        selected_vertices_idx = np.array(list(angle_groups.values()))
+        
+        # # 8. 선택된 정점 인덱스
+        # selected_vertices_idx = np.where(angle_mask)[0]
         
         # 9. 선택된 면 찾기 (모든 정점이 선택된 면만 선택)
         selected_faces = []
@@ -817,6 +893,12 @@ class IOSLaminateRegistration:
         return aligned_mesh, translation_matrix
 
     def fast_registration(self, source_mesh, target_mesh, vis=None):
+        if self.visualization:
+            return self.fast_registration_with_vis(source_mesh, target_mesh, vis)
+        else:
+            return self.fast_registration_without_vis(source_mesh, target_mesh, vis)
+
+    def fast_registration_without_vis(self, source_mesh, target_mesh, vis=None):
         """
         ICP 정합을 3단계로 수행하고 과정을 시각화합니다.
         Returns:
@@ -850,7 +932,129 @@ class IOSLaminateRegistration:
             )
             pcd.orient_normals_consistent_tangent_plane(k=100)
             
-            pcd.uniform_down_sample(every_k_points=10)
+            pcd.uniform_down_sample(every_k_points=2)
+            
+            return pcd
+        
+        # Mesh를 PointCloud로 변환
+        print("\nMesh를 PointCloud로 변환 중...")
+        source = mesh_to_pointcloud(source_mesh)
+        target = mesh_to_pointcloud(target_mesh)
+        
+        # ICP 실행
+        print("\n1번째 ICP 정합 시작...")
+        current_transform = np.eye(4)
+        
+        for iteration in range(1000):
+            result = o3d.pipelines.registration.registration_icp(
+                source, target,
+                1.0,  # 거리 임계값
+                current_transform,
+                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+                o3d.pipelines.registration.ICPConvergenceCriteria(
+                    relative_fitness=1e-6,
+                    relative_rmse=1e-6,
+                    max_iteration=1
+                )
+            )
+            
+            if np.allclose(result.transformation, current_transform, atol=1e-6):
+                print(f"  - ICP 수렴 (반복 {iteration})")
+                break
+                
+            current_transform = result.transformation
+        
+        print("2번째 ICP 정합 시작...")
+        for iteration in range(1000):
+            result = o3d.pipelines.registration.registration_icp(
+                source, target,
+                0.5,  # 거리 임계값
+                current_transform,
+                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+                o3d.pipelines.registration.ICPConvergenceCriteria(
+                    relative_fitness=1e-6,
+                    relative_rmse=1e-6,
+                    max_iteration=1
+                )
+            )
+            
+            
+            if np.allclose(result.transformation, current_transform, atol=1e-6):
+                print(f"  - ICP 수렴 (반복 {iteration})")
+                break
+                
+            current_transform = result.transformation
+        
+        print("3번째 ICP 정합 시작...")
+        for iteration in range(1000):
+            result = o3d.pipelines.registration.registration_icp(
+                source, target,
+                0.1,  # 거리 임계값
+                current_transform,
+                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+                o3d.pipelines.registration.ICPConvergenceCriteria(
+                    relative_fitness=1e-6,
+                    relative_rmse=1e-6,
+                    max_iteration=1
+                )
+            )
+            
+            
+            if np.allclose(result.transformation, current_transform, atol=1e-6):
+                print(f"  - ICP 수렴 (반복 {iteration})")
+                break
+                
+            current_transform = result.transformation
+        
+        print("\n=== 정합 완료 ===")
+        print(f"최종 fitness: {result.fitness:.6f}")
+        
+        # 변환된 소스 메시 생성
+        transformed_source_mesh = copy.deepcopy(source_mesh)
+        transformed_source_mesh.vertices = np.dot(
+            source_mesh.vertices,
+            current_transform[:3, :3].T
+        ) + current_transform[:3, 3]
+        
+        return transformed_source_mesh, current_transform
+
+
+
+    def fast_registration_with_vis(self, source_mesh, target_mesh, vis=None):
+        """
+        ICP 정합을 3단계로 수행하고 과정을 시각화합니다.
+        Returns:
+            transformed_source_mesh: 변환된 소스 메시
+            transform_matrix: 적용된 변환 행렬
+        """
+        import open3d as o3d
+        import copy
+        import time
+        import numpy as np
+        
+        # Mesh를 Open3D PointCloud로 변환
+        def mesh_to_pointcloud(mesh):
+            # 1. 포인트 클라우드 생성
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(mesh.vertices)
+            
+            # 2. 법선 벡터 처리
+            if mesh.normals is not None:
+                pcd.normals = o3d.utility.Vector3dVector(mesh.normals)
+            else:
+                temp_mesh = o3d.geometry.TriangleMesh()
+                temp_mesh.vertices = o3d.utility.Vector3dVector(mesh.vertices)
+                temp_mesh.triangles = o3d.utility.Vector3iVector(mesh.faces)
+                temp_mesh.compute_vertex_normals()
+                pcd.normals = temp_mesh.vertex_normals
+            
+            # 3. 법선 방향 추정 및 일관성 확인
+            pcd.estimate_normals(
+                search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30)
+            )
+            pcd.orient_normals_consistent_tangent_plane(k=100)
+            
+            pcd.uniform_down_sample(every_k_points=2)
             
             return pcd
         
@@ -944,12 +1148,12 @@ class IOSLaminateRegistration:
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
-                0.5,  # 거리 임계값
+                0.3,  # 거리 임계값
                 current_transform,
                 o3d.pipelines.registration.TransformationEstimationPointToPoint(),
                 o3d.pipelines.registration.ICPConvergenceCriteria(
-                    relative_fitness=1e-7,
-                    relative_rmse=1e-7,
+                    relative_fitness=1e-6,
+                    relative_rmse=1e-6,
                     max_iteration=1
                 )
             )
@@ -984,12 +1188,12 @@ class IOSLaminateRegistration:
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
-                0.2,  # 거리 임계값
+                0.05,  # 거리 임계값
                 current_transform,
                 o3d.pipelines.registration.TransformationEstimationPointToPoint(),
                 o3d.pipelines.registration.ICPConvergenceCriteria(
-                    relative_fitness=1e-8,
-                    relative_rmse=1e-8,
+                    relative_fitness=1e-6,
+                    relative_rmse=1e-6,
                     max_iteration=1
                 )
             )
@@ -1040,121 +1244,5 @@ class IOSLaminateRegistration:
         return transformed_source_mesh, current_transform
 
 if __name__ == "__main__":
-    ios_laminate_registration = IOSLaminateRegistration("../../example/data/ios_with_smilearch.stl", "../../example/data/smile_arch_half.stl")
-
-    # 1. OBB 정렬
-    aligned_ios_mesh, ios_rotation_matrix = ios_laminate_registration.align_with_obb(ios_laminate_registration.ios_mesh)
-    
-    # IOS 메쉬에 변환 행렬 적용
-    transformed_ios_mesh = copy.deepcopy(ios_laminate_registration.ios_mesh)
-    transformed_ios_mesh.vertices = np.dot(
-        ios_laminate_registration.ios_mesh.vertices,
-        ios_laminate_registration.transform_matrix[:3, :3].T
-    ) + ios_laminate_registration.transform_matrix[:3, 3]
-
-    ios_laminate_registration.visualize_meshes(
-            [aligned_ios_mesh, transformed_ios_mesh, ios_laminate_registration.ios_mesh], 
-            ["Aligned IOS", "Transformed IOS"], 
-            title="IOS Compare"
-        )
-    
-    slow_watch_icp = False
-    
-    # 변환 행렬 출력
-    print("\n=== 1. OBB 정렬 후 변환 행렬 ===")
-    print(ios_laminate_registration.transform_matrix)
-
-    # OBB 중심점과 무게 중심점 계산
-    obb_center, weight_center = ios_laminate_registration.get_obb_center_and_weight_center(aligned_ios_mesh)
-    
-    # 2. Y 방향 정렬
-    y_aligned_ios_mesh, y_rotation_matrix = ios_laminate_registration.find_y_direction(aligned_ios_mesh)
-    if slow_watch_icp:
-        ios_laminate_registration.visualize_meshes(
-            [aligned_ios_mesh, y_aligned_ios_mesh], 
-            ["Aligned IOS", "Y Aligned IOS"], 
-            title="IOS Compare"
-        )
-    
-    print("\n=== 2. Y 방향 정렬 후 변환 행렬 ===")
-    print(ios_laminate_registration.transform_matrix)
-
-    # 3. Z 방향 정렬
-    z_aligned_ios_mesh, z_rotation_matrix = ios_laminate_registration.find_z_direction(y_aligned_ios_mesh)
-    if slow_watch_icp:
-        ios_laminate_registration.visualize_meshes(
-            [y_aligned_ios_mesh, z_aligned_ios_mesh], 
-            ["Y Aligned IOS", "Z Aligned IOS"], 
-            title="IOS Compare"
-        )
-    
-    print("\n=== 3. Z 방향 정렬 후 변환 행렬 ===")
-    print(ios_laminate_registration.transform_matrix)
-    
-    # 4. 영역 선택
-    selected_mesh = ios_laminate_registration.find_ray_mesh_intersection_approximate(z_aligned_ios_mesh)
-    if slow_watch_icp:
-        ios_laminate_registration.visualize_meshes(
-            [z_aligned_ios_mesh, selected_mesh], 
-            ["Z Aligned IOS", "Selected Region"], 
-            title="IOS Compare"
-        )
-
-    # 5. Region growing
-    region_growing_mesh = ios_laminate_registration.region_growing(z_aligned_ios_mesh, selected_mesh)
-    if slow_watch_icp:
-        ios_laminate_registration.visualize_meshes(
-            [z_aligned_ios_mesh, selected_mesh, region_growing_mesh], 
-            ["Z Aligned IOS", "Selected Region", "Region Growing"], 
-            title="IOS Compare"
-        )
-
-    if slow_watch_icp:
-        ios_laminate_registration.visualize_meshes(
-            [ios_laminate_registration.laminate_mesh, region_growing_mesh], 
-            ["Laminate", "Region Growing"], 
-            title="IOS Compare"
-        )
-
-    # 6. 원점으로 이동
-    aligned_laminate_mesh, translation_matrix = ios_laminate_registration.move_mask_to_origin(region_growing_mesh)
-    if slow_watch_icp:
-        ios_laminate_registration.visualize_meshes(
-            [ios_laminate_registration.laminate_mesh, aligned_laminate_mesh], 
-            ["Laminate", "Aligned Laminate"], 
-            title="IOS Compare"
-        )
-
-    print("\n=== 4. 원점 이동 후 변환 행렬 ===")
-    print(ios_laminate_registration.transform_matrix)
-
-    # 7. ICP 정합
-    transformed_mesh, fast_registration_transform_matrix = ios_laminate_registration.fast_registration(aligned_laminate_mesh, ios_laminate_registration.laminate_mesh)
-
-    print("\n=== 5. ICP 변환 행렬 ===")
-    print(fast_registration_transform_matrix)
-
-    # 원본 IOS 메시에 모든 변환을 순서대로 적용
-    final_ios_mesh = copy.deepcopy(ios_laminate_registration.ios_mesh)
-    
-    # 변환 행렬들을 순서대로 곱하기
-    # 1. OBB, Y, Z 정렬 (transform_matrix)
-    # 2. 원점 이동 (translation_matrix)
-    # 3. ICP 변환 (fast_registration_transform_matrix)
-    final_transform = np.dot(fast_registration_transform_matrix, 
-                                ios_laminate_registration.transform_matrix)
-    
-    # 최종 변환 한번에 적용
-    final_ios_mesh.vertices = np.dot(
-        final_ios_mesh.vertices,
-        final_transform[:3, :3].T
-    ) + final_transform[:3, 3]
-
-    # 최종 결과 시각화
-    ios_laminate_registration.visualize_meshes(
-        [final_ios_mesh, ios_laminate_registration.laminate_mesh], 
-        ["Final IOS", "Laminate"], 
-        title="Final Registration Result"
-    )
-    
-    
+    ios_laminate_registration = IOSLaminateRegistration("../../example/data/ios_with_smilearch.stl", "../../example/data/smile_arch_half.stl", visualization=True)
+    ios_laminate_registration.run_registration()
