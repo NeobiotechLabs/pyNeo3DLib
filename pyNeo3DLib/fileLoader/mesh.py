@@ -10,7 +10,9 @@ class Mesh:
         self.normals = None
         self.materials = {}  # MTL 파일에서 읽은 재질 정보
         self.face_materials = None  # 각 면의 재질 인덱스
-    
+        self.uvs = None
+        self.face_uvs = None  # 각 면의 UV 인덱스
+
     @classmethod
     def from_file(cls, file_path):
         """파일 확장자에 따라 적절한 메서드로 메시를 로드합니다."""
@@ -144,8 +146,10 @@ class Mesh:
         path = Path(file_path)
         vertices = []
         faces = []
+        face_uvs = []  # UV 인덱스 저장
         normals = []
         face_materials = []
+        uvs = []
         current_material = None
         
         # MTL 파일 찾기
@@ -172,6 +176,10 @@ class Mesh:
                     if values[0] == 'v':
                         # 정점 데이터
                         vertices.append([float(x) for x in values[1:4]])
+
+                    elif values[0] == 'vt':
+                        # UV 데이터
+                        uvs.append([float(x) for x in values[1:3]])
                         
                     elif values[0] == 'vn':
                         # 법선 벡터
@@ -184,18 +192,30 @@ class Mesh:
                     elif values[0] == 'f':
                         # 면 데이터 처리
                         face = []
+                        face_uv = []
                         for v in values[1:]:
                             # f v1/vt1/vn1 v2/vt2/vn2 v3/vt3/vn3 형식 처리
-                            vertex_idx = int(v.split('/')[0]) - 1  # OBJ는 1부터 시작
+                            indices = v.split('/')
+                            vertex_idx = int(indices[0]) - 1  # OBJ는 1부터 시작
                             face.append(vertex_idx)
+                            
+                            # UV 인덱스가 있으면 저장
+                            if len(indices) > 1 and indices[1]:
+                                uv_idx = int(indices[1]) - 1
+                                face_uv.append(uv_idx)
+                            else:
+                                face_uv.append(vertex_idx)  # UV가 없으면 vertex 인덱스 사용
                         
                         if len(face) == 3:
                             faces.append(face)
+                            face_uvs.append(face_uv)
                             face_materials.append(current_material)
                         elif len(face) == 4:
                             # 사각형을 삼각형 두 개로 분할
                             faces.append([face[0], face[1], face[2]])
                             faces.append([face[0], face[2], face[3]])
+                            face_uvs.append([face_uv[0], face_uv[1], face_uv[2]])
+                            face_uvs.append([face_uv[0], face_uv[2], face_uv[3]])
                             face_materials.extend([current_material, current_material])
             
             if not vertices:
@@ -207,7 +227,10 @@ class Mesh:
                 self.normals = np.array(normals)
             else:
                 self._compute_normals()
-            
+            if uvs:
+                self.uvs = np.array(uvs)
+                self.face_uvs = np.array(face_uvs)
+
             # 재질 정보 저장
             if face_materials:
                 self.face_materials = face_materials
@@ -290,4 +313,84 @@ class Mesh:
         if self.face_materials is None or face_index >= len(self.face_materials):
             return None
         material_name = self.face_materials[face_index]
-        return self.materials.get(material_name) 
+        return self.materials.get(material_name)
+
+    def extract_mesh_from_vertices(self, vertex_indices):
+        """선택된 정점들로 구성된 부분 메시를 생성합니다.
+        
+        Args:
+            vertex_indices: 선택된 정점 인덱스 리스트
+            
+        Returns:
+            선택된 정점들로 구성된 부분 메시
+        """
+        # 선택된 정점 인덱스를 집합으로 변환 (검색 속도 향상)
+        vertex_set = set(vertex_indices)
+        
+        # 선택된 정점들로 구성된 면 찾기
+        selected_faces = []
+        vertex_mapping = {}  # 원래 인덱스 -> 새 인덱스 매핑
+        used_vertices = set()  # 실제로 사용된 정점들
+        used_uvs = set()  # 실제로 사용된 UV 좌표들
+        
+        # 면 필터링: 선택된 정점이 하나 이상 포함된 면 선택
+        for i, face in enumerate(self.faces):
+            # 면의 정점 중 선택된 정점이 있는지 확인
+            if any(v in vertex_set for v in face):
+                # 면의 모든 정점을 사용된 정점 집합에 추가
+                for v in face:
+                    used_vertices.add(v)
+                selected_faces.append(i)
+                # UV 좌표가 있는 경우, 해당 면의 UV 인덱스도 저장
+                if self.face_uvs is not None:
+                    for uv_idx in self.face_uvs[i]:
+                        used_uvs.add(uv_idx)
+        
+        if not selected_faces:
+            return None
+        
+        # 새로운 메시 생성
+        submesh = Mesh()
+        
+        # 정점 복사 및 인덱스 매핑 생성
+        used_vertices = sorted(list(used_vertices))
+        for i, old_idx in enumerate(used_vertices):
+            vertex_mapping[old_idx] = i
+        
+        # UV 좌표 매핑 생성 (UV 좌표가 있는 경우)
+        uv_mapping = {}
+        if self.face_uvs is not None:
+            used_uvs = sorted(list(used_uvs))
+            for i, old_idx in enumerate(used_uvs):
+                uv_mapping[old_idx] = i
+        
+        # 새 메시에 정점 복사
+        submesh.vertices = self.vertices[used_vertices]
+        
+        # UV 좌표가 있는 경우 복사
+        if self.uvs is not None and used_uvs:
+            submesh.uvs = self.uvs[list(used_uvs)]
+        
+        # 면 인덱스 변환
+        new_faces = []
+        new_face_uvs = [] if self.face_uvs is not None else None
+        
+        for face_idx in selected_faces:
+            old_face = self.faces[face_idx]
+            new_face = [vertex_mapping[v] for v in old_face]
+            new_faces.append(new_face)
+            
+            # UV 좌표가 있는 경우 면의 UV 인덱스도 변환
+            if self.face_uvs is not None:
+                old_face_uv = self.face_uvs[face_idx]
+                new_face_uv = [uv_mapping[uv] for uv in old_face_uv]
+                new_face_uvs.append(new_face_uv)
+        
+        submesh.faces = np.array(new_faces)
+        if new_face_uvs:
+            submesh.face_uvs = np.array(new_face_uvs)
+        
+        # 법선 벡터 계산
+        submesh._compute_normals()
+        
+        return submesh 

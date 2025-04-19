@@ -285,6 +285,9 @@ class FaceLaminateRegistration:
         visualize_meshes([lip_mesh, self.face_smile_mesh, self.laminate_mesh], ["Lip", "Face", "Laminate"], title="입술 내부 부분 메시")
         print(self.transform_matrix)
 
+
+        
+
     def visualize_lip_landmarks(self):
         """
         입술 랜드마크를 이미지에 시각화합니다.
