@@ -267,22 +267,76 @@ class FaceLaminateRegistration:
         
         return lip_mesh
     
-    def run_registration(self):
-        visualize_meshes([self.face_smile_mesh, self.laminate_mesh], ["Face", "Laminate"], title="Face and Laminate")
-        self.align_y_axis()
-        visualize_meshes([self.face_smile_mesh, self.laminate_mesh], ["Face", "Laminate"], title="Face and Laminate")
-        print(self.transform_matrix)
-        inner_uv_points, outer_uv_points = self.find_lip_via_analyze_face_landmarks()
-        print(inner_uv_points, outer_uv_points)
+    def align_lip_to_laminate(self, lip_mesh):
+        """입술 메시를 라미네이트 메시 위치로 이동시킵니다."""
+        # 각 메시의 중심점 계산
+        lip_center = np.mean(lip_mesh.vertices, axis=0)
+        laminate_center = np.mean(self.laminate_mesh.vertices, axis=0)
         
-        # 입술 랜드마크 시각화
-        # self.visualize_lip_landmarks()
+        # 이동 벡터 계산
+        translation = laminate_center - lip_center
+        
+        # 이동 변환 행렬 생성
+        transform_matrix = np.eye(4)
+        transform_matrix[:3, 3] = translation
+        
+        # 메시 정점에 변환 적용
+        vertices = lip_mesh.vertices
+        # 동차 좌표로 변환 (4xN 행렬)
+        vertices_homogeneous = np.hstack((vertices, np.ones((vertices.shape[0], 1))))
+        # 변환 적용
+        transformed_vertices = np.dot(vertices_homogeneous, transform_matrix.T)
+        # 동차 좌표에서 3D 좌표로 변환
+        lip_mesh.vertices = transformed_vertices[:, :3]
+        
+        # 법선 벡터도 변환 (회전만 적용)
+        if lip_mesh.normals is not None:
+            normals = lip_mesh.normals
+            # 법선 벡터는 이동 성분 없이 회전만 적용
+            rotation_matrix = transform_matrix[:3, :3]
+            lip_mesh.normals = np.dot(normals, rotation_matrix.T)
+        
+        # 변환 행렬 누적
+        self.transform_matrix = np.dot(transform_matrix, self.transform_matrix)
+        
+        return lip_mesh
+
+    def run_registration(self):
+        # 초기 메시 시각화
+        visualize_meshes([self.face_smile_mesh, self.laminate_mesh], ["Face", "Laminate"], title="Initial Meshes")
+        
+        # Y축 정렬
+        self.align_y_axis()
+        visualize_meshes([self.face_smile_mesh, self.laminate_mesh], ["Face", "Laminate"], title="After Y-axis Alignment")
+        print("Y축 정렬 변환 행렬:")
+        print(self.transform_matrix)
+        
+        # 입술 랜드마크 추출
+        inner_uv_points, outer_uv_points = self.find_lip_via_analyze_face_landmarks()
+        print("입술 UV 좌표:")
+        print("내부:", inner_uv_points)
+        print("외부:", outer_uv_points)
         
         # 입술 내부 부분 메시 생성
         lip_mesh = self.find_lip_via_convex_hull(inner_uv_points)
+        if lip_mesh is None:
+            print("입술 메시 생성 실패")
+            return
         
-        # # 부분 메시 시각화
-        visualize_meshes([lip_mesh, self.face_smile_mesh, self.laminate_mesh], ["Lip", "Face", "Laminate"], title="입술 내부 부분 메시")
+        # 입술 메시를 라미네이트 위치로 이동
+        lip_mesh = self.align_lip_to_laminate(lip_mesh)
+        
+        # 전체 메시에 누적된 변환 적용해보기
+        moved_smile_mesh = copy.deepcopy(self.face_smile_mesh)
+        # 이동 변환만 적용
+        translation = self.transform_matrix[:3, 3]
+        moved_smile_mesh.vertices = moved_smile_mesh.vertices + translation
+        
+        # 최종 결과 시각화
+        visualize_meshes([lip_mesh, moved_smile_mesh, self.face_smile_mesh, self.laminate_mesh], 
+                        ["Lip", "Moved Face", "Face", "Laminate"], 
+                        title="Final Result")
+        print("최종 누적 변환 행렬:")
         print(self.transform_matrix)
 
 
