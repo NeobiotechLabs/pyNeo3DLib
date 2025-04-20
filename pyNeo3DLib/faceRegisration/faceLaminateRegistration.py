@@ -301,6 +301,231 @@ class FaceLaminateRegistration:
         
         return lip_mesh
 
+
+    def fast_registration_with_vis(self, source_mesh, target_mesh, vis=None):
+        """
+        ICP 정합을 3단계로 수행하고 과정을 시각화합니다.
+        Returns:
+            transformed_source_mesh: 변환된 소스 메시
+            transform_matrix: 적용된 변환 행렬
+        """
+        import open3d as o3d
+        import copy
+        import time
+        import numpy as np
+        
+        # Mesh를 Open3D PointCloud로 변환
+        def mesh_to_pointcloud(mesh):
+            # 1. 포인트 클라우드 생성
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(mesh.vertices)
+            
+            # 2. 법선 벡터 처리
+            if mesh.normals is not None:
+                pcd.normals = o3d.utility.Vector3dVector(mesh.normals)
+            else:
+                temp_mesh = o3d.geometry.TriangleMesh()
+                temp_mesh.vertices = o3d.utility.Vector3dVector(mesh.vertices)
+                temp_mesh.triangles = o3d.utility.Vector3iVector(mesh.faces)
+                temp_mesh.compute_vertex_normals()
+                pcd.normals = temp_mesh.vertex_normals
+            
+            # 3. 법선 방향 추정 및 일관성 확인
+            pcd.estimate_normals(
+                search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30)
+            )
+            pcd.orient_normals_consistent_tangent_plane(k=100)
+            
+            pcd.uniform_down_sample(every_k_points=2)
+            
+            return pcd
+        
+        # 시각화 창 생성
+        if vis is None:
+            vis = o3d.visualization.Visualizer()
+            vis.create_window(window_name='Registration', width=1280, height=720)
+            opt = vis.get_render_option()
+            opt.background_color = np.asarray([0.1, 0.1, 0.1])
+            opt.point_size = 2.0
+            
+            # 카메라 설정 (+y 방향에서 -y 방향을 보도록)
+            ctr = vis.get_view_control()
+            ctr.set_zoom(0.8)
+            ctr.set_front([0, -1, 0])  # -y 방향을 바라봄
+            ctr.set_up([0, 0, 1])      # z축이 위쪽
+            
+            # 카메라 설정 강제 적용
+            vis.poll_events()
+            vis.update_renderer()
+            time.sleep(0.1)
+        
+        # Mesh를 PointCloud로 변환
+        print("\nMesh를 PointCloud로 변환 중...")
+        source = mesh_to_pointcloud(source_mesh)
+        target = mesh_to_pointcloud(target_mesh)
+        
+        # 소스는 빨간색, 타겟은 파란색으로 설정
+        source.paint_uniform_color([1, 0, 0])
+        target.paint_uniform_color([0, 0, 1])
+        
+        # 초기 상태 시각화
+        vis.clear_geometries()
+        vis.add_geometry(source)
+        vis.add_geometry(target)
+        
+        # 카메라 뷰 리셋
+        ctr = vis.get_view_control()
+        ctr.set_zoom(0.8)
+        ctr.set_front([0, -1, 0])
+        ctr.set_up([0, 0, 1])
+        
+        vis.poll_events()
+        vis.update_renderer()
+        time.sleep(1)
+        
+        # ICP 실행
+        print("\n1번째 ICP 정합 시작...")
+        current_transform = np.eye(4)
+        
+        for iteration in range(1000):
+            result = o3d.pipelines.registration.registration_icp(
+                source, target,
+                1.0,  # 거리 임계값
+                current_transform,
+                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+                o3d.pipelines.registration.ICPConvergenceCriteria(
+                    relative_fitness=1e-6,
+                    relative_rmse=1e-6,
+                    max_iteration=1
+                )
+            )
+            
+            if iteration % 20 == 0:  # 매 반복마다 시각화
+                print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
+                
+                # 시각화 업데이트
+                source_temp = copy.deepcopy(source)
+                source_temp.transform(result.transformation)
+                vis.clear_geometries()
+                vis.add_geometry(source_temp)
+                vis.add_geometry(target)
+                
+                # 매 반복마다 카메라 뷰 리셋
+                ctr = vis.get_view_control()
+                ctr.set_zoom(0.8)
+                ctr.set_front([0, -1, 0])
+                ctr.set_up([0, 0, 1])
+                
+                vis.poll_events()
+                vis.update_renderer()
+                time.sleep(0.05)  # 애니메이션 속도 조절
+            
+            if np.allclose(result.transformation, current_transform, atol=1e-6):
+                print(f"  - ICP 수렴 (반복 {iteration})")
+                break
+                
+            current_transform = result.transformation
+        
+        print("2번째 ICP 정합 시작...")
+        for iteration in range(1000):
+            result = o3d.pipelines.registration.registration_icp(
+                source, target,
+                0.3,  # 거리 임계값
+                current_transform,
+                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+                o3d.pipelines.registration.ICPConvergenceCriteria(
+                    relative_fitness=1e-6,
+                    relative_rmse=1e-6,
+                    max_iteration=1
+                )
+            )
+            
+            if iteration % 20 == 0:  # 매 반복마다 시각화
+                print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
+                
+                # 시각화 업데이트
+                source_temp = copy.deepcopy(source)
+                source_temp.transform(result.transformation)
+                vis.clear_geometries()
+                vis.add_geometry(source_temp)
+                vis.add_geometry(target)
+                
+                # 매 반복마다 카메라 뷰 리셋
+                ctr = vis.get_view_control()
+                ctr.set_zoom(0.8)
+                ctr.set_front([0, -1, 0])
+                ctr.set_up([0, 0, 1])
+                
+                vis.poll_events()
+                vis.update_renderer()
+                time.sleep(0.05)  # 애니메이션 속도 조절
+            
+            if np.allclose(result.transformation, current_transform, atol=1e-6):
+                print(f"  - ICP 수렴 (반복 {iteration})")
+                break
+                
+            current_transform = result.transformation
+        
+        print("3번째 ICP 정합 시작...")
+        for iteration in range(1000):
+            result = o3d.pipelines.registration.registration_icp(
+                source, target,
+                0.05,  # 거리 임계값
+                current_transform,
+                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+                o3d.pipelines.registration.ICPConvergenceCriteria(
+                    relative_fitness=1e-6,
+                    relative_rmse=1e-6,
+                    max_iteration=1
+                )
+            )
+            
+            if iteration % 20 == 0:  # 매 반복마다 시각화
+                print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
+                
+                # 시각화 업데이트
+                source_temp = copy.deepcopy(source)
+                source_temp.transform(result.transformation)
+                vis.clear_geometries()
+                vis.add_geometry(source_temp)
+                vis.add_geometry(target)
+                
+                # 매 반복마다 카메라 뷰 리셋
+                ctr = vis.get_view_control()
+                ctr.set_zoom(0.8)
+                ctr.set_front([0, -1, 0])
+                ctr.set_up([0, 0, 1])
+                
+                vis.poll_events()
+                vis.update_renderer()
+                time.sleep(0.05)  # 애니메이션 속도 조절
+            
+            if np.allclose(result.transformation, current_transform, atol=1e-6):
+                print(f"  - ICP 수렴 (반복 {iteration})")
+                break
+                
+            current_transform = result.transformation
+        
+        print("\n=== 정합 완료 ===")
+        print(f"최종 fitness: {result.fitness:.6f}")
+        
+        # 시각화 창을 계속 열어두고 마우스 인터렉션 허용
+        while True:
+            if not vis.poll_events():
+                break
+            vis.update_renderer()
+            time.sleep(0.1)
+        
+        # 변환된 소스 메시 생성
+        transformed_source_mesh = copy.deepcopy(source_mesh)
+        transformed_source_mesh.vertices = np.dot(
+            source_mesh.vertices,
+            current_transform[:3, :3].T
+        ) + current_transform[:3, 3]
+        
+        return transformed_source_mesh, current_transform
+    
+
     def run_registration(self):
         # 초기 메시 시각화
         visualize_meshes([self.face_smile_mesh, self.laminate_mesh], ["Face", "Laminate"], title="Initial Meshes")
@@ -339,6 +564,19 @@ class FaceLaminateRegistration:
         print("최종 누적 변환 행렬:")
         print(self.transform_matrix)
 
+        # 이제 ICP를 이용하여 메시를 매칭시키자
+        transformed_mesh, fast_registration_transform_matrix = self.fast_registration_with_vis(lip_mesh, self.laminate_mesh)
+
+        # 최종 변환 한번에 적용
+        final_transform = np.dot(
+            fast_registration_transform_matrix, 
+            self.transform_matrix)
+        
+        moved_smile_mesh.vertices = np.dot(moved_smile_mesh.vertices, fast_registration_transform_matrix[:3, :3].T) + fast_registration_transform_matrix[:3, 3]
+        
+        visualize_meshes([transformed_mesh, moved_smile_mesh, self.face_smile_mesh, self.laminate_mesh], 
+                        ["Lip", "Moved Face", "Face", "Laminate"], 
+                        title="Final Result")
 
         
 
