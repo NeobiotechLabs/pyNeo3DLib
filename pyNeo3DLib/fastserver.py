@@ -49,7 +49,10 @@ async def get_registration(registration: RegistrationItem):
     except Exception as e:
         print(f"웹소켓 메시지 전송 중 오류 발생: {str(e)}")
     return result
-    
+
+@app.get("/")
+async def root():
+    return {"message": "Hello World"}
 
 def stop_server():
     if s_thread:
