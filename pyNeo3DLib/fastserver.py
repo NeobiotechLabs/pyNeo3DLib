@@ -55,12 +55,23 @@ async def root():
     return {"message": "Hello World"}
 
 def stop_server():
+    print("stop_server")
     if s_thread:
         s_thread.stop()
     os.kill(os.getpid(), 2)
 
 def run_server():
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    config = uvicorn.Config(
+        app,
+        host="127.0.0.1",
+        port=8000,
+        log_level="info",
+        loop="asyncio"
+    )
+    
+    # 서버 실행
+    server = uvicorn.Server(config)
+    server.run()
 
 def start_server():        
     server_thread = threading.Thread(target=run_server)
