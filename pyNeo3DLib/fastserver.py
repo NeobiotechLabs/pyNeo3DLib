@@ -1,4 +1,5 @@
 from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import threading
 import os, signal
@@ -9,6 +10,14 @@ import datetime
 from .registrationModel import RegistrationModels, RegistrationItem
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 s_thread = None
 ws = None
 
