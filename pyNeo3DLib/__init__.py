@@ -1,8 +1,6 @@
-# 오픈해야 할 모듈 명시
-# from pyNeo3DLib.pyNeo3DLib import *
-
-# 모듈 명시
-# __all__ = ["pyNeo3DLib"]
-
+from .fastserver import *
+from .registrationModel import *
 from .registration import Neo3DRegistration
 from .datainfo import dataInfo
+
+__all__ = ["fastserver", "registrationModel", "registration", "datainfo"]
