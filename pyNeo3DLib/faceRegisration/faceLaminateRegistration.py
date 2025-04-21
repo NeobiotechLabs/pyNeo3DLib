@@ -372,11 +372,11 @@ class FaceLaminateRegistration:
             return pcd
         
         # 시각화 창 생성
-        if vis is None:
+        if vis is None and self.visualization:
             vis = o3d.visualization.Visualizer()
-            vis.create_window(window_name='Registration', width=1280, height=720)
+            vis.create_window(window_name='Registration', width=1920, height=1080)
             opt = vis.get_render_option()
-            opt.background_color = np.asarray([0.1, 0.1, 0.1])
+            opt.background_color = np.asarray([0.9, 0.9, 0.9])
             opt.point_size = 2.0
             
             # 카메라 설정 (+y 방향에서 -y 방향을 보도록)
@@ -399,20 +399,21 @@ class FaceLaminateRegistration:
         source.paint_uniform_color([1, 0, 0])
         target.paint_uniform_color([0, 0, 1])
         
-        # 초기 상태 시각화
-        vis.clear_geometries()
-        vis.add_geometry(source)
-        vis.add_geometry(target)
-        
-        # 카메라 뷰 리셋
-        ctr = vis.get_view_control()
-        ctr.set_zoom(0.8)
-        ctr.set_front([0, -1, 0])
-        ctr.set_up([0, 0, 1])
-        
-        vis.poll_events()
-        vis.update_renderer()
-        time.sleep(1)
+        if self.visualization:
+            # 초기 상태 시각화
+            vis.clear_geometries()
+            vis.add_geometry(source)
+            vis.add_geometry(target)
+            
+            # 카메라 뷰 리셋
+            ctr = vis.get_view_control()
+            ctr.set_zoom(0.8)
+            ctr.set_front([0, -1, 0])
+            ctr.set_up([0, 0, 1])
+            
+            vis.poll_events()
+            vis.update_renderer()
+            time.sleep(1)
         
         # ICP 실행
         print("\n1번째 ICP 정합 시작...")
@@ -437,19 +438,20 @@ class FaceLaminateRegistration:
                 # 시각화 업데이트
                 source_temp = copy.deepcopy(source)
                 source_temp.transform(result.transformation)
-                vis.clear_geometries()
-                vis.add_geometry(source_temp)
-                vis.add_geometry(target)
+                if self.visualization:
+                    vis.clear_geometries()
+                    vis.add_geometry(source_temp)
+                    vis.add_geometry(target)
                 
                 # 매 반복마다 카메라 뷰 리셋
-                ctr = vis.get_view_control()
-                ctr.set_zoom(0.8)
-                ctr.set_front([0, -1, 0])
-                ctr.set_up([0, 0, 1])
-                
-                vis.poll_events()
-                vis.update_renderer()
-                time.sleep(0.05)  # 애니메이션 속도 조절
+                    ctr = vis.get_view_control()
+                    ctr.set_zoom(0.8)
+                    ctr.set_front([0, -1, 0])
+                    ctr.set_up([0, 0, 1])
+                    
+                    vis.poll_events()
+                    vis.update_renderer()
+                    time.sleep(0.05)  # 애니메이션 속도 조절
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
                 print(f"  - ICP 수렴 (반복 {iteration})")
@@ -477,19 +479,20 @@ class FaceLaminateRegistration:
                 # 시각화 업데이트
                 source_temp = copy.deepcopy(source)
                 source_temp.transform(result.transformation)
-                vis.clear_geometries()
-                vis.add_geometry(source_temp)
-                vis.add_geometry(target)
+                if self.visualization:
+                    vis.clear_geometries()
+                    vis.add_geometry(source_temp)
+                    vis.add_geometry(target)
                 
-                # 매 반복마다 카메라 뷰 리셋
-                ctr = vis.get_view_control()
-                ctr.set_zoom(0.8)
-                ctr.set_front([0, -1, 0])
-                ctr.set_up([0, 0, 1])
-                
-                vis.poll_events()
-                vis.update_renderer()
-                time.sleep(0.05)  # 애니메이션 속도 조절
+                    # 매 반복마다 카메라 뷰 리셋
+                    ctr = vis.get_view_control()
+                    ctr.set_zoom(0.8)
+                    ctr.set_front([0, -1, 0])
+                    ctr.set_up([0, 0, 1])
+                    
+                    vis.poll_events()
+                    vis.update_renderer()
+                    time.sleep(0.05)  # 애니메이션 속도 조절
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
                 print(f"  - ICP 수렴 (반복 {iteration})")
@@ -517,19 +520,20 @@ class FaceLaminateRegistration:
                 # 시각화 업데이트
                 source_temp = copy.deepcopy(source)
                 source_temp.transform(result.transformation)
-                vis.clear_geometries()
-                vis.add_geometry(source_temp)
-                vis.add_geometry(target)
-                
-                # 매 반복마다 카메라 뷰 리셋
-                ctr = vis.get_view_control()
-                ctr.set_zoom(0.8)
-                ctr.set_front([0, -1, 0])
-                ctr.set_up([0, 0, 1])
-                
-                vis.poll_events()
-                vis.update_renderer()
-                time.sleep(0.05)  # 애니메이션 속도 조절
+                if self.visualization:
+                    vis.clear_geometries()
+                    vis.add_geometry(source_temp)
+                    vis.add_geometry(target)
+                    
+                    # 매 반복마다 카메라 뷰 리셋
+                    ctr = vis.get_view_control()
+                    ctr.set_zoom(0.8)
+                    ctr.set_front([0, -1, 0])
+                    ctr.set_up([0, 0, 1])
+                    
+                    vis.poll_events()
+                    vis.update_renderer()
+                    time.sleep(0.05)  # 애니메이션 속도 조절
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
                 print(f"  - ICP 수렴 (반복 {iteration})")
@@ -540,12 +544,13 @@ class FaceLaminateRegistration:
         print("\n=== 정합 완료 ===")
         print(f"최종 fitness: {result.fitness:.6f}")
         
-        # 시각화 창을 계속 열어두고 마우스 인터렉션 허용
-        while True:
-            if not vis.poll_events():
-                break
-            vis.update_renderer()
-            time.sleep(0.1)
+        if self.visualization:
+            # 시각화 창을 계속 열어두고 마우스 인터렉션 허용
+            while True:
+                if not vis.poll_events():
+                    break
+                vis.update_renderer()
+                time.sleep(0.1)
         
         # 변환된 소스 메시 생성
         transformed_source_mesh = copy.deepcopy(source_mesh)
