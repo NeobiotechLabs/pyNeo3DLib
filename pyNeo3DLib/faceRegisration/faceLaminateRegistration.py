@@ -212,13 +212,22 @@ class FaceLaminateRegistration:
 
     def find_lip_regions(self, mesh, inner_uv_points, margin=0.0005):
         """내부와 외부 입술 영역 검출"""
+        start_time = time.time()
+        print(f"[시간 측정] 입술 영역 검출 시작")
+        
+        # 메시 데이터 준비
+        prep_start = time.time()
         faces = np.asarray(mesh.faces)
         uvs = np.asarray(mesh.uvs)
-        
-        # face_uvs는 각 face의 vertex가 사용하는 UV 인덱스를 저장
         face_uvs = np.asarray(mesh.face_uvs)
+        print(f"[시간 측정] 메시 데이터 준비: {time.time() - prep_start:.4f}초")
         
         inner_triangles = set()
+        
+        # 삼각형 처리
+        triangle_start = time.time()
+        total_triangles = len(faces)
+        print(f"[시간 측정] 총 {total_triangles}개의 삼각형 처리 시작")
         
         for i in range(len(faces)):
             # 삼각형의 UV 좌표 가져오기
@@ -230,10 +239,20 @@ class FaceLaminateRegistration:
             if self.is_point_in_polygon(center, inner_uv_points):
                 inner_triangles.add(i)
         
+        print(f"[시간 측정] 삼각형 처리 완료: {time.time() - triangle_start:.4f}초")
+        print(f"[시간 측정] 선택된 삼각형 수: {len(inner_triangles)}")
+        
         # 버텍스 수집
+        vertex_start = time.time()
         inner_vertices = set()
         for triangle_idx in inner_triangles:
             inner_vertices.update(faces[triangle_idx])
+        
+        print(f"[시간 측정] 버텍스 수집 완료: {time.time() - vertex_start:.4f}초")
+        print(f"[시간 측정] 선택된 버텍스 수: {len(inner_vertices)}")
+        
+        total_time = time.time() - start_time
+        print(f"[시간 측정] 입술 영역 검출 총 소요 시간: {total_time:.4f}초")
         
         return list(inner_vertices)
 
@@ -247,11 +266,18 @@ class FaceLaminateRegistration:
         Returns:
             선택된 정점들로 구성된 부분 메시
         """
+        start_time = time.time()
+        print(f"[시간 측정] 입술 메시 생성 시작")
+        
         # UV 좌표를 numpy 배열로 변환
+        uv_start = time.time()
         inner_uv_points = np.array(inner_uv_points)
+        print(f"[시간 측정] UV 좌표 변환: {time.time() - uv_start:.4f}초")
         
         # 입술 영역 정점 찾기
+        region_start = time.time()
         selected_vertices = self.find_lip_regions(self.face_smile_mesh, inner_uv_points)
+        print(f"[시간 측정] 입술 영역 정점 찾기: {time.time() - region_start:.4f}초")
         
         print(f"선택된 정점 수: {len(selected_vertices)}")
         
@@ -263,7 +289,12 @@ class FaceLaminateRegistration:
         self.lip_vertices = selected_vertices
         
         # 선택된 정점으로 부분 메시 생성
+        mesh_start = time.time()
         lip_mesh = self.face_smile_mesh.extract_mesh_from_vertices(selected_vertices)
+        print(f"[시간 측정] 부분 메시 생성: {time.time() - mesh_start:.4f}초")
+        
+        total_time = time.time() - start_time
+        print(f"[시간 측정] 입술 메시 생성 총 소요 시간: {total_time:.4f}초")
         
         return lip_mesh
     
@@ -528,11 +559,13 @@ class FaceLaminateRegistration:
 
     def run_registration(self):
         # 초기 메시 시각화
-        visualize_meshes([self.face_smile_mesh, self.laminate_mesh], ["Face", "Laminate"], title="Initial Meshes")
+        if self.visualization:
+            visualize_meshes([self.face_smile_mesh, self.laminate_mesh], ["Face", "Laminate"], title="Initial Meshes")
         
         # Y축 정렬
         self.align_y_axis()
-        visualize_meshes([self.face_smile_mesh, self.laminate_mesh], ["Face", "Laminate"], title="After Y-axis Alignment")
+        if self.visualization:
+            visualize_meshes([self.face_smile_mesh, self.laminate_mesh], ["Face", "Laminate"], title="After Y-axis Alignment")
         print("Y축 정렬 변환 행렬:")
         print(self.transform_matrix)
         
@@ -558,9 +591,10 @@ class FaceLaminateRegistration:
         moved_smile_mesh.vertices = moved_smile_mesh.vertices + translation
         
         # 최종 결과 시각화
-        visualize_meshes([lip_mesh, moved_smile_mesh, self.face_smile_mesh, self.laminate_mesh], 
-                        ["Lip", "Moved Face", "Face", "Laminate"], 
-                        title="Final Result")
+        if self.visualization:
+            visualize_meshes([lip_mesh, moved_smile_mesh, self.face_smile_mesh, self.laminate_mesh], 
+                            ["Lip", "Moved Face", "Face", "Laminate"], 
+                            title="Final Result")
         print("최종 누적 변환 행렬:")
         print(self.transform_matrix)
 
@@ -572,12 +606,15 @@ class FaceLaminateRegistration:
             fast_registration_transform_matrix, 
             self.transform_matrix)
         
+        self.transform_matrix = final_transform
+        
         moved_smile_mesh.vertices = np.dot(moved_smile_mesh.vertices, fast_registration_transform_matrix[:3, :3].T) + fast_registration_transform_matrix[:3, 3]
         
-        visualize_meshes([transformed_mesh, moved_smile_mesh, self.face_smile_mesh, self.laminate_mesh], 
-                        ["Lip", "Moved Face", "Face", "Laminate"], 
-                        title="Final Result")
-
+        if self.visualization:
+            visualize_meshes([transformed_mesh, moved_smile_mesh, self.face_smile_mesh, self.laminate_mesh], 
+                            ["Lip", "Moved Face", "Face", "Laminate"], 
+                            title="Final Result")
+        return final_transform
         
 
     def visualize_lip_landmarks(self):
@@ -639,4 +676,5 @@ class FaceLaminateRegistration:
 
 if __name__ == "__main__":
     face_laminate_registration = FaceLaminateRegistration("../../example/data/FaceScan/Smile/Smile.obj", "../../example/data/smile_arch_half.stl", visualization=True)
-    face_laminate_registration.run_registration()
+    final_transform = face_laminate_registration.run_registration()
+    print(final_transform)
