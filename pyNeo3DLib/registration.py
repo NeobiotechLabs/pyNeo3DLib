@@ -1,6 +1,7 @@
 import json
 from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegistration
-
+from pyNeo3DLib.faceRegisration.faceLaminateRegistration import FaceLaminateRegistration
+from pyNeo3DLib.faceRegisration.facesRegistration import FacesRegistration
 
 LAMINATE_PATH = "D:/Projects/PyNeo3DLib/example/data/smile_arch_half.stl"
 
@@ -31,6 +32,7 @@ class Neo3DRegistration:
         ios_bow_result = self.__ios_bow_registration()
 
         print(ios_laminate_result)
+        print(facescan_laminate_result)
 
 
     def __make_result_json(self, ios_laminate_result, 
@@ -91,10 +93,18 @@ class Neo3DRegistration:
 
     def __facescan_laminate_registration(self):
         print("facescan_laminate_registration")
+        facescan_data = self.file_info["facescan"]
+        for facescan in facescan_data:
+            if facescan["subType"] == "smile":
+                print(f'facescan["path"]: {facescan["path"]}')
+                # 이제 이 파일과. 라미네이트 모델을 정합한다. 
+                facescan_laminate_registration = FaceLaminateRegistration(facescan["path"], LAMINATE_PATH)
+                return facescan_laminate_registration.run_registration()
         pass
 
     def __facescan_rest_registration(self):
         print("facescan_rest_registration")
+        facescan_data = self.file_info["facescan"]
         pass
 
     def __facescan_retraction_registration(self):

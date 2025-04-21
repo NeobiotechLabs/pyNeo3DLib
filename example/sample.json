@@ -1,4 +1,7 @@
 {
+    "laminate": {
+        "path": "D:/Projects/PyNeo3DLib/example/data/smile_arch_half.stl"
+    },
     "ios": [
         {
             "subType": "smileArch",
@@ -16,15 +19,15 @@
     "facescan": [
         {
             "subType": "smile",
-            "path": "D:/Projects/PyNeo3DLib/example/data/smile_arch_origin.stl"
+            "path": "D:/Projects/PyNeo3DLib/example/data/FaceScan/Smile/Smile.obj"
         },
         {
             "subType": "rest",
-            "path": "D:/Projects/PyNeo3DLib/example/data/smile_arch_origin.stl"
+            "path": "D:/Projects/PyNeo3DLib/example/data/FaceScan/Smile/Smile.obj"
         },
         {
             "subType": "retraction",
-            "path": "D:/Projects/PyNeo3DLib/example/data/smile_arch_origin.stl"
+            "path": "D:/Projects/PyNeo3DLib/example/dataFaceScan/Smile/Smile.obj"
         }
     ],
     "cbct": {

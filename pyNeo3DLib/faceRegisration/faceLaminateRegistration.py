@@ -597,8 +597,8 @@ class FaceLaminateRegistration:
         
         # 최종 결과 시각화
         if self.visualization:
-            visualize_meshes([lip_mesh, moved_smile_mesh, self.face_smile_mesh, self.laminate_mesh], 
-                            ["Lip", "Moved Face", "Face", "Laminate"], 
+            visualize_meshes([lip_mesh, moved_smile_mesh, self.laminate_mesh], 
+                            ["Lip", "Moved Face", "Laminate"], 
                             title="Final Result")
         print("최종 누적 변환 행렬:")
         print(self.transform_matrix)
@@ -616,8 +616,8 @@ class FaceLaminateRegistration:
         moved_smile_mesh.vertices = np.dot(moved_smile_mesh.vertices, fast_registration_transform_matrix[:3, :3].T) + fast_registration_transform_matrix[:3, 3]
         
         if self.visualization:
-            visualize_meshes([transformed_mesh, moved_smile_mesh, self.face_smile_mesh, self.laminate_mesh], 
-                            ["Lip", "Moved Face", "Face", "Laminate"], 
+            visualize_meshes([transformed_mesh, moved_smile_mesh, self.laminate_mesh], 
+                            ["Lip", "Moved Face", "Laminate"], 
                             title="Final Result")
         return final_transform
         

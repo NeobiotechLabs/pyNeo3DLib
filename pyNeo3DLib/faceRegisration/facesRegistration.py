@@ -110,29 +110,6 @@ class FacesRegistration:
             pcd.orient_normals_consistent_tangent_plane(k=100)
             
             return pcd
-            # # 1. 포인트 클라우드 생성
-            # pcd = o3d.geometry.PointCloud()
-            # pcd.points = o3d.utility.Vector3dVector(mesh.vertices)
-            
-            # # 2. 법선 벡터 처리
-            # if mesh.no;.//;. rmals is not None:
-            #     pcd.normals = o3d.utility.Vector3dVector(mesh.normals)
-            # else:
-            #     temp_mesh = o3d.geometry.TriangleMesh()
-            #     temp_mesh.vertices = o3d.utility.Vector3dVector(mesh.vertices)
-            #     temp_mesh.triangles = o3d.utility.Vector3iVector(mesh.faces)
-            #     temp_mesh.compute_vertex_normals()
-            #     pcd.normals = temp_mesh.vertex_normals
-            
-            # # 3. 법선 방향 추정 및 일관성 확인
-            # pcd.estimate_normals(
-            #     search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30)
-            # )
-            # pcd.orient_normals_consistent_tangent_plane(k=100)
-            
-            # pcd.uniform_down_sample(every_k_points=200)
-            
-            # return pcd
         
         # 시각화 창 생성
         if vis is None and self.visualization:
