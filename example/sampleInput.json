@@ -5,7 +5,7 @@
     "ios": [
         {
             "subType": "smileArch",
-            "path": "D:/Projects/PyNeo3DLib/example/data/smile_arch_origin.stl"
+            "path": "D:/Projects/PyNeo3DLib/example/data/ios_with_smilearch.stl"
         },
         {
             "subType": "upper",
@@ -23,14 +23,17 @@
         },
         {
             "subType": "rest",
-            "path": "D:/Projects/PyNeo3DLib/example/data/FaceScan/Smile/Smile.obj"
+            "path": "D:/Projects/PyNeo3DLib/example/data/FaceScan/Rest/Smile.obj"
         },
         {
             "subType": "retraction",
-            "path": "D:/Projects/PyNeo3DLib/example/dataFaceScan/Smile/Smile.obj"
+            "path": "D:/Projects/PyNeo3DLib/example/data/FaceScan/Retraction/Smile.obj"
         }
     ],
     "cbct": {
         "path": "D:/Projects/PyNeo3DLib/example/data/cbct/"
+    },
+    "smilearch_bow": {
+        "path": "D:/Projects/PyNeo3DLib/example/data/bow/smilearch_bow.stl"
     }
 }

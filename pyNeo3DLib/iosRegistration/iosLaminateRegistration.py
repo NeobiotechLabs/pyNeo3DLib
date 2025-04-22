@@ -987,7 +987,7 @@ class IOSLaminateRegistration:
             vis = o3d.visualization.Visualizer()
             vis.create_window(window_name='Registration', width=1280, height=720)
             opt = vis.get_render_option()
-            opt.background_color = np.asarray([0.1, 0.1, 0.1])
+            opt.background_color = np.asarray([0.9, 0.9, 0.9])
             opt.point_size = 2.0
             
             # 카메라 설정 (+y 방향에서 -y 방향을 보도록)

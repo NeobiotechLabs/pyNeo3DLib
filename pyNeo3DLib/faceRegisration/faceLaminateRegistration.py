@@ -584,7 +584,7 @@ class FaceLaminateRegistration:
         lip_mesh = self.find_lip_via_convex_hull(inner_uv_points)
         if lip_mesh is None:
             print("입술 메시 생성 실패")
-            return
+            return None, None
         
         # 입술 메시를 라미네이트 위치로 이동
         lip_mesh = self.align_lip_to_laminate(lip_mesh)
@@ -619,7 +619,7 @@ class FaceLaminateRegistration:
             visualize_meshes([transformed_mesh, moved_smile_mesh, self.laminate_mesh], 
                             ["Lip", "Moved Face", "Laminate"], 
                             title="Final Result")
-        return final_transform
+        return final_transform, moved_smile_mesh
         
 
     def visualize_lip_landmarks(self):
