@@ -10,24 +10,27 @@ import time
 import os
 
 class FacesRegistration:
-    def __init__(self, face_smile_path, face_rest_path, face_retraction_path, visualization=False):
-        self.face_smile_path = face_smile_path
+    def __init__(self, face_smile_mesh, transform_matrix_for_smile, face_rest_path, face_retraction_path, visualization=False):
+        self.face_smile_mesh = face_smile_mesh
         self.face_rest_path = face_rest_path
         self.face_retraction_path = face_retraction_path
         self.visualization = visualization
 
-        self.transform_matrix_for_rest = np.eye(4)
-        self.transform_matrix_for_retraction = np.eye(4)
+        self.transform_matrix_for_rest = transform_matrix_for_smile
+        self.transform_matrix_for_retraction =transform_matrix_for_smile
 
         self.__load_models()
         
     def __load_models(self):
-        self.face_smile_mesh = Mesh.from_file(self.face_smile_path)
         self.face_rest_mesh = Mesh.from_file(self.face_rest_path)
         self.face_retraction_mesh = Mesh.from_file(self.face_retraction_path)
 
+        self.face_rest_mesh.vertices = np.dot(self.face_rest_mesh.vertices, self.transform_matrix_for_rest[:3, :3].T) + self.transform_matrix_for_rest[:3, 3]
+        self.face_retraction_mesh.vertices = np.dot(self.face_retraction_mesh.vertices, self.transform_matrix_for_retraction[:3, :3].T) + self.transform_matrix_for_retraction[:3, 3]
+
         return self.face_smile_mesh, self.face_rest_mesh, self.face_retraction_mesh
-    
+            
+
     def match_weight_centers(self):
         """
         세 개의 메시(face_smile_mesh, face_rest_mesh, face_retraction_mesh)의 무게중심을
@@ -110,29 +113,6 @@ class FacesRegistration:
             pcd.orient_normals_consistent_tangent_plane(k=100)
             
             return pcd
-            # # 1. 포인트 클라우드 생성
-            # pcd = o3d.geometry.PointCloud()
-            # pcd.points = o3d.utility.Vector3dVector(mesh.vertices)
-            
-            # # 2. 법선 벡터 처리
-            # if mesh.no;.//;. rmals is not None:
-            #     pcd.normals = o3d.utility.Vector3dVector(mesh.normals)
-            # else:
-            #     temp_mesh = o3d.geometry.TriangleMesh()
-            #     temp_mesh.vertices = o3d.utility.Vector3dVector(mesh.vertices)
-            #     temp_mesh.triangles = o3d.utility.Vector3iVector(mesh.faces)
-            #     temp_mesh.compute_vertex_normals()
-            #     pcd.normals = temp_mesh.vertex_normals
-            
-            # # 3. 법선 방향 추정 및 일관성 확인
-            # pcd.estimate_normals(
-            #     search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30)
-            # )
-            # pcd.orient_normals_consistent_tangent_plane(k=100)
-            
-            # pcd.uniform_down_sample(every_k_points=200)
-            
-            # return pcd
         
         # 시각화 창 생성
         if vis is None and self.visualization:
@@ -185,17 +165,17 @@ class FacesRegistration:
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
-                1.5,  # 거리 임계값
+                2.0,  # 거리 임계값
                 current_transform,
                 o3d.pipelines.registration.TransformationEstimationPointToPoint(),
                 o3d.pipelines.registration.ICPConvergenceCriteria(
-                    relative_fitness=1e-6,
-                    relative_rmse=1e-6,
+                    relative_fitness=1e-7,
+                    relative_rmse=1e-7,
                     max_iteration=1
                 )
             )
             
-            if iteration % 20 == 0:  # 매 반복마다 시각화
+            if iteration % 10 == 0:  # 매 반복마다 시각화
                 print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
                 
                 # 시각화 업데이트
@@ -230,8 +210,8 @@ class FacesRegistration:
                 current_transform,
                 o3d.pipelines.registration.TransformationEstimationPointToPoint(),
                 o3d.pipelines.registration.ICPConvergenceCriteria(
-                    relative_fitness=1e-6,
-                    relative_rmse=1e-6,
+                    relative_fitness=1e-8,
+                    relative_rmse=1e-8,
                     max_iteration=1
                 )
             )
@@ -267,12 +247,12 @@ class FacesRegistration:
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
-                0.05,  # 거리 임계값
+                0.1,  # 거리 임계값
                 current_transform,
                 o3d.pipelines.registration.TransformationEstimationPointToPoint(),
                 o3d.pipelines.registration.ICPConvergenceCriteria(
-                    relative_fitness=1e-6,
-                    relative_rmse=1e-6,
+                    relative_fitness=1e-8,
+                    relative_rmse=1e-8,
                     max_iteration=1
                 )
             )
@@ -344,9 +324,16 @@ class FacesRegistration:
         if self.visualization:
             visualize_meshes([moved_rest_mesh, moved_retraction_mesh, self.face_smile_mesh], ["Rest", "Retraction", "Smile"], title="Final Meshes")
 
+        return self.transform_matrix_for_rest, self.transform_matrix_for_retraction
+
 
 if __name__ == "__main__":
-    faces_registration = FacesRegistration("../../example/data/FaceScan/Smile/Smile.obj", "../../example/data/FaceScan/Rest/Smile.obj", "../../example/data/FaceScan/Retraction/Smile.obj", visualization=True)
+    smile_mesh = Mesh.from_file("../../example/data/FaceScan/Smile/Smile.obj")
+    transform_matrix = np.array([[1, 0, 0, 0],
+                           [0, 1, 0, 0],
+                           [0, 0, 1, 0],
+                           [0, 0, 0, 1]])
+    faces_registration = FacesRegistration(smile_mesh, transform_matrix, "../../example/data/FaceScan/Rest/Smile.obj", "../../example/data/FaceScan/Retraction/Smile.obj", visualization=True)
     faces_registration.run_registration()
 
     print(faces_registration.transform_matrix_for_rest)

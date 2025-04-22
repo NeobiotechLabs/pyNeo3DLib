@@ -584,7 +584,7 @@ class FaceLaminateRegistration:
         lip_mesh = self.find_lip_via_convex_hull(inner_uv_points)
         if lip_mesh is None:
             print("입술 메시 생성 실패")
-            return
+            return None, None
         
         # 입술 메시를 라미네이트 위치로 이동
         lip_mesh = self.align_lip_to_laminate(lip_mesh)
@@ -597,8 +597,8 @@ class FaceLaminateRegistration:
         
         # 최종 결과 시각화
         if self.visualization:
-            visualize_meshes([lip_mesh, moved_smile_mesh, self.face_smile_mesh, self.laminate_mesh], 
-                            ["Lip", "Moved Face", "Face", "Laminate"], 
+            visualize_meshes([lip_mesh, moved_smile_mesh, self.laminate_mesh], 
+                            ["Lip", "Moved Face", "Laminate"], 
                             title="Final Result")
         print("최종 누적 변환 행렬:")
         print(self.transform_matrix)
@@ -616,10 +616,10 @@ class FaceLaminateRegistration:
         moved_smile_mesh.vertices = np.dot(moved_smile_mesh.vertices, fast_registration_transform_matrix[:3, :3].T) + fast_registration_transform_matrix[:3, 3]
         
         if self.visualization:
-            visualize_meshes([transformed_mesh, moved_smile_mesh, self.face_smile_mesh, self.laminate_mesh], 
-                            ["Lip", "Moved Face", "Face", "Laminate"], 
+            visualize_meshes([transformed_mesh, moved_smile_mesh, self.laminate_mesh], 
+                            ["Lip", "Moved Face", "Laminate"], 
                             title="Final Result")
-        return final_transform
+        return final_transform, moved_smile_mesh
         
 
     def visualize_lip_landmarks(self):
