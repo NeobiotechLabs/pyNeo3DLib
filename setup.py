@@ -6,6 +6,9 @@ setup(
     packages=find_packages(
         include=["pyNeo3DLib", "pyNeo3DLib.*"]
     ),
+    package_data={
+        "pyNeo3DLib": ["*.stl"]
+    },
     install_requires=[
         "numpy",
         "fastapi",
