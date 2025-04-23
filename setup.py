@@ -10,7 +10,11 @@ setup(
         "numpy",
         "fastapi",
         "uvicorn",
-        "pydantic"
+        "pydantic",
+        "scipy",
+        "mediapipe",
+        "open3d",
+        "opencv-python"
     ],
     author="NeoBiotech",
     description="3D 데이터 처리를 위한 파이썬 라이브러리",
