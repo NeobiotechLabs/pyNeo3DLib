@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, BackgroundTasks, Body
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import threading
@@ -7,7 +7,10 @@ import asyncio
 import random
 import string
 import datetime
-from .registrationModel import RegistrationModels, RegistrationItem
+from typing import Dict, Any
+import json
+
+from .registration import Neo3DRegistration
 
 app = FastAPI()
 app.add_middleware(
@@ -20,6 +23,34 @@ app.add_middleware(
 
 s_thread = None
 ws = None
+
+async def process_registration_async(registration_data, request_id):
+    try:
+        reg = Neo3DRegistration(json.dumps(registration_data))
+        print(f"[{request_id}] Registration started")
+        result = reg.run_registration(visualize=False)
+        print(f"[{request_id}] Registration completed")
+        
+        global ws
+        if ws:
+            await ws.send_json({
+                "type": "registration_completed",
+                "request_id": request_id,
+                "result": result,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+
+        return result
+    except Exception as e:
+        print(f"[{request_id}] 정합 중 오류 발생: {str(e)}")
+        if ws:
+            await ws.send_json({
+                "type": "registration_failed",
+                "request_id": request_id,
+                "error": str(e),
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+        
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -43,25 +74,27 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"Received: {data}")
         
 
-@app.post("/registration/")
-async def get_registration(registration: RegistrationItem):
-    global ws
-    item_dict = registration
-    registration_models = RegistrationModels()
-    result = registration_models.request_registration(item_dict.origin_type, item_dict.origin_model, item_dict.target_type, item_dict.target_model)
-    # 웹소켓을 통해 등록 결과를 클라이언트에게 전송
-    try:
-        await ws.send_json({
-            "random_text": f"Registration: {item_dict.origin_type} to {item_dict.target_type}",
-            "timestamp": "abvsd"
-        })
-    except Exception as e:
-        print(f"웹소켓 메시지 전송 중 오류 발생: {str(e)}")
-    return result
+@app.post("/registration")
+async def get_registration(background_tasks: BackgroundTasks, registration: Dict[str, Any] = Body(...)):
+    
+    request_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+    print(f"[{request_id}] 정합 API 호출됨")
+    
+    reg = Neo3DRegistration(json.dumps(registration))
+    
+    print(reg.version)
+    print(reg.parsed_json)
+    
+    background_tasks.add_task(process_registration_async, registration, request_id)
+    return {
+        "status": "processing",
+        "message": "등록 처리가 시작되었습니다. 결과는 웹소켓으로 전송됩니다.",
+        "request_id": request_id
+    }
 
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
+# @app.get("/")
+# async def root():
+#     return {"message": "Hello World"}
 
 def stop_server():
     print("stop_server")

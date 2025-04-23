@@ -4,22 +4,29 @@ from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegist
 from pyNeo3DLib.faceRegisration.faceLaminateRegistration import FaceLaminateRegistration
 from pyNeo3DLib.faceRegisration.facesRegistration import FacesRegistration
 
-LAMINATE_PATH = "D:/Projects/PyNeo3DLib/example/data/smile_arch_half.stl"
+import os
+LAMINATE_PATH = os.path.join(os.path.dirname(__file__), "smile_arch_half.stl")
 
 class Neo3DRegistration:
     def __init__(self, json_string):
         self.version = "0.0.1"
+        print(f"json_string: {json_string}")
         self.parsed_json = self.__parse_json(json_string)
 
 
     def __parse_json(self, json_string):
-        parsed_json = json.loads(json_string)
-        return parsed_json
+        try:
+            parsed_json = json.loads(json_string)
+            print(f"parsed_json: {parsed_json}")
+            return parsed_json
+        except Exception as e:
+            raise ValueError(f"Failed to parse JSON: {e}")
     
     
     def run_registration(self, visualize=False):       
         self.__verify_file_info()
 
+        print("ios_laminate_registration")
         ios_laminate_result = self.__ios_laminate_registration(visualize=visualize)
         ios_upper_result = self.__ios_upper_registration()
         ios_lower_result = self.__ios_lower_registration()
@@ -33,7 +40,7 @@ class Neo3DRegistration:
 
         ios_bow_result = self.__ios_bow_registration()
 
-        
+        print("make_result_json")
 
         return self.__make_result_json(ios_laminate_result,
                            ios_upper_result, 
