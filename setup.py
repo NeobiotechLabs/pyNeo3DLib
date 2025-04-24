@@ -12,7 +12,7 @@ setup(
     install_requires=[
         "numpy",
         "fastapi",
-        "uvicorn",
+        "uvicorn[standard]",
         "pydantic",
         "scipy",
         "mediapipe",
