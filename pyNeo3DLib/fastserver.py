@@ -28,7 +28,7 @@ async def process_registration_async(registration_data, request_id):
     try:
         reg = Neo3DRegistration(json.dumps(registration_data))
         print(f"[{request_id}] Registration started")
-        result = reg.run_registration(visualize=False)
+        result = await reg.run_registration(visualize=False)
         print(f"[{request_id}] Registration completed")
         
         global ws
@@ -58,15 +58,15 @@ async def websocket_endpoint(websocket: WebSocket):
     ws = websocket
     await websocket.accept()
     while True:
-        random_text = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
-        # 현재 시간
-        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # random_text = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+        # # 현재 시간
+        # current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        # 데이터 전송
-        await websocket.send_json({
-            "random_text": random_text,
-            "timestamp": current_time
-        })
+        # # 데이터 전송
+        # await websocket.send_json({
+        #     "random_text": random_text,
+        #     "timestamp": current_time
+        # })
         
         # 1초 대기
         await asyncio.sleep(1)
