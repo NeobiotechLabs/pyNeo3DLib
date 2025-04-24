@@ -9,21 +9,28 @@ import os
 LAMINATE_PATH = os.path.join(os.path.dirname(__file__), "smile_arch_half.stl")
 
 
-@dataclass
 class progress_event:
-    type: str
-    progress: int
-    message: str
+    def __init__(self, type, progress, message):
+        self.type = type
+        self.progress = progress
+        self.message = message
 
-class fake_websocket:
-    def send(self, event):
-        print(f'[SOCKET] message: {event.type} {event.progress} {event.message}')
+    def __str__(self):
+        return f"progress_event(type={self.type}, progress={self.progress}, message={self.message})"
 
-
-fakeSocket = fake_websocket()
+    def __repr__(self):
+        return self.__str__()
+    
+    def get_json(self):
+        return {
+            "type": self.type,
+            "progress": self.progress,
+            "message": self.message
+        }
+    
 
 class Neo3DRegistration:
-    def __init__(self, json_string, websocket=fakeSocket):
+    def __init__(self, json_string, websocket):
         self.version = "0.0.1"
         print(f"json_string: {json_string}")
         self.parsed_json = self.__parse_json(json_string)
@@ -39,52 +46,50 @@ class Neo3DRegistration:
             raise ValueError(f"Failed to parse JSON: {e}")
     
     
-    def run_registration(self, visualize=False):       
+    async def run_registration(self, visualize=False):       
         self.__verify_file_info()
 
-        self.websocket.send(f'{progress_event(type="progress", progress=0, message="ios_laminate_registration")}')
+        data = {
+            "type": "progress",
+            "progress": 0,
+            "message": "ios_laminate_registration",
+            "random_text": "random_text",
+            "timestamp": "sdafkljhsdf"
+        }
+
+        print(f"data: {data}")
+        print(type(self.websocket))
+        await self.websocket.send_json(data)
+
         ios_laminate_result = self.__ios_laminate_registration(visualize=visualize)
 
-        self.websocket.send(f'{progress_event(type="progress", progress=1, message="ios_upper_registration")}')
+        await self.websocket.send_json(progress_event(type="progress", progress=1, message="ios_upper_registration").get_json())
         ios_upper_result = self.__ios_upper_registration()
 
-        self.websocket.send(f'{progress_event(type="progress", progress=2, message="ios_lower_registration")}')
+        await self.websocket.send_json(progress_event(type="progress", progress=2, message="ios_lower_registration").get_json())
         ios_lower_result = self.__ios_lower_registration()
 
-
-        print(self.__facescan_laminate_registration(visualize=visualize))
-
-        self.websocket.send(f'{progress_event(type="progress", progress=3, message="facescan_laminate_registration")}')
+        await self.websocket.send_json(progress_event(type="progress", progress=3, message="facescan_laminate_registration").get_json())
         facescan_laminate_result, transformed_face_smile_mesh = self.__facescan_laminate_registration(visualize=visualize)
         if transformed_face_smile_mesh is None:
             raise ValueError("transformed_face_smile_mesh is None")
 
-        self.websocket.send(f'{progress_event(type="progress", progress=4, message="facescan_rest_registration")}')
+        await self.websocket.send_json(progress_event(type="progress", progress=4, message="facescan_rest_registration").get_json())
         facescan_rest_result, facescan_retraction_result = self.__facescan_rest_registration(transformed_face_smile_mesh, facescan_laminate_result, visualize=visualize)
 
-        self.websocket.send(f'{progress_event(type="progress", progress=5, message="cbct_registration")}')
+        await self.websocket.send_json(progress_event(type="progress", progress=5, message="cbct_registration").get_json())
         cbct_result = self.__cbct_registration()
 
-        self.websocket.send(f'{progress_event(type="progress", progress=6, message="ios_bow_registration")}')
+        await self.websocket.send_json(progress_event(type="progress", progress=6, message="ios_bow_registration").get_json())
         ios_bow_result = self.__ios_bow_registration()
 
-        self.websocket.send(f'{progress_event(type="result", progress=100, message=self.__make_result_json(ios_laminate_result,
-                                                                                                        ios_upper_result, 
-                                                                                                            ios_lower_result, 
-                                                                                                            facescan_laminate_result, 
-                                                                                                            facescan_rest_result, 
-                                                                                                            facescan_retraction_result, 
-                                                                                                            cbct_result, 
-                                                                                                            ios_bow_result))}')
-
-        return self.__make_result_json(ios_laminate_result,
-                           ios_upper_result, 
-                            ios_lower_result, 
-                            facescan_laminate_result, 
-                            facescan_rest_result, 
-                            facescan_retraction_result, 
-                            cbct_result, 
-                            ios_bow_result)
+        result = self.__make_result_json(
+            ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist()
+            )
+        
+        await self.websocket.send_json(progress_event(type="result", progress=100, message=result).get_json())
+                                       
+        return result
 
     def __make_result_json(self, ios_laminate_result, 
                             ios_upper_result, 
