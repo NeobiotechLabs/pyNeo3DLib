@@ -26,7 +26,7 @@ ws = None
 
 async def process_registration_async(registration_data, request_id):
     try:
-        reg = Neo3DRegistration(json.dumps(registration_data))
+        reg = Neo3DRegistration(json.dumps(registration_data), ws)
         print(f"[{request_id}] Registration started")
         result = await reg.run_registration(visualize=False)
         print(f"[{request_id}] Registration completed")
