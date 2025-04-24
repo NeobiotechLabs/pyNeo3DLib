@@ -1,5 +1,6 @@
 import json
 import numpy as np
+from dataclasses import dataclass
 from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegistration
 from pyNeo3DLib.faceRegisration.faceLaminateRegistration import FaceLaminateRegistration
 from pyNeo3DLib.faceRegisration.facesRegistration import FacesRegistration
@@ -7,11 +8,26 @@ from pyNeo3DLib.faceRegisration.facesRegistration import FacesRegistration
 import os
 LAMINATE_PATH = os.path.join(os.path.dirname(__file__), "smile_arch_half.stl")
 
+
+@dataclass
+class progress_event:
+    type: str
+    progress: int
+    message: str
+
+class fake_websocket:
+    def send(self, event):
+        print(f'[SOCKET] message: {event.type} {event.progress} {event.message}')
+
+
+fakeSocket = fake_websocket()
+
 class Neo3DRegistration:
-    def __init__(self, json_string):
+    def __init__(self, json_string, websocket=fakeSocket):
         self.version = "0.0.1"
         print(f"json_string: {json_string}")
         self.parsed_json = self.__parse_json(json_string)
+        self.websocket = websocket
 
 
     def __parse_json(self, json_string):
@@ -26,21 +42,40 @@ class Neo3DRegistration:
     def run_registration(self, visualize=False):       
         self.__verify_file_info()
 
-        print("ios_laminate_registration")
+        self.websocket.send(f'{progress_event(type="progress", progress=0, message="ios_laminate_registration")}')
         ios_laminate_result = self.__ios_laminate_registration(visualize=visualize)
+
+        self.websocket.send(f'{progress_event(type="progress", progress=1, message="ios_upper_registration")}')
         ios_upper_result = self.__ios_upper_registration()
+
+        self.websocket.send(f'{progress_event(type="progress", progress=2, message="ios_lower_registration")}')
         ios_lower_result = self.__ios_lower_registration()
+
+
         print(self.__facescan_laminate_registration(visualize=visualize))
+
+        self.websocket.send(f'{progress_event(type="progress", progress=3, message="facescan_laminate_registration")}')
         facescan_laminate_result, transformed_face_smile_mesh = self.__facescan_laminate_registration(visualize=visualize)
         if transformed_face_smile_mesh is None:
             raise ValueError("transformed_face_smile_mesh is None")
+
+        self.websocket.send(f'{progress_event(type="progress", progress=4, message="facescan_rest_registration")}')
         facescan_rest_result, facescan_retraction_result = self.__facescan_rest_registration(transformed_face_smile_mesh, facescan_laminate_result, visualize=visualize)
 
+        self.websocket.send(f'{progress_event(type="progress", progress=5, message="cbct_registration")}')
         cbct_result = self.__cbct_registration()
 
+        self.websocket.send(f'{progress_event(type="progress", progress=6, message="ios_bow_registration")}')
         ios_bow_result = self.__ios_bow_registration()
 
-        print("make_result_json")
+        self.websocket.send(f'{progress_event(type="result", progress=100, message=self.__make_result_json(ios_laminate_result,
+                                                                                                        ios_upper_result, 
+                                                                                                            ios_lower_result, 
+                                                                                                            facescan_laminate_result, 
+                                                                                                            facescan_rest_result, 
+                                                                                                            facescan_retraction_result, 
+                                                                                                            cbct_result, 
+                                                                                                            ios_bow_result))}')
 
         return self.__make_result_json(ios_laminate_result,
                            ios_upper_result, 
