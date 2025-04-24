@@ -25,13 +25,13 @@ s_thread = None
 ws = None
 
 async def process_registration_async(registration_data, request_id):
+    global ws
     try:
         reg = Neo3DRegistration(json.dumps(registration_data), ws)
         print(f"[{request_id}] Registration started")
         result = await reg.run_registration(visualize=False)
         print(f"[{request_id}] Registration completed")
         
-        global ws
         if ws:
             await ws.send_json({
                 "type": "registration_completed",
@@ -76,11 +76,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.post("/registration")
 async def get_registration(background_tasks: BackgroundTasks, registration: Dict[str, Any] = Body(...)):
-    
+    global ws
     request_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
     print(f"[{request_id}] 정합 API 호출됨")
     
-    reg = Neo3DRegistration(json.dumps(registration))
+    reg = Neo3DRegistration(json.dumps(registration), ws)
     
     print(reg.version)
     print(reg.parsed_json)
