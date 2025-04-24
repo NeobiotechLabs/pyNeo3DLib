@@ -13,6 +13,7 @@ setup(
         "numpy",
         "fastapi",
         "uvicorn[standard]",
+        "uvicorn",
         "pydantic",
         "scipy",
         "mediapipe",
