@@ -5,7 +5,8 @@ from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegist
 from pyNeo3DLib.faceRegisration.faceLaminateRegistration import FaceLaminateRegistration
 from pyNeo3DLib.faceRegisration.facesRegistration import FacesRegistration
 
-LAMINATE_PATH = "D:/Projects/PyNeo3DLib/example/data/smile_arch_half.stl"
+import os
+LAMINATE_PATH = os.path.join(os.path.dirname(__file__), "smile_arch_half.stl")
 
 
 @dataclass
@@ -24,13 +25,18 @@ fakeSocket = fake_websocket()
 class Neo3DRegistration:
     def __init__(self, json_string, websocket=fakeSocket):
         self.version = "0.0.1"
+        print(f"json_string: {json_string}")
         self.parsed_json = self.__parse_json(json_string)
         self.websocket = websocket
 
 
     def __parse_json(self, json_string):
-        parsed_json = json.loads(json_string)
-        return parsed_json
+        try:
+            parsed_json = json.loads(json_string)
+            print(f"parsed_json: {parsed_json}")
+            return parsed_json
+        except Exception as e:
+            raise ValueError(f"Failed to parse JSON: {e}")
     
     
     def run_registration(self, visualize=False):       

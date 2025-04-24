@@ -1,8 +1,19 @@
-# 오픈해야 할 모듈 명시
-# from pyNeo3DLib.pyNeo3DLib import *
-
-# 모듈 명시
-# __all__ = ["pyNeo3DLib"]
-
+from .fastserver import *
 from .registration import Neo3DRegistration
-from .datainfo import dataInfo
+
+# 서브패키지 가져오기
+from . import alignment
+from . import faceRegisration
+from . import iosRegistration
+from . import fileLoader
+from . import visualization
+
+__all__ = [
+    "fastserver", 
+    "registration", 
+    "alignment",
+    "faceRegisration",
+    "iosRegistration",
+    "fileLoader",
+    "visualization"
+]
