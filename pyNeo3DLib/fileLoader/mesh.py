@@ -8,14 +8,14 @@ class Mesh:
         self.vertices = None
         self.faces = None
         self.normals = None
-        self.materials = {}  # MTL file read material information
-        self.face_materials = None  # Material index for each face
+        self.materials = {}  # MTL 파일에서 읽은 재질 정보
+        self.face_materials = None  # 각 면의 재질 인덱스
         self.uvs = None
-        self.face_uvs = None  # UV index for each face
+        self.face_uvs = None  # 각 면의 UV 인덱스
 
     @classmethod
     def from_file(cls, file_path):
-        """Loads a mesh from a file based on its extension."""
+        """파일 확장자에 따라 적절한 메서드로 메시를 로드합니다."""
         path = Path(file_path)
         mesh = cls()
         
@@ -24,17 +24,17 @@ class Mesh:
         elif path.suffix.lower() == '.obj':
             return mesh._read_obj(file_path)
         else:
-            raise ValueError(f"Unsupported file format: {path.suffix}")
+            raise ValueError(f"지원하지 않는 파일 형식입니다: {path.suffix}")
     
     def _read_stl(self, file_path):
-        """Reads an STL file. Supports both ASCII and binary formats."""
+        """STL 파일을 읽어옵니다. ASCII와 바이너리 형식 모두 지원합니다."""
         path = Path(file_path)
         vertices = []
         faces = []
         normals = []
         
         try:
-            # Check file format (ASCII or binary)
+            # 파일 형식 확인 (ASCII 또는 바이너리)
             with open(path, 'rb') as f:
                 header = f.read(5)
                 is_ascii = header.startswith(b'solid')
@@ -45,7 +45,7 @@ class Mesh:
                 self._read_stl_binary(path, vertices, faces, normals)
             
             if not vertices:
-                raise ValueError("No vertices found in the file.")
+                raise ValueError("파일에서 정점을 찾을 수 없습니다.")
             
             self.vertices = np.array(vertices)
             self.faces = np.array(faces)
@@ -54,11 +54,11 @@ class Mesh:
             return self
             
         except Exception as e:
-            raise ValueError(f"Failed to read STL file: {str(e)}")
+            raise ValueError(f"STL 파일 읽기 실패: {str(e)}")
     
     def _read_stl_ascii(self, file_path, vertices, faces, normals):
-        """Reads an ASCII format STL file."""
-        vertex_map = {}  # Map for vertex deduplication
+        """ASCII 형식의 STL 파일을 읽어옵니다."""
+        vertex_map = {}  # 정점 중복 제거를 위한 맵
         
         with open(file_path, 'r') as f:
             current_normal = None
@@ -74,15 +74,15 @@ class Mesh:
                     continue
                 
                 if parts[0] == 'facet' and parts[1] == 'normal':
-                    # Read normal vector
+                    # 법선 벡터 읽기
                     current_normal = [float(parts[2]), float(parts[3]), float(parts[4])]
                     current_face = []
                 
                 elif parts[0] == 'vertex':
-                    # Read vertex
+                    # 정점 읽기
                     vertex = [float(parts[1]), float(parts[2]), float(parts[3])]
                     
-                    # Remove duplicate vertices
+                    # 정점 중복 제거
                     vertex_key = tuple(vertex)
                     if vertex_key in vertex_map:
                         vertex_idx = vertex_map[vertex_key]
@@ -94,37 +94,37 @@ class Mesh:
                     current_face.append(vertex_idx)
                 
                 elif parts[0] == 'endloop':
-                    # Complete face
+                    # 면 완성
                     if len(current_face) == 3:
                         faces.append(current_face)
                         normals.append(current_normal)
                     elif len(current_face) == 4:
-                        # Split quad into two triangles
+                        # 사각형을 삼각형 두 개로 분할
                         faces.append([current_face[0], current_face[1], current_face[2]])
                         faces.append([current_face[0], current_face[2], current_face[3]])
                         normals.extend([current_normal, current_normal])
     
     def _read_stl_binary(self, file_path, vertices, faces, normals):
-        """Reads a binary format STL file."""
-        vertex_map = {}  # Map for vertex deduplication
+        """바이너리 형식의 STL 파일을 읽어옵니다."""
+        vertex_map = {}  # 정점 중복 제거를 위한 맵
         
         with open(file_path, 'rb') as f:
-            # Skip header
+            # 헤더 건너뛰기
             f.seek(80)
             
-            # Read number of triangles
+            # 삼각형 개수 읽기
             num_triangles = struct.unpack('<I', f.read(4))[0]
             
             for _ in range(num_triangles):
-                # Read normal vector
+                # 법선 벡터 읽기
                 normal = list(struct.unpack('<fff', f.read(12)))
                 
-                # Read vertices
+                # 정점 읽기
                 face = []
                 for _ in range(3):
                     vertex = list(struct.unpack('<fff', f.read(12)))
                     
-                    # Remove duplicate vertices
+                    # 정점 중복 제거
                     vertex_key = tuple(vertex)
                     if vertex_key in vertex_map:
                         vertex_idx = vertex_map[vertex_key]
@@ -135,24 +135,24 @@ class Mesh:
                     
                     face.append(vertex_idx)
                 
-                # Read attribute bytes (not used)
+                # 속성 바이트 읽기 (사용하지 않음)
                 f.read(2)
                 
                 faces.append(face)
                 normals.append(normal)
     
     def _read_obj(self, file_path):
-        """Reads an OBJ file."""
+        """OBJ 파일을 읽어옵니다."""
         path = Path(file_path)
         vertices = []
         faces = []
-        face_uvs = []  # Store UV indices
+        face_uvs = []  # UV 인덱스 저장
         normals = []
         face_materials = []
         uvs = []
         current_material = None
         
-        # Find MTL file
+        # MTL 파일 찾기
         mtl_file = None
         with open(path, 'r') as f:
             for line in f:
@@ -161,7 +161,7 @@ class Mesh:
                     mtl_file = path.parent / mtl_name
                     break
         
-        # Read MTL file if it exists
+        # MTL 파일이 있다면 읽기
         if mtl_file and mtl_file.exists():
             self._read_mtl(mtl_file)
         
@@ -174,40 +174,52 @@ class Mesh:
                     if not values: continue
                     
                     if values[0] == 'v':
-                        # Vertex data
+                        # 정점 데이터
                         vertices.append([float(x) for x in values[1:4]])
 
                     elif values[0] == 'vt':
-                        # UV data
+                        # UV 데이터
                         uvs.append([float(x) for x in values[1:3]])
                         
                     elif values[0] == 'vn':
-                        # Normal vector
+                        # 법선 벡터
                         normals.append([float(x) for x in values[1:4]])
                         
                     elif values[0] == 'usemtl':
-                        # Change material
+                        # 재질 변경
                         current_material = values[1]
                         
                     elif values[0] == 'f':
-                        # Process face data
+                        # 면 데이터 처리
                         face = []
                         face_uv = []
                         for v in values[1:]:
-                            # Handle f v1/vt1/vn1 v2/vt2/vn2 v3/vt3/vn3 format
+                            # f v1/vt1/vn1 v2/vt2/vn2 v3/vt3/vn3 형식 처리
                             indices = v.split('/')
-                            vertex_idx = int(indices[0]) - 1  # OBJ starts from 1
+                            vertex_idx = int(indices[0]) - 1  # OBJ는 1부터 시작
                             face.append(vertex_idx)
                             
-                            # Store UV index if it exists
+                            # UV 인덱스가 있으면 저장
                             if len(indices) > 1 and indices[1]:
                                 uv_idx = int(indices[1]) - 1
                                 face_uv.append(uv_idx)
                             else:
-                                face_uv.append(vertex_idx)  # Use vertex index if no UV
+                                face_uv.append(vertex_idx)  # UV가 없으면 vertex 인덱스 사용
+                        
+                        if len(face) == 3:
+                            faces.append(face)
+                            face_uvs.append(face_uv)
+                            face_materials.append(current_material)
+                        elif len(face) == 4:
+                            # 사각형을 삼각형 두 개로 분할
+                            faces.append([face[0], face[1], face[2]])
+                            faces.append([face[0], face[2], face[3]])
+                            face_uvs.append([face_uv[0], face_uv[1], face_uv[2]])
+                            face_uvs.append([face_uv[0], face_uv[2], face_uv[3]])
+                            face_materials.extend([current_material, current_material])
             
             if not vertices:
-                raise ValueError("No vertices found in the file.")
+                raise ValueError("파일에서 정점을 찾을 수 없습니다.")
             
             self.vertices = np.array(vertices)
             self.faces = np.array(faces)
@@ -219,17 +231,17 @@ class Mesh:
                 self.uvs = np.array(uvs)
                 self.face_uvs = np.array(face_uvs)
 
-            # Store material information
+            # 재질 정보 저장
             if face_materials:
                 self.face_materials = face_materials
             
             return self
             
         except Exception as e:
-            raise ValueError(f"Failed to read OBJ file: {str(e)}")
+            raise ValueError(f"OBJ 파일 읽기 실패: {str(e)}")
     
     def _read_mtl(self, mtl_file):
-        """Reads an MTL file."""
+        """MTL 파일을 읽어옵니다."""
         current_material = None
         
         try:
@@ -266,70 +278,70 @@ class Mesh:
                                 self.materials[current_material]['texture'] = str(texture_path)
         
         except Exception as e:
-            print(f"Failed to read MTL file: {str(e)}")
+            print(f"MTL 파일 읽기 실패: {str(e)}")
     
     def _compute_normals(self):
-        """Computes normal vectors."""
+        """법선 벡터를 계산합니다."""
         if self.vertices is None or self.faces is None:
             return
         
-        # Initialize normal vectors
+        # 법선 벡터 초기화
         self.normals = np.zeros((len(self.vertices), 3))
         
-        # Calculate normal vector for each face
+        # 각 면에 대해 법선 벡터 계산
         for face in self.faces:
             v1 = self.vertices[face[0]]
             v2 = self.vertices[face[1]]
             v3 = self.vertices[face[2]]
             
-            # Calculate face normal vector
+            # 면의 법선 벡터 계산
             normal = np.cross(v2 - v1, v3 - v1)
             normal = normal / np.linalg.norm(normal)
             
-            # Add normal vector to each vertex
+            # 각 정점에 법선 벡터 추가
             for vertex_idx in face:
                 self.normals[vertex_idx] += normal
         
-        # Normalize normal vectors
+        # 법선 벡터 정규화
         for i in range(len(self.normals)):
             norm = np.linalg.norm(self.normals[i])
             if norm > 0:
                 self.normals[i] = self.normals[i] / norm
 
     def get_material(self, face_index):
-        """Returns the material information for a face."""
+        """면의 재질 정보를 반환합니다."""
         if self.face_materials is None or face_index >= len(self.face_materials):
             return None
         material_name = self.face_materials[face_index]
         return self.materials.get(material_name)
 
     def extract_mesh_from_vertices(self, vertex_indices):
-        """Creates a submesh from selected vertices.
+        """선택된 정점들로 구성된 부분 메시를 생성합니다.
         
         Args:
-            vertex_indices: List of selected vertex indices
+            vertex_indices: 선택된 정점 인덱스 리스트
             
         Returns:
-            Submesh composed of selected vertices
+            선택된 정점들로 구성된 부분 메시
         """
-        # Convert selected vertex indices to set (for faster lookup)
+        # 선택된 정점 인덱스를 집합으로 변환 (검색 속도 향상)
         vertex_set = set(vertex_indices)
         
-        # Find faces composed of selected vertices
+        # 선택된 정점들로 구성된 면 찾기
         selected_faces = []
-        vertex_mapping = {}  # Original index -> new index mapping
-        used_vertices = set()  # Actually used vertices
-        used_uvs = set()  # Actually used UV coordinates
+        vertex_mapping = {}  # 원래 인덱스 -> 새 인덱스 매핑
+        used_vertices = set()  # 실제로 사용된 정점들
+        used_uvs = set()  # 실제로 사용된 UV 좌표들
         
-        # Filter faces: select faces containing at least one selected vertex
+        # 면 필터링: 선택된 정점이 하나 이상 포함된 면 선택
         for i, face in enumerate(self.faces):
-            # Check if any vertex in the face is selected
+            # 면의 정점 중 선택된 정점이 있는지 확인
             if any(v in vertex_set for v in face):
-                # Add all vertices of the face to used vertices set
+                # 면의 모든 정점을 사용된 정점 집합에 추가
                 for v in face:
                     used_vertices.add(v)
                 selected_faces.append(i)
-                # If UV coordinates exist, store UV indices for this face
+                # UV 좌표가 있는 경우, 해당 면의 UV 인덱스도 저장
                 if self.face_uvs is not None:
                     for uv_idx in self.face_uvs[i]:
                         used_uvs.add(uv_idx)
@@ -337,29 +349,29 @@ class Mesh:
         if not selected_faces:
             return None
         
-        # Create new mesh
+        # 새로운 메시 생성
         submesh = Mesh()
         
-        # Copy vertices and create index mapping
+        # 정점 복사 및 인덱스 매핑 생성
         used_vertices = sorted(list(used_vertices))
         for i, old_idx in enumerate(used_vertices):
             vertex_mapping[old_idx] = i
         
-        # Create UV coordinate mapping (if UV coordinates exist)
+        # UV 좌표 매핑 생성 (UV 좌표가 있는 경우)
         uv_mapping = {}
         if self.face_uvs is not None:
             used_uvs = sorted(list(used_uvs))
             for i, old_idx in enumerate(used_uvs):
                 uv_mapping[old_idx] = i
         
-        # Copy vertices to new mesh
+        # 새 메시에 정점 복사
         submesh.vertices = self.vertices[used_vertices]
         
-        # Copy UV coordinates if they exist
+        # UV 좌표가 있는 경우 복사
         if self.uvs is not None and used_uvs:
             submesh.uvs = self.uvs[list(used_uvs)]
         
-        # Transform face indices
+        # 면 인덱스 변환
         new_faces = []
         new_face_uvs = [] if self.face_uvs is not None else None
         
@@ -368,7 +380,7 @@ class Mesh:
             new_face = [vertex_mapping[v] for v in old_face]
             new_faces.append(new_face)
             
-            # Transform UV indices if UV coordinates exist
+            # UV 좌표가 있는 경우 면의 UV 인덱스도 변환
             if self.face_uvs is not None:
                 old_face_uv = self.face_uvs[face_idx]
                 new_face_uv = [uv_mapping[uv] for uv in old_face_uv]
@@ -378,7 +390,7 @@ class Mesh:
         if new_face_uvs:
             submesh.face_uvs = np.array(new_face_uvs)
         
-        # Calculate normal vectors
+        # 법선 벡터 계산
         submesh._compute_normals()
         
         return submesh 
