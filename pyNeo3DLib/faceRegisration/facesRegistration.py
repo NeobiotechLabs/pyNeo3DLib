@@ -62,12 +62,12 @@ class FacesRegistration:
         retraction_transform[:3, 3] = retraction_translation
         self.transform_matrix_for_retraction = np.dot(retraction_transform, self.transform_matrix_for_retraction)
         
-        print(f"Weight center alignment completed:")
-        print(f"  - Smile mesh center: {smile_center}")
-        print(f"  - Rest mesh center: {rest_center} -> {np.mean(self.face_rest_mesh.vertices, axis=0)}")
-        print(f"  - Retraction mesh center: {retraction_center} -> {np.mean(self.face_retraction_mesh.vertices, axis=0)}")
-        print(f"  - Rest mesh transformation matrix updated")
-        print(f"  - Retraction mesh transformation matrix updated")
+        print(f"무게중심 정렬 완료:")
+        print(f"  - Smile 메시 무게중심: {smile_center}")
+        print(f"  - Rest 메시 무게중심: {rest_center} -> {np.mean(self.face_rest_mesh.vertices, axis=0)}")
+        print(f"  - Retraction 메시 무게중심: {retraction_center} -> {np.mean(self.face_retraction_mesh.vertices, axis=0)}")
+        print(f"  - Rest 메시 변환 행렬 업데이트 완료")
+        print(f"  - Retraction 메시 변환 행렬 업데이트 완료")
         
         return self.face_rest_mesh, self.face_retraction_mesh
 
@@ -134,7 +134,7 @@ class FacesRegistration:
             time.sleep(0.1)
         
         # Mesh를 PointCloud로 변환
-        print("\nConverting Mesh to PointCloud...")
+        print("\nMesh를 PointCloud로 변환 중...")
         source = mesh_to_pointcloud(source_mesh)
         target = mesh_to_pointcloud(target_mesh)
         
@@ -159,7 +159,7 @@ class FacesRegistration:
             time.sleep(1)
         
         # ICP 실행
-        print("\nStarting 1st ICP registration...")
+        print("\n1번째 ICP 정합 시작...")
         current_transform = np.eye(4)
         
         for iteration in range(1000):
@@ -176,7 +176,7 @@ class FacesRegistration:
             )
             
             if iteration % 10 == 0:  # 매 반복마다 시각화
-                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
+                print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
                 
                 # 시각화 업데이트
                 source_temp = copy.deepcopy(source)
@@ -197,12 +197,12 @@ class FacesRegistration:
                     time.sleep(0.05)  # 애니메이션 속도 조절
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
+                print(f"  - ICP 수렴 (반복 {iteration})")
                 break
                 
             current_transform = result.transformation
         
-        print("Starting 2nd ICP registration...")
+        print("2번째 ICP 정합 시작...")
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
@@ -217,7 +217,7 @@ class FacesRegistration:
             )
             
             if iteration % 20 == 0:  # 매 반복마다 시각화
-                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
+                print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
                 
                 # 시각화 업데이트
                 source_temp = copy.deepcopy(source)
@@ -238,12 +238,12 @@ class FacesRegistration:
                     time.sleep(0.05)  # 애니메이션 속도 조절
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
+                print(f"  - ICP 수렴 (반복 {iteration})")
                 break
                 
             current_transform = result.transformation
         
-        print("Starting 3rd ICP registration...")
+        print("3번째 ICP 정합 시작...")
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
@@ -258,7 +258,7 @@ class FacesRegistration:
             )
             
             if iteration % 20 == 0:  # 매 반복마다 시각화
-                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
+                print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
                 
                 # 시각화 업데이트
                 source_temp = copy.deepcopy(source)
@@ -279,13 +279,13 @@ class FacesRegistration:
                     time.sleep(0.05)  # 애니메이션 속도 조절
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
+                print(f"  - ICP 수렴 (반복 {iteration})")
                 break
                 
             current_transform = result.transformation
         
-        print("\n=== Registration completed ===")
-        print(f"Final fitness: {result.fitness:.6f}")
+        print("\n=== 정합 완료 ===")
+        print(f"최종 fitness: {result.fitness:.6f}")
         
         if self.visualization:
             # 시각화 창을 계속 열어두고 마우스 인터렉션 허용

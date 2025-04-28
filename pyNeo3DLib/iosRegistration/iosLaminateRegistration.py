@@ -16,11 +16,11 @@ class IOSLaminateRegistration:
         self.__load_models()
 
     def run_registration(self):
-        print("Starting IOS laminate registration")
+        print("ios_laminate_registration")
         aligned_ios_mesh, ios_rotation_matrix = self.align_with_obb(self.ios_mesh)
     
         if self.visualization:
-            # Apply transformation matrix to IOS mesh
+        # IOS 메쉬에 변환 행렬 적용
             transformed_ios_mesh = copy.deepcopy(self.ios_mesh)
             transformed_ios_mesh.vertices = np.dot(
                 self.ios_mesh.vertices,
@@ -33,15 +33,17 @@ class IOSLaminateRegistration:
                     title="IOS Compare"
                 )
         
-        # Print transformation matrix
-        print("\n=== 1. Transformation matrix after OBB alignment ===")
+        
+        # 변환 행렬 출력
+        print("\n=== 1. OBB 정렬 후 변환 행렬 ===")
         print(self.transform_matrix)
 
-        # Calculate OBB center and weight center
+        # OBB 중심점과 무게 중심점 계산
         # obb_center, weight_center = ios_laminate_registration.get_obb_center_and_weight_center(aligned_ios_mesh)
         
-        # 2. Y-axis alignment
+        # 2. Y 방향 정렬
         y_aligned_ios_mesh, y_rotation_matrix = self.find_y_direction(aligned_ios_mesh)
+        
         
         if self.visualization:
             visualize_meshes(
@@ -50,10 +52,10 @@ class IOSLaminateRegistration:
                 title="IOS Compare"
             )
         
-        print("\n=== 2. Transformation matrix after Y-axis alignment ===")
+        print("\n=== 2. Y 방향 정렬 후 변환 행렬 ===")
         print(self.transform_matrix)
 
-        # 3. Z-axis alignment
+        # 3. Z 방향 정렬
         z_aligned_ios_mesh, z_rotation_matrix = self.find_z_direction(y_aligned_ios_mesh)
 
         if self.visualization:
@@ -63,10 +65,10 @@ class IOSLaminateRegistration:
                 title="IOS Compare"
             )
         
-        print("\n=== 3. Transformation matrix after Z-axis alignment ===")
+        print("\n=== 3. Z 방향 정렬 후 변환 행렬 ===")
         print(self.transform_matrix)
         
-        # 4. Region selection
+        # 4. 영역 선택
         selected_mesh = self.find_ray_mesh_intersection_approximate(z_aligned_ios_mesh)
         if self.visualization:
             visualize_meshes(
@@ -91,7 +93,7 @@ class IOSLaminateRegistration:
                 title="IOS Compare"
             )
 
-        # 6. Move to origin
+        # 6. 원점으로 이동
         aligned_laminate_mesh, translation_matrix = self.move_mask_to_origin(region_growing_mesh)
         if self.visualization:
             visualize_meshes(
@@ -100,27 +102,27 @@ class IOSLaminateRegistration:
                 title="IOS Compare"
             )
 
-        print("\n=== 4. Transformation matrix after moving to origin ===")
+        print("\n=== 4. 원점 이동 후 변환 행렬 ===")
         print(self.transform_matrix)
 
-        # 7. ICP registration
+        # 7. ICP 정합
         transformed_mesh, fast_registration_transform_matrix = self.fast_registration(aligned_laminate_mesh, self.laminate_mesh)
 
-        print("\n=== 5. ICP transformation matrix ===")
+        print("\n=== 5. ICP 변환 행렬 ===")
         print(fast_registration_transform_matrix)
 
-        # Apply all transformations to original IOS mesh in sequence
+        # 원본 IOS 메시에 모든 변환을 순서대로 적용
         final_ios_mesh = copy.deepcopy(self.ios_mesh)
         
-        # Multiply transformation matrices in sequence
-        # 1. OBB, Y, Z alignment (transform_matrix)
-        # 2. Move to origin (translation_matrix)
-        # 3. ICP transformation (fast_registration_transform_matrix)
+        # 변환 행렬들을 순서대로 곱하기
+        # 1. OBB, Y, Z 정렬 (transform_matrix)
+        # 2. 원점 이동 (translation_matrix)
+        # 3. ICP 변환 (fast_registration_transform_matrix)
         final_transform = np.dot(fast_registration_transform_matrix, 
                                     self.transform_matrix)
         
         if self.visualization:
-            # Apply final transformation at once
+            # 최종 변환 한번에 적용
             final_ios_mesh.vertices = np.dot(
                 final_ios_mesh.vertices,
                 final_transform[:3, :3].T
@@ -427,19 +429,19 @@ class IOSLaminateRegistration:
     
     def find_ray_mesh_intersection_approximate(self, mesh):
         """
-        Shoots a pyramid-shaped light from the weight center in the +y direction,
-        and finds the outermost points that intersect with the light to select a square-shaped region.
+        무게중심에서 +y 방향으로 사각뿔 모양의 빛을 쏘고,
+        그 빛과 만나는 최외곽 점들을 찾아 네모 모양의 영역을 선택합니다.
         
-        Range adjustment methods:
-        1. vertical_angle: Up/down angle range (default 10 degrees)
-        2. horizontal_angle: Left/right angle range (default 60 degrees)
-        3. min_y_component: Minimum y-direction component value (default 0.85, higher values select more front-facing faces)
+        범위 조절 방법:
+        1. vertical_angle: 위아래 각도 범위 (기본값 10도)
+        2. horizontal_angle: 양옆 각도 범위 (기본값 60도)
+        3. min_y_component: y방향 최소 성분 값 (기본값 0.85, 클수록 더 앞쪽 면만 선택)
         
         Args:
-            mesh: Mesh object
+            mesh: Mesh 객체
             
         Returns:
-            selected_mesh: Selected region's Mesh object
+            selected_mesh: 선택된 영역의 Mesh 객체
         """
         vertices = mesh.vertices
         faces = mesh.faces
@@ -511,24 +513,24 @@ class IOSLaminateRegistration:
             if mesh.normals is not None:
                 selected_mesh.normals = mesh.normals[selected_vertices_idx]
         
-        print(f"Number of selected vertices: {len(selected_vertices_idx)}")
-        print(f"Number of faces in created mesh: {len(selected_faces)}")
+        print(f"선택된 정점 수: {len(selected_vertices_idx)}")
+        print(f"생성된 메쉬의 면 수: {len(selected_faces)}")
         
         return selected_mesh
     
     def select_region_by_angle(self, mesh, angle_range_x=(-25, 25), angle_range_z=(-5, 5)):
         """
-        Selects a region based on angle ranges.
+        각도 범위를 기반으로 영역을 선택합니다.
         
         Args:
-            mesh: Mesh object
-            angle_range_x: X-axis angle range (default: -25 to 25 degrees)
-            angle_range_z: Z-axis angle range (default: -5 to 5 degrees)
+            mesh: Mesh 객체
+            angle_range_x: x축 방향 각도 범위 (기본값: -25도 ~ 25도)
+            angle_range_z: z축 방향 각도 범위 (기본값: -5도 ~ 5도)
             
         Returns:
-            selected_mesh: Selected region's Mesh object
+            selected_mesh: 선택된 영역의 Mesh 객체
         """
-        print(f"[Log] Starting angle-based region selection: X {angle_range_x} degrees, Z {angle_range_z} degrees")
+        print(f"[로그] 각도 범위 기반 영역 선택 시작: X {angle_range_x}도, Z {angle_range_z}도")
         
         vertices = mesh.vertices
         faces = mesh.faces
@@ -592,34 +594,34 @@ class IOSLaminateRegistration:
         if mesh.normals is not None:
             selected_mesh.normals = mesh.normals[used_vertices]
         
-        print(f"[Log] Number of selected vertices: {len(used_vertices)}")
-        print(f"[Log] Number of selected faces: {len(selected_faces)}")
+        print(f"[로그] 선택된 정점 수: {len(used_vertices)}")
+        print(f"[로그] 선택된 면 수: {len(selected_faces)}")
         
         return selected_mesh
 
     def region_growing(self, mesh, seed_mesh):
         """
-        Performs region growing starting from around the seed mesh's center point,
-        based on normal vector similarity. Uses KDTree for efficient nearest point search.
+        seed_mesh의 중심점 주변에서 시작하여 법선 벡터의 유사도를 기준으로 region growing을 수행합니다.
+        KDTree를 사용하여 가까운 점들을 효율적으로 찾습니다.
         
         Args:
-            mesh: Complete Mesh object
-            seed_mesh: Mesh object of the region to use as starting point
+            mesh: 전체 Mesh 객체
+            seed_mesh: 시작점으로 사용할 영역의 Mesh 객체
             
         Returns:
-            grown_mesh: Mesh object of the region selected by region growing
+            grown_mesh: region growing으로 선택된 영역의 Mesh 객체
         """
         import time
         from scipy.spatial import KDTree
         
-        print("\n=== Starting Region Growing ===")
+        print("\n=== Region Growing 시작 ===")
         start_time = time.time()
         
         vertices = mesh.vertices
         faces = mesh.faces
         
-        # 1. Calculate normal vectors
-        print("1. Calculating normal vectors...")
+        # 1. 법선 벡터 계산
+        print("1. 법선 벡터 계산 중...")
         normals_start = time.time()
         
         def compute_vertex_normals(vertices, faces):
@@ -655,16 +657,16 @@ class IOSLaminateRegistration:
             return vertex_normals
         
         vertex_normals = compute_vertex_normals(vertices, faces)
-        print(f"  - Normal vector calculation completed: {time.time() - normals_start:.2f} seconds")
+        print(f"  - 법선 벡터 계산 완료: {time.time() - normals_start:.2f}초")
         
-        # 2. Create KDTree
-        print("2. Creating KDTree...")
+        # 2. KDTree 생성
+        print("2. KDTree 생성 중...")
         tree_start = time.time()
         tree = KDTree(vertices)
-        print(f"  - KDTree creation completed: {time.time() - tree_start:.2f} seconds")
+        print(f"  - KDTree 생성 완료: {time.time() - tree_start:.2f}초")
         
-        # 3. Find starting points
-        print("3. Finding starting points...")
+        # 3. 시작점 찾기
+        print("3. 시작점 찾기 중...")
         seed_start = time.time()
         
         # seed_mesh의 정점들과 가장 가까운 원본 메쉬의 정점들 찾기
@@ -672,19 +674,19 @@ class IOSLaminateRegistration:
         distances, indices = tree.query(seed_vertices, k=1)
         start_vertices = set(indices)
         
-        print(f"  - Starting point search completed: {time.time() - seed_start:.2f} seconds")
-        print(f"  - Number of starting points: {len(start_vertices)}")
+        print(f"  - 시작점 찾기 완료: {time.time() - seed_start:.2f}초")
+        print(f"  - 시작점 개수: {len(start_vertices)}")
         
-        # 4. Region growing parameter setting
-        max_angle_diff = 35.0  # Maximum allowable angle difference between normal vectors (degrees)
-        max_distance = np.ptp(vertices, axis=0).max() * 0.05  # Maximum distance is 2% of mesh size
+        # 4. Region growing 파라미터 설정
+        max_angle_diff = 35.0  # 법선 벡터 간 최대 허용 각도 차이 (도 단위)
+        max_distance = np.ptp(vertices, axis=0).max() * 0.05  # 최대 거리는 메쉬 크기의 2%
         
-        # Calculate average normal vector of starting points
+        # 시작점들의 평균 법선 벡터 계산
         avg_normal = np.mean(vertex_normals[list(start_vertices)], axis=0)
         avg_normal = avg_normal / np.linalg.norm(avg_normal)
         
         # 5. Region growing
-        print("4. Running region growing...")
+        print("4. Region growing 실행 중...")
         growing_start = time.time()
         
         selected_vertices = np.zeros(len(vertices), dtype=bool)
@@ -698,17 +700,17 @@ class IOSLaminateRegistration:
         
         while queue:
             current_time = time.time()
-            if current_time - last_log_time > 1.0:  # Log every second
-                print(f"  - Currently selected vertices: {np.sum(selected_vertices)}, Queue size: {len(queue)}")
+            if current_time - last_log_time > 1.0:  # 1초마다 로그 출력
+                print(f"  - 현재 선택된 정점 수: {np.sum(selected_vertices)}, 큐 크기: {len(queue)}")
                 last_log_time = current_time
             
             iteration += 1
             if iteration % 10000 == 0:
-                print(f"  - {iteration}th iteration...")
+                print(f"  - {iteration}번째 반복 중...")
             
             current_vertex = queue.pop(0)
             
-            # Find nearby vertices
+            # 가까운 정점들 찾기
             distances, neighbors = tree.query(vertices[current_vertex], k=20)
             
             for i, neighbor_idx in enumerate(neighbors):
@@ -718,7 +720,7 @@ class IOSLaminateRegistration:
                 if distances[i] > max_distance:
                     continue
                 
-                # Normal vector similarity test
+                # 법선 벡터 유사도 검사
                 neighbor_normal = vertex_normals[neighbor_idx]
                 similarity = np.dot(avg_normal, neighbor_normal)
                 angle_diff = np.degrees(np.arccos(np.clip(similarity, -1.0, 1.0)))
@@ -728,11 +730,11 @@ class IOSLaminateRegistration:
                     queue.append(neighbor_idx)
                     in_queue[neighbor_idx] = True
         
-        print(f"  - Region growing completed: {time.time() - growing_start:.2f} seconds")
-        print(f"  - Total iterations: {iteration}")
+        print(f"  - Region growing 완료: {time.time() - growing_start:.2f}초")
+        print(f"  - 총 반복 횟수: {iteration}")
         
-        # 6. Select faces from selected vertices
-        print("5. Creating result mesh...")
+        # 6. 선택된 정점들로 면 선택
+        print("5. 결과 메쉬 생성 중...")
         result_start = time.time()
         
         selected_faces = []
@@ -751,65 +753,66 @@ class IOSLaminateRegistration:
         if mesh.normals is not None:
             grown_mesh.normals = vertex_normals[used_vertices]
         
-        print(f"  - Result mesh creation completed: {time.time() - result_start:.2f} seconds")
+        print(f"  - 결과 메쉬 생성 완료: {time.time() - result_start:.2f}초")
         
-        print("=== Region Growing Completed ===")
-        print(f"Number of selected vertices: {len(used_vertices)}")
-        print(f"Number of selected faces: {len(selected_faces)}")
-        print(f"Total time taken: {time.time() - start_time:.2f} seconds\n")
+        print("=== Region Growing 완료 ===")
+        print(f"선택된 정점 수: {len(used_vertices)}")
+        print(f"선택된 면의 수: {len(selected_faces)}")
+        print(f"총 소요 시간: {time.time() - start_time:.2f}초\n")
         
         return grown_mesh
     
     def move_mask_to_origin(self, mask_mesh):
         """
-        Moves the mask mesh so that the most +y point is at y=0 and
-        the most -z point is at z=0. Also updates the transformation matrix.
+        mask mesh를 이동하여 가장 +y 방향의 점이 y=0이 되고,
+        가장 -z 방향의 점이 z=0이 되도록 합니다.
+        변환 행렬도 함께 업데이트됩니다.
         
         Args:
-            mask_mesh: Mesh object to move
+            mask_mesh: 이동할 Mesh 객체
             
         Returns:
-            aligned_mesh: Moved Mesh object
-            translation_matrix: Applied transformation matrix
+            aligned_mesh: 이동된 Mesh 객체
+            translation_matrix: 적용된 변환 행렬
         """
         vertices = mask_mesh.vertices
         faces = mask_mesh.faces
         
-        # 1. Find the largest value in the y direction (most +y point)
+        # 1. y축 방향으로 가장 큰 값 찾기 (가장 +y 방향의 점)
         max_y = np.max(vertices[:, 1])
         
-        # 2. Find the smallest value in the z direction (most -z point)
+        # 2. z축 방향으로 가장 작은 값 찾기 (가장 -z 방향의 점)
         min_z = np.min(vertices[:, 2])
         
-        # 3. Calculate translation vector
-        # y=0 needs to be moved by -max_y
-        # z=0 needs to be moved by -min_z
+        # 3. 이동 벡터 계산
+        # y=0이 되려면 -max_y만큼 이동
+        # z=0이 되려면 -min_z만큼 이동
         translation = np.array([0, -max_y, -min_z])
         
-        print(f"[Log] Translation vector: {translation}")
+        print(f"[로그] 이동 벡터: {translation}")
         
-        # 4. Move vertices
+        # 4. 정점 이동
         aligned_vertices = vertices + translation
         
-        # 5. Create new mesh
+        # 5. 새로운 메쉬 생성
         aligned_mesh = Mesh()
         aligned_mesh.vertices = aligned_vertices
         aligned_mesh.faces = faces
         if mask_mesh.normals is not None:
             aligned_mesh.normals = mask_mesh.normals
         
-        # 6. Create transformation matrix and update
+        # 6. 변환 행렬 생성 및 업데이트
         translation_matrix = np.eye(4)
         translation_matrix[:3, 3] = translation
         
-        # Add new transformation to existing transformation matrix
+        # 기존 변환 행렬에 새로운 변환 추가
         self.transform_matrix = np.dot(translation_matrix, self.transform_matrix)
         
-        print(f"[Log] Mesh movement completed")
-        print(f"  - Y range before movement: [{np.min(vertices[:, 1]):.2f}, {np.max(vertices[:, 1]):.2f}]")
-        print(f"  - Y range after movement: [{np.min(aligned_vertices[:, 1]):.2f}, {np.max(aligned_vertices[:, 1]):.2f}]")
-        print(f"  - Z range before movement: [{np.min(vertices[:, 2]):.2f}, {np.max(vertices[:, 2]):.2f}]")
-        print(f"  - Z range after movement: [{np.min(aligned_vertices[:, 2]):.2f}, {np.max(aligned_vertices[:, 2]):.2f}]")
+        print(f"[로그] 메쉬 이동 완료")
+        print(f"  - 이동 전 y 범위: [{np.min(vertices[:, 1]):.2f}, {np.max(vertices[:, 1]):.2f}]")
+        print(f"  - 이동 후 y 범위: [{np.min(aligned_vertices[:, 1]):.2f}, {np.max(aligned_vertices[:, 1]):.2f}]")
+        print(f"  - 이동 전 z 범위: [{np.min(vertices[:, 2]):.2f}, {np.max(vertices[:, 2]):.2f}]")
+        print(f"  - 이동 후 z 범위: [{np.min(aligned_vertices[:, 2]):.2f}, {np.max(aligned_vertices[:, 2]):.2f}]")
         
         return aligned_mesh, translation_matrix
 
@@ -821,10 +824,10 @@ class IOSLaminateRegistration:
 
     def fast_registration_without_vis(self, source_mesh, target_mesh, vis=None):
         """
-        Performs ICP registration in 3 stages.
+        ICP 정합을 3단계로 수행하고 과정을 시각화합니다.
         Returns:
-            transformed_source_mesh: Transformed source mesh
-            transform_matrix: Applied transformation matrix
+            transformed_source_mesh: 변환된 소스 메시
+            transform_matrix: 적용된 변환 행렬
         """
         import open3d as o3d
         import copy
@@ -858,12 +861,12 @@ class IOSLaminateRegistration:
             return pcd
         
         # Mesh를 PointCloud로 변환
-        print("\nConverting Mesh to PointCloud...")
+        print("\nMesh를 PointCloud로 변환 중...")
         source = mesh_to_pointcloud(source_mesh)
         target = mesh_to_pointcloud(target_mesh)
         
         # ICP 실행
-        print("\nStarting 1st ICP registration...")
+        print("\n1번째 ICP 정합 시작...")
         current_transform = np.eye(4)
         
         for iteration in range(1000):
@@ -880,12 +883,12 @@ class IOSLaminateRegistration:
             )
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
+                print(f"  - ICP 수렴 (반복 {iteration})")
                 break
                 
             current_transform = result.transformation
         
-        print("Starting 2nd ICP registration...")
+        print("2번째 ICP 정합 시작...")
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
@@ -899,13 +902,14 @@ class IOSLaminateRegistration:
                 )
             )
             
+            
             if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
+                print(f"  - ICP 수렴 (반복 {iteration})")
                 break
                 
             current_transform = result.transformation
         
-        print("Starting 3rd ICP registration...")
+        print("3번째 ICP 정합 시작...")
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
@@ -919,14 +923,15 @@ class IOSLaminateRegistration:
                 )
             )
             
+            
             if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
+                print(f"  - ICP 수렴 (반복 {iteration})")
                 break
                 
             current_transform = result.transformation
         
-        print("\n=== Registration completed ===")
-        print(f"Final fitness: {result.fitness:.6f}")
+        print("\n=== 정합 완료 ===")
+        print(f"최종 fitness: {result.fitness:.6f}")
         
         # 변환된 소스 메시 생성
         transformed_source_mesh = copy.deepcopy(source_mesh)
@@ -941,10 +946,10 @@ class IOSLaminateRegistration:
 
     def fast_registration_with_vis(self, source_mesh, target_mesh, vis=None):
         """
-        Performs ICP registration in 3 stages with visualization.
+        ICP 정합을 3단계로 수행하고 과정을 시각화합니다.
         Returns:
-            transformed_source_mesh: Transformed source mesh
-            transform_matrix: Applied transformation matrix
+            transformed_source_mesh: 변환된 소스 메시
+            transform_matrix: 적용된 변환 행렬
         """
         import open3d as o3d
         import copy
@@ -997,7 +1002,7 @@ class IOSLaminateRegistration:
             time.sleep(0.1)
         
         # Mesh를 PointCloud로 변환
-        print("\nConverting Mesh to PointCloud...")
+        print("\nMesh를 PointCloud로 변환 중...")
         source = mesh_to_pointcloud(source_mesh)
         target = mesh_to_pointcloud(target_mesh)
         
@@ -1021,7 +1026,7 @@ class IOSLaminateRegistration:
         time.sleep(1)
         
         # ICP 실행
-        print("\nStarting 1st ICP registration...")
+        print("\n1번째 ICP 정합 시작...")
         current_transform = np.eye(4)
         
         for iteration in range(1000):
@@ -1038,7 +1043,7 @@ class IOSLaminateRegistration:
             )
             
             if iteration % 20 == 0:  # 매 반복마다 시각화
-                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
+                print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
                 
                 # 시각화 업데이트
                 source_temp = copy.deepcopy(source)
@@ -1058,12 +1063,12 @@ class IOSLaminateRegistration:
                 time.sleep(0.05)  # 애니메이션 속도 조절
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
+                print(f"  - ICP 수렴 (반복 {iteration})")
                 break
                 
             current_transform = result.transformation
         
-        print("Starting 2nd ICP registration...")
+        print("2번째 ICP 정합 시작...")
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
@@ -1078,7 +1083,7 @@ class IOSLaminateRegistration:
             )
             
             if iteration % 20 == 0:  # 매 반복마다 시각화
-                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
+                print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
                 
                 # 시각화 업데이트
                 source_temp = copy.deepcopy(source)
@@ -1098,12 +1103,12 @@ class IOSLaminateRegistration:
                 time.sleep(0.05)  # 애니메이션 속도 조절
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
+                print(f"  - ICP 수렴 (반복 {iteration})")
                 break
                 
             current_transform = result.transformation
         
-        print("Starting 3rd ICP registration...")
+        print("3번째 ICP 정합 시작...")
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
@@ -1118,7 +1123,7 @@ class IOSLaminateRegistration:
             )
             
             if iteration % 20 == 0:  # 매 반복마다 시각화
-                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
+                print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
                 
                 # 시각화 업데이트
                 source_temp = copy.deepcopy(source)
@@ -1138,13 +1143,13 @@ class IOSLaminateRegistration:
                 time.sleep(0.05)  # 애니메이션 속도 조절
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
+                print(f"  - ICP 수렴 (반복 {iteration})")
                 break
                 
             current_transform = result.transformation
         
-        print("\n=== Registration completed ===")
-        print(f"Final fitness: {result.fitness:.6f}")
+        print("\n=== 정합 완료 ===")
+        print(f"최종 fitness: {result.fitness:.6f}")
         
         # 시각화 창을 계속 열어두고 마우스 인터렉션 허용
         while True:
