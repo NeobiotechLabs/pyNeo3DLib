@@ -1,81 +1,82 @@
 def align_with_obb(mesh, debug=False):
     """
-    OBB 축을 기준으로 메쉬를 정렬합니다. 
-    가장 짧은 축은 z축, 가장 긴 축은 x축, 중간 길이 축은 y축으로 정렬됩니다.
+    Aligns the mesh based on OBB (Oriented Bounding Box) axes.
+    The shortest axis is aligned with the z-axis, the longest with the x-axis,
+    and the middle-length axis with the y-axis.
     
-    구체적인 변환 과정:
-    1. 메쉬 중심점(OBB 중심)을 원점으로 이동
-    2. PCA를 통해 주축을 찾아 회전 행렬 계산
-    3. 회전 행렬을 적용하여 메쉬 정렬
+    Detailed transformation process:
+    1. Move the mesh center point (OBB center) to the origin
+    2. Find principal axes using PCA to calculate rotation matrix
+    3. Apply rotation matrix to align the mesh
     
     Args:
-        mesh: PyVista 메쉬
-        debug: 디버깅 모드 (중간 과정 시각화)
+        mesh: PyVista mesh
+        debug: Debug mode (visualize intermediate steps)
         
     Returns:
-        aligned_mesh: 정렬된 메쉬
-        obb_center: OBB 중심점
-        rotation_matrix: 회전 행렬
+        aligned_mesh: Aligned mesh
+        obb_center: OBB center point
+        rotation_matrix: Rotation matrix
     """
     try:
-        print("[로그] align_with_obb 함수 시작")
-        # 메쉬 복사
+        print("[Log] Starting align_with_obb function")
+        # Copy mesh
         aligned_mesh = mesh.copy()
         
-        # 메쉬 정점
+        # Mesh vertices
         vertices = mesh.points
-        print(f"[로그] 정점 개수: {len(vertices)}")
+        print(f"[Log] Number of vertices: {len(vertices)}")
         
-        # OBB 계산에 필요한 값 추출
-        # 점들의 평균 계산 (OBB 중심)
+        # Extract values needed for OBB calculation
+        # Calculate point average (OBB center)
         mean_pt = np.mean(vertices, axis=0)
-        print(f"[로그] OBB 중심 좌표: {mean_pt}")
+        print(f"[Log] OBB center coordinates: {mean_pt}")
         
-        # 평균을 중심으로 점들을 이동
+        # Move points relative to the mean
         centered_pts = vertices - mean_pt
-        print(f"[로그] 센터링 완료")
+        print(f"[Log] Centering completed")
         
-        # 공분산 행렬 계산
+        # Calculate covariance matrix
         cov = np.cov(centered_pts, rowvar=False)
-        print(f"[로그] 공분산 행렬 계산 완료")
+        print(f"[Log] Covariance matrix calculation completed")
         
-        # 고유값과 고유벡터 계산
+        # Calculate eigenvalues and eigenvectors
         try:
-            print(f"[로그] 고유값 계산 시작")
+            print(f"[Log] Starting eigenvalue calculation")
             eigvals, eigvecs = np.linalg.eigh(cov)
-            print(f"[로그] 고유값: {eigvals}")
-            print(f"[로그] 고유벡터 행렬 형태: {eigvecs.shape}")
+            print(f"[Log] Eigenvalues: {eigvals}")
+            print(f"[Log] Eigenvector matrix shape: {eigvecs.shape}")
         except Exception as e:
-            print(f"[오류] 고유값 계산 중 오류 발생: {e}")
+            print(f"[Error] Error during eigenvalue calculation: {e}")
             raise
         
-        # 고유값이 큰 순서대로 정렬 (주축 순서대로)
+        # Sort eigenvalues in descending order (principal axes order)
         idx = np.argsort(eigvals)[::-1]
         eigvals = eigvals[idx]
         eigvecs = eigvecs[:, idx]
-        print(f"[로그] 정렬된 고유값: {eigvals}")
+        print(f"[Log] Sorted eigenvalues: {eigvals}")
         
-        # 고유값에 따라 축 정렬: 가장 큰 고유값 -> x축, 중간 -> y축, 가장 작은 -> z축
+        # Align axes based on eigenvalues: largest -> x-axis, middle -> y-axis, smallest -> z-axis
         rotation_matrix = eigvecs
-        print(f"[로그] 회전 행렬 계산 완료")
+        print(f"[Log] Rotation matrix calculation completed")
         
-        # 회전 변환 적용 (기존 좌표계에서 표준 좌표계로 변환)
-        # 주의: centered_pts는 이미 중심이 원점으로 이동된 점들임
+        # Apply rotation transformation (transform from original coordinate system to standard coordinate system)
+        # Note: centered_pts are already points moved to origin
         transformed_vertices = np.dot(centered_pts, rotation_matrix)
-        print(f"[로그] 정점 변환 완료")
+        print(f"[Log] Vertex transformation completed")
         
-        # 변환된 정점 적용
+        # Apply transformed vertices
         aligned_mesh.points = transformed_vertices
-        print(f"[로그] 변환된 메쉬 생성 완료")
+        print(f"[Log] Transformed mesh creation completed")
         
-        # 디버깅 모드: 변환 과정 시각화
+        # Debug mode: Visualize transformation process
         if debug:
             import matplotlib.pyplot as plt
             from mpl_toolkits.mplot3d import Axes3D
             
             fig = plt.figure(figsize=(15, 5))
             
-            # 원본 메쉬 점 시각화
+            # Visualize original mesh points
             ax1 = fig.add_subplot(131, projection='3d')
             ax1.scatter(vertices[:, 0], vertices[:, 1], vertices[:, 2], c='b', marker='.', alpha=0.01)
             ax1.set_title('Original Mesh')
@@ -83,7 +84,7 @@ def align_with_obb(mesh, debug=False):
             ax1.set_ylabel('Y')
             ax1.set_zlabel('Z')
             
-            # 중심이 원점으로 이동된 점 시각화
+            # Visualize points moved to origin
             ax2 = fig.add_subplot(132, projection='3d')
             ax2.scatter(centered_pts[:, 0], centered_pts[:, 1], centered_pts[:, 2], c='g', marker='.', alpha=0.01)
             ax2.set_title('Centered Mesh')
@@ -91,7 +92,7 @@ def align_with_obb(mesh, debug=False):
             ax2.set_ylabel('Y')
             ax2.set_zlabel('Z')
             
-            # 회전 변환 후 점 시각화
+            # Visualize points after rotation transformation
             ax3 = fig.add_subplot(133, projection='3d')
             ax3.scatter(transformed_vertices[:, 0], transformed_vertices[:, 1], transformed_vertices[:, 2], c='r', marker='.', alpha=0.01)
             ax3.set_title('Rotated Mesh')
@@ -102,11 +103,11 @@ def align_with_obb(mesh, debug=False):
             plt.tight_layout()
             plt.show()
         
-        print(f"[로그] align_with_obb 함수 완료")
+        print(f"[Log] align_with_obb function completed")
         return aligned_mesh, mean_pt, rotation_matrix
     except Exception as e:
-        print(f"[오류] align_with_obb 함수에서 예외 발생: {e}")
+        print(f"[Error] Exception occurred in align_with_obb function: {e}")
         import traceback
         traceback.print_exc()
-        # 에러가 발생해도 기본값 반환
+        # Return default values even if error occurs
         return mesh.copy(), np.zeros(3), np.eye(3)
