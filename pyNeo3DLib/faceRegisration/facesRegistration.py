@@ -90,7 +90,7 @@ class FacesRegistration:
             pcd = o3d.geometry.PointCloud()
             pcd.points = o3d.utility.Vector3dVector(mesh.vertices)
             
-            down_sample_rate = 5
+            down_sample_rate = 10
             # 먼저 다운샘플링 수행
             pcd = pcd.uniform_down_sample(every_k_points=down_sample_rate)
             

@@ -678,7 +678,7 @@ class IOSLaminateRegistration:
         print(f"  - Number of starting points: {len(start_vertices)}")
         
         # 4. Region growing parameter setting
-        max_angle_diff = 34.0  # 각도 제한을 3.0에서 2.0으로 줄임
+        max_angle_diff = 40.0  # 각도 제한을 3.0에서 2.0으로 줄임
         max_distance = np.ptp(vertices, axis=0).max() * 0.2  # 거리 제한을 2%에서 1%로 줄임
         
         # seed 영역의 평균 법선 벡터 계산
@@ -999,21 +999,21 @@ class IOSLaminateRegistration:
             time.sleep(0.1)
         
         
-        # Mesh를 PointCloud로 변환
-        print("\nMesh를 PointCloud로 변환 중...")
+        # Converting Mesh to PointCloud
+        print("\nConverting Mesh to PointCloud...")
         source = mesh_to_pointcloud(source_mesh)
         target = mesh_to_pointcloud(target_mesh)
         
-        # 소스는 빨간색, 타겟은 파란색으로 설정
+        # Set source to red, target to blue
         source.paint_uniform_color([1, 0, 0])
         target.paint_uniform_color([0, 0, 1])
         
-        # 초기 상태 시각화
+        # Visualize initial state
         vis.clear_geometries()
         vis.add_geometry(source)
         vis.add_geometry(target)
         
-        # 카메라 뷰 리셋
+        # Reset camera view
         ctr = vis.get_view_control()
         ctr.set_zoom(0.8)
         ctr.set_front([0, -1, 0])
@@ -1023,14 +1023,14 @@ class IOSLaminateRegistration:
         vis.update_renderer()
         time.sleep(1)
         
-        # ICP 실행
-        print("\n1번째 ICP 정합 시작...")
+        # Execute ICP
+        print("\nStarting 1st ICP registration...")
         current_transform = np.eye(4)
         
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
-                3.0,  # 거리 임계값
+                3.0,  # Distance threshold
                 current_transform,
                 o3d.pipelines.registration.TransformationEstimationPointToPoint(),
                 o3d.pipelines.registration.ICPConvergenceCriteria(
@@ -1040,17 +1040,17 @@ class IOSLaminateRegistration:
                 )
             )
             
-            if iteration % 20 == 0:  # 매 반복마다 시각화
-                print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
+            if iteration % 20 == 0:  # Visualize every iteration
+                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
                 
-                # 시각화 업데이트
+                # Update visualization
                 source_temp = copy.deepcopy(source)
                 source_temp.transform(result.transformation)
                 vis.clear_geometries()
                 vis.add_geometry(source_temp)
                 vis.add_geometry(target)
                 
-                # 매 반복마다 카메라 뷰 리셋
+                # Reset camera view every iteration
                 ctr = vis.get_view_control()
                 ctr.set_zoom(0.8)
                 ctr.set_front([0, -1, 0])
@@ -1058,19 +1058,19 @@ class IOSLaminateRegistration:
                 
                 vis.poll_events()
                 vis.update_renderer()
-                time.sleep(0.05)  # 애니메이션 속도 조절
+                time.sleep(0.05)  # Control animation speed
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP 수렴 (반복 {iteration})")
+                print(f"  - ICP converged (iteration {iteration})")
                 break
                 
             current_transform = result.transformation
         
-        print("2번째 ICP 정합 시작...")
+        print("Starting 2nd ICP registration...")
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
-                0.3,  # 거리 임계값
+                0.3,  # Distance threshold
                 current_transform,
                 o3d.pipelines.registration.TransformationEstimationPointToPoint(),
                 o3d.pipelines.registration.ICPConvergenceCriteria(
@@ -1080,17 +1080,17 @@ class IOSLaminateRegistration:
                 )
             )
             
-            if iteration % 20 == 0:  # 매 반복마다 시각화
-                print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
+            if iteration % 20 == 0:  # Visualize every iteration
+                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
                 
-                # 시각화 업데이트
+                # Update visualization
                 source_temp = copy.deepcopy(source)
                 source_temp.transform(result.transformation)
                 vis.clear_geometries()
                 vis.add_geometry(source_temp)
                 vis.add_geometry(target)
                 
-                # 매 반복마다 카메라 뷰 리셋
+                # Reset camera view every iteration
                 ctr = vis.get_view_control()
                 ctr.set_zoom(0.8)
                 ctr.set_front([0, -1, 0])
@@ -1098,19 +1098,19 @@ class IOSLaminateRegistration:
                 
                 vis.poll_events()
                 vis.update_renderer()
-                time.sleep(0.05)  # 애니메이션 속도 조절
+                time.sleep(0.05)  # Control animation speed
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP 수렴 (반복 {iteration})")
+                print(f"  - ICP converged (iteration {iteration})")
                 break
                 
             current_transform = result.transformation
         
-        print("3번째 ICP 정합 시작...")
+        print("Starting 3rd ICP registration...")
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
-                0.05,  # 거리 임계값
+                0.05,  # Distance threshold
                 current_transform,
                 o3d.pipelines.registration.TransformationEstimationPointToPoint(),
                 o3d.pipelines.registration.ICPConvergenceCriteria(
@@ -1120,17 +1120,17 @@ class IOSLaminateRegistration:
                 )
             )
             
-            if iteration % 20 == 0:  # 매 반복마다 시각화
-                print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
+            if iteration % 20 == 0:  # Visualize every iteration
+                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
                 
-                # 시각화 업데이트
+                # Update visualization
                 source_temp = copy.deepcopy(source)
                 source_temp.transform(result.transformation)
                 vis.clear_geometries()
                 vis.add_geometry(source_temp)
                 vis.add_geometry(target)
                 
-                # 매 반복마다 카메라 뷰 리셋
+                # Reset camera view every iteration
                 ctr = vis.get_view_control()
                 ctr.set_zoom(0.8)
                 ctr.set_front([0, -1, 0])
@@ -1138,25 +1138,25 @@ class IOSLaminateRegistration:
                 
                 vis.poll_events()
                 vis.update_renderer()
-                time.sleep(0.05)  # 애니메이션 속도 조절
+                time.sleep(0.05)  # Control animation speed
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP 수렴 (반복 {iteration})")
+                print(f"  - ICP converged (iteration {iteration})")
                 break
                 
             current_transform = result.transformation
         
-        print("\n=== 정합 완료 ===")
-        print(f"최종 fitness: {result.fitness:.6f}")
+        print("\n=== Registration completed ===")
+        print(f"Final fitness: {result.fitness:.6f}")
         
-        # 시각화 창을 계속 열어두고 마우스 인터렉션 허용
+        # Keep visualization window open and allow mouse interaction
         while True:
             if not vis.poll_events():
                 break
             vis.update_renderer()
             time.sleep(0.1)
         
-        # 변환된 소스 메시 생성
+        # Create transformed source mesh
         transformed_source_mesh = copy.deepcopy(source_mesh)
         transformed_source_mesh.vertices = np.dot(
             source_mesh.vertices,
