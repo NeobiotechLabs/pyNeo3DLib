@@ -26,7 +26,7 @@ async def main():
         reg = Neo3DRegistration(json_string, fastserver.ws)
         print(reg.version)
         print(reg.parsed_json)
-        result = await reg.run_registration(visualize=False)
+        result = await reg.run_registration(visualize=True)
     print(result)
 
 
