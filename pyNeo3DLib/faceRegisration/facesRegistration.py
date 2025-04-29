@@ -33,51 +33,51 @@ class FacesRegistration:
 
     def match_weight_centers(self):
         """
-        세 개의 메시(face_smile_mesh, face_rest_mesh, face_retraction_mesh)의 무게중심을
-        face_smile_mesh의 무게중심을 기준으로 맞춥니다.
+        Align the centroids of three meshes (face_smile_mesh, face_rest_mesh, face_retraction_mesh)
+        based on the centroid of face_smile_mesh.
         
         Returns:
-            변환된 face_rest_mesh와 face_retraction_mesh
+            Transformed face_rest_mesh and face_retraction_mesh
         """
-        # face_smile_mesh의 무게중심 계산
+        # Calculate centroid of face_smile_mesh
         smile_center = np.mean(self.face_smile_mesh.vertices, axis=0)
         
-        # face_rest_mesh의 무게중심 계산 및 변환
+        # Calculate centroid of face_rest_mesh and transform
         rest_center = np.mean(self.face_rest_mesh.vertices, axis=0)
         rest_translation = smile_center - rest_center
         self.face_rest_mesh.vertices = self.face_rest_mesh.vertices + rest_translation
         
-        # face_rest_mesh의 변환 행렬 업데이트
+        # Update transformation matrix for face_rest_mesh
         rest_transform = np.eye(4)
         rest_transform[:3, 3] = rest_translation
         self.transform_matrix_for_rest = np.dot(rest_transform, self.transform_matrix_for_rest)
         
-        # face_retraction_mesh의 무게중심 계산 및 변환
+        # Calculate centroid of face_retraction_mesh and transform
         retraction_center = np.mean(self.face_retraction_mesh.vertices, axis=0)
         retraction_translation = smile_center - retraction_center
         self.face_retraction_mesh.vertices = self.face_retraction_mesh.vertices + retraction_translation
         
-        # face_retraction_mesh의 변환 행렬 업데이트
+        # Update transformation matrix for face_retraction_mesh
         retraction_transform = np.eye(4)
         retraction_transform[:3, 3] = retraction_translation
         self.transform_matrix_for_retraction = np.dot(retraction_transform, self.transform_matrix_for_retraction)
         
-        print(f"무게중심 정렬 완료:")
-        print(f"  - Smile 메시 무게중심: {smile_center}")
-        print(f"  - Rest 메시 무게중심: {rest_center} -> {np.mean(self.face_rest_mesh.vertices, axis=0)}")
-        print(f"  - Retraction 메시 무게중심: {retraction_center} -> {np.mean(self.face_retraction_mesh.vertices, axis=0)}")
-        print(f"  - Rest 메시 변환 행렬 업데이트 완료")
-        print(f"  - Retraction 메시 변환 행렬 업데이트 완료")
+        print(f"Centroid alignment completed:")
+        print(f"  - Smile mesh centroid: {smile_center}")
+        print(f"  - Rest mesh centroid: {rest_center} -> {np.mean(self.face_rest_mesh.vertices, axis=0)}")
+        print(f"  - Retraction mesh centroid: {retraction_center} -> {np.mean(self.face_retraction_mesh.vertices, axis=0)}")
+        print(f"  - Rest mesh transformation matrix updated")
+        print(f"  - Retraction mesh transformation matrix updated")
         
         return self.face_rest_mesh, self.face_retraction_mesh
 
     
     def fast_registration_with_vis(self, source_mesh, target_mesh, vis=None):
         """
-        ICP 정합을 3단계로 수행하고 과정을 시각화합니다.
+        Perform ICP registration in 3 steps and visualize the process.
         Returns:
-            transformed_source_mesh: 변환된 소스 메시
-            transform_matrix: 적용된 변환 행렬
+            transformed_source_mesh: Transformed source mesh
+            transform_matrix: Applied transformation matrix
         """
         import open3d as o3d
         import copy
@@ -134,7 +134,7 @@ class FacesRegistration:
             time.sleep(0.1)
         
         # Mesh를 PointCloud로 변환
-        print("\nMesh를 PointCloud로 변환 중...")
+        print("\nConverting Mesh to PointCloud...")
         source = mesh_to_pointcloud(source_mesh)
         target = mesh_to_pointcloud(target_mesh)
         
@@ -159,7 +159,7 @@ class FacesRegistration:
             time.sleep(1)
         
         # ICP 실행
-        print("\n1번째 ICP 정합 시작...")
+        print("\nStarting 1st ICP registration...")
         current_transform = np.eye(4)
         
         for iteration in range(1000):
@@ -175,8 +175,8 @@ class FacesRegistration:
                 )
             )
             
-            if iteration % 10 == 0:  # 매 반복마다 시각화
-                print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
+            if iteration % 10 == 0:  # Visualize every iteration
+                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
                 
                 # 시각화 업데이트
                 source_temp = copy.deepcopy(source)
@@ -194,15 +194,15 @@ class FacesRegistration:
                     
                     vis.poll_events()
                     vis.update_renderer()
-                    time.sleep(0.05)  # 애니메이션 속도 조절
+                    time.sleep(0.05)  # Adjust animation speed
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP 수렴 (반복 {iteration})")
+                print(f"  - ICP converged (iteration {iteration})")
                 break
                 
             current_transform = result.transformation
         
-        print("2번째 ICP 정합 시작...")
+        print("Starting 2nd ICP registration...")
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
@@ -216,8 +216,8 @@ class FacesRegistration:
                 )
             )
             
-            if iteration % 20 == 0:  # 매 반복마다 시각화
-                print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
+            if iteration % 20 == 0:  # Visualize every iteration
+                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
                 
                 # 시각화 업데이트
                 source_temp = copy.deepcopy(source)
@@ -235,15 +235,15 @@ class FacesRegistration:
                     
                     vis.poll_events()
                     vis.update_renderer()
-                    time.sleep(0.05)  # 애니메이션 속도 조절
+                    time.sleep(0.05)  # Adjust animation speed
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP 수렴 (반복 {iteration})")
+                print(f"  - ICP converged (iteration {iteration})")
                 break
                 
             current_transform = result.transformation
         
-        print("3번째 ICP 정합 시작...")
+        print("Starting 3rd ICP registration...")
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
@@ -257,8 +257,8 @@ class FacesRegistration:
                 )
             )
             
-            if iteration % 20 == 0:  # 매 반복마다 시각화
-                print(f"  - ICP 반복 {iteration}: fitness = {result.fitness:.6f}")
+            if iteration % 20 == 0:  # Visualize every iteration
+                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
                 
                 # 시각화 업데이트
                 source_temp = copy.deepcopy(source)
@@ -276,19 +276,19 @@ class FacesRegistration:
                     
                     vis.poll_events()
                     vis.update_renderer()
-                    time.sleep(0.05)  # 애니메이션 속도 조절
+                    time.sleep(0.05)  # Adjust animation speed
             
             if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP 수렴 (반복 {iteration})")
+                print(f"  - ICP converged (iteration {iteration})")
                 break
                 
             current_transform = result.transformation
         
-        print("\n=== 정합 완료 ===")
-        print(f"최종 fitness: {result.fitness:.6f}")
+        print("\n=== Registration completed ===")
+        print(f"Final fitness: {result.fitness:.6f}")
         
         if self.visualization:
-            # 시각화 창을 계속 열어두고 마우스 인터렉션 허용
+            # Keep visualization window open and allow mouse interaction
             while True:
                 if not vis.poll_events():
                     break
