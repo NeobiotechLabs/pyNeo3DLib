@@ -42,7 +42,7 @@ async def process_registration_async(registration_data, request_id):
 
         return result
     except Exception as e:
-        print(f"[{request_id}] 정합 중 오류 발생: {str(e)}")
+        print(f"[{request_id}] Error during registration: {str(e)}")
         if ws:
             await ws.send_json({
                 "type": "registration_failed",
@@ -78,7 +78,7 @@ async def websocket_endpoint(websocket: WebSocket):
 async def get_registration(background_tasks: BackgroundTasks, registration: Dict[str, Any] = Body(...)):
     global ws
     request_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
-    print(f"[{request_id}] 정합 API 호출됨")
+    print(f"[{request_id}] Registration API called")
     
     reg = Neo3DRegistration(json.dumps(registration), ws)
     
@@ -88,7 +88,7 @@ async def get_registration(background_tasks: BackgroundTasks, registration: Dict
     background_tasks.add_task(process_registration_async, registration, request_id)
     return {
         "status": "processing",
-        "message": "등록 처리가 시작되었습니다. 결과는 웹소켓으로 전송됩니다.",
+        "message": "Registration process has started. Results will be sent via WebSocket.",
         "request_id": request_id
     }
 

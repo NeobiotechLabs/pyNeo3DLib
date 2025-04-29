@@ -137,12 +137,12 @@ class Neo3DRegistration:
         
 
     def __verify_file_info(self):
-            # ios 검사
+        # Check ios
         ios_data = self.parsed_json.get("ios")
         if ios_data is None:
             raise ValueError("ios is not defined")
         
-        # ios 내부 데이터 검사
+        # Check ios internal data
         for ios in ios_data:
             sub_type = ios.get("subType")
             if sub_type == "smileArch":
@@ -154,11 +154,11 @@ class Neo3DRegistration:
             else:
                 raise ValueError(f"Unknown subType: {sub_type}")
 
-    # facescan 검사
+        # Check facescan
         if self.parsed_json.get("facescan") is None:
             raise ValueError("facescan is not defined")
         
-        # cbct 검사
+        # Check cbct
         if self.parsed_json.get("cbct") is None:
             raise ValueError("cbct is not defined")
 
@@ -168,7 +168,7 @@ class Neo3DRegistration:
         for ios in ios_data:
             if ios["subType"] == "smileArch":
                 print(f'ios["path"]: {ios["path"]}')
-                # 이제 이 파일과. 라미네이트 모델을 정합한다. 
+                # Now register this file with the laminate model
                 ios_laminate_registration = IOSLaminateRegistration(ios["path"], LAMINATE_PATH, visualize)
                 return ios_laminate_registration.run_registration()
 
@@ -194,7 +194,7 @@ class Neo3DRegistration:
         for facescan in facescan_data:
             if facescan["subType"] == "smile":
                 print(f'facescan["path"]: {facescan["path"]}')
-                # 이제 이 파일과. 라미네이트 모델을 정합한다. 
+                # Now register this file with the laminate model
                 facescan_laminate_registration = FaceLaminateRegistration(facescan["path"], LAMINATE_PATH, visualize)
                 return facescan_laminate_registration.run_registration()
 
