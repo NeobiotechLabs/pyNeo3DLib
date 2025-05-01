@@ -106,8 +106,28 @@ class IOSLaminateRegistration:
         print(self.transform_matrix)
 
         # 7. ICP registration
-        transformed_mesh, fast_registration_transform_matrix = self.fast_registration(aligned_laminate_mesh, self.laminate_mesh)
-
+        # 시각화가 활성화된 경우 Open3D visualizer 생성
+        vis = None
+        if self.visualization:
+            import open3d as o3d
+            vis = o3d.visualization.Visualizer()
+            vis.create_window(window_name='ICP Registration', width=1280, height=720)
+            opt = vis.get_render_option()
+            opt.background_color = np.asarray([0.9, 0.9, 0.9])
+            opt.point_size = 2.0
+            
+            # 카메라 설정
+            ctr = vis.get_view_control()
+            ctr.set_zoom(0.8)
+            ctr.set_front([0, -1, 0])  # -y 방향으로 뷰
+            ctr.set_up([0, 0, 1])      # z축이 위쪽
+            
+            # 카메라 설정 적용
+            vis.poll_events()
+            vis.update_renderer()
+        
+        transformed_mesh, fast_registration_transform_matrix = self.fast_registration(aligned_laminate_mesh, self.laminate_mesh, vis)
+        
         print("\n=== 5. ICP transformation matrix ===")
         print(fast_registration_transform_matrix)
 
@@ -461,7 +481,7 @@ class IOSLaminateRegistration:
         
         # 5. Set angle range (range adjustment possible here)
         vertical_angle = 2  # Vertical angle range
-        horizontal_angle = 45  # Horizontal angle range
+        horizontal_angle = 37  # Horizontal angle range
         min_y_component = 0.80  # Minimum y-component value (cos(approximately 30 degrees))
         
         # 6. Calculate x and z component values
@@ -704,7 +724,7 @@ class IOSLaminateRegistration:
             current_distance = np.linalg.norm(vertices[current_vertex] - seed_center)
             
             # Find nearby points
-            distances, neighbors = tree.query(vertices[current_vertex], k=20)  # k=20에서 k=10으로 줄임
+            distances, neighbors = tree.query(vertices[current_vertex], k=10)  # k=20에서 k=10으로 줄임
             
             for i, neighbor_idx in enumerate(neighbors):
                 if neighbor_idx >= len(vertices) or selected_vertices[neighbor_idx] or in_queue[neighbor_idx]:
@@ -752,12 +772,155 @@ class IOSLaminateRegistration:
         
         print(f"  - Result mesh creation completed: {time.time() - result_start_time:.2f} seconds")
         
-        print("=== Region Growing completed ===")
-        print(f"Number of selected vertices: {len(used_vertices)}")
-        print(f"Number of selected faces: {len(selected_faces)}")
-        print(f"Total time taken: {time.time() - start_time:.2f} seconds\n")
+        # 상단 10% 제거 (z축 기준)
+        top_removal_start_time = time.time()
         
-        return grown_mesh
+        try:
+            # 1. 원본 메시 백업
+            print(f"  - 상단 20% 제거 시작: 원본 메시 정점 수 = {len(grown_mesh.vertices)}, 면 수 = {len(grown_mesh.faces)}")
+            original_grown_mesh = copy.deepcopy(grown_mesh)
+            
+            # 2. 메시의 z 좌표 범위 계산
+            z_coords = grown_mesh.vertices[:, 2]  # z 좌표만 추출
+            z_min, z_max = np.min(z_coords), np.max(z_coords)
+            z_range = z_max - z_min
+            
+            # 3. 상단 20%에 해당하는 z 좌표 임계값 계산
+            z_threshold = z_max - (z_range * 0.3)
+            print(f"  - Z 좌표 범위: {z_min:.2f} ~ {z_max:.2f}, 임계값: {z_threshold:.2f}")
+            
+            # 4. z 좌표가 임계값보다 낮은 정점만 선택 (상단 20% 제외)
+            keep_vertices_mask = z_coords < z_threshold
+            selected_count = np.sum(keep_vertices_mask)
+            
+            print(f"  - 상단 20% 제거 후 남은 정점 수: {selected_count} / {len(z_coords)}")
+            
+            # 5. 선택된 정점 수 확인 - 최소 정점 수는 메시 크기에 비례하도록 설정
+            min_vertices = max(100, int(len(grown_mesh.vertices) * 0.3))  # 최소한 원본 메시의 30% 이상이 남아야 함
+            
+            if selected_count < min_vertices:
+                print(f"  - 경고: 상단 20% 제거 후 남은 정점이 너무 적습니다 ({selected_count} < {min_vertices}). 원본 메시를 사용합니다.")
+                print(f"  - 상단 20% 제거 시간: {time.time() - top_removal_start_time:.2f}초")
+                
+                print("=== Region Growing completed ===")
+                print(f"Number of selected vertices: {len(used_vertices)}")
+                print(f"Number of selected faces: {len(selected_faces)}")
+                print(f"Total time taken: {time.time() - start_time:.2f} seconds\n")
+                
+                return grown_mesh  # 원본 메시 반환
+            
+            # 6. 선택된 정점만 유지
+            print(f"  - 새 정점 배열 생성 중...")
+            new_vertices = grown_mesh.vertices[keep_vertices_mask]
+            if grown_mesh.normals is not None:
+                new_normals = grown_mesh.normals[keep_vertices_mask]
+            print(f"  - 새 정점 배열 생성 완료: {len(new_vertices)} 정점")
+            
+            # 7. 원래 정점 인덱스와 새로운 인덱스 간 매핑 생성
+            print(f"  - 정점 인덱스 매핑 생성 중...")
+            old_to_new_idx = np.full(len(grown_mesh.vertices), -1, dtype=np.int32)
+            old_to_new_idx[keep_vertices_mask] = np.arange(np.sum(keep_vertices_mask))
+            print(f"  - 정점 인덱스 매핑 생성 완료")
+            
+            # 8. 유지된 정점에 대한 페이스만 유지
+            print(f"  - 새 페이스 배열 생성 중... 총 {len(grown_mesh.faces)} 개의 페이스 처리")
+            new_faces = []
+            valid_faces = 0
+            
+            # 처리 중인 면의 개수를 주기적으로 출력하여 진행 상황 추적
+            total_faces = len(grown_mesh.faces)
+            checkpoint = max(1, total_faces // 10)  # 10% 단위로 진행 상황 출력
+            
+            for i, face in enumerate(grown_mesh.faces):
+                if i % checkpoint == 0:
+                    print(f"  - 페이스 처리 중: {i}/{total_faces} ({i/total_faces*100:.1f}%)")
+                
+                # 모든 정점이 유지되는 페이스만 선택
+                if all(v < len(keep_vertices_mask) for v in face):  # 인덱스 범위 확인
+                    if all(keep_vertices_mask[v] for v in face):
+                        # 정점 인덱스 업데이트
+                        try:
+                            new_face = [old_to_new_idx[v] for v in face]
+                            if all(idx != -1 for idx in new_face):  # 모든 인덱스가 유효한지 확인
+                                new_faces.append(new_face)
+                                valid_faces += 1
+                        except Exception as e:
+                            print(f"  - 경고: 페이스 {i}, 정점 {face}의 인덱스 변환 중 오류: {e}")
+            
+            print(f"  - 새 페이스 배열 생성 완료: {len(new_faces)} 페이스 (유효: {valid_faces})")
+            
+            # 9. 페이스 수 확인
+            min_faces = max(50, int(len(grown_mesh.faces) * 0.3))  # 최소한 원본 메시의 30% 이상이 남아야 함
+            
+            if len(new_faces) < min_faces:
+                print(f"  - 경고: 상단 20% 제거 후 남은 페이스가 너무 적습니다 ({len(new_faces)} < {min_faces}). 원본 메시를 사용합니다.")
+                print(f"  - 상단 20% 제거 시간: {time.time() - top_removal_start_time:.2f}초")
+                
+                print("=== Region Growing completed ===")
+                print(f"Number of selected vertices: {len(used_vertices)}")
+                print(f"Number of selected faces: {len(selected_faces)}")
+                print(f"Total time taken: {time.time() - start_time:.2f} seconds\n")
+                
+                return grown_mesh  # 원본 메시 반환
+            
+            # 10. numpy 배열로 변환
+            print(f"  - 페이스 배열을 numpy로 변환 중...")
+            if len(new_faces) > 0:
+                new_faces = np.array(new_faces)
+                print(f"  - 페이스 배열 변환 완료: 형태 {new_faces.shape}")
+            else:
+                print(f"  - 경고: 변환할 페이스가 없습니다. 원본 메시를 사용합니다.")
+                
+                print("=== Region Growing completed ===")
+                print(f"Number of selected vertices: {len(used_vertices)}")
+                print(f"Number of selected faces: {len(selected_faces)}")
+                print(f"Total time taken: {time.time() - start_time:.2f} seconds\n")
+                
+                return grown_mesh  # 원본 메시 반환
+            
+            # 11. 새로운 메시 생성
+            print(f"  - 새 메시 객체 생성 중...")
+            top_removed_mesh = Mesh()
+            top_removed_mesh.vertices = new_vertices
+            top_removed_mesh.faces = new_faces
+            if grown_mesh.normals is not None:
+                top_removed_mesh.normals = new_normals
+            print(f"  - 새 메시 객체 생성 완료")
+            
+            print(f"  - 상단 20% 제거 완료: 정점 {len(grown_mesh.vertices)} -> {len(new_vertices)}")
+            print(f"  - 상단 20% 제거 완료: 면 {len(grown_mesh.faces)} -> {len(new_faces)}")
+            print(f"  - 상단 20% 제거 시간: {time.time() - top_removal_start_time:.2f}초")
+            
+            # 12. 메시 일관성 검사
+            print(f"  - 메시 일관성 검사 중...")
+            if (len(top_removed_mesh.vertices) > 0 and len(top_removed_mesh.faces) > 0 and 
+                np.max(top_removed_mesh.faces) < len(top_removed_mesh.vertices)):
+                print(f"  - 메시 일관성 검사 통과")
+                result_mesh = top_removed_mesh
+            else:
+                print(f"  - 경고: 메시 일관성 검사 실패. 원본 메시를 사용합니다.")
+                result_mesh = grown_mesh
+            
+            print("=== Region Growing completed ===")
+            print(f"Number of selected vertices: {len(used_vertices)}")
+            print(f"Number of selected faces: {len(selected_faces)}")
+            print(f"Total time taken: {time.time() - start_time:.2f} seconds\n")
+            
+            return result_mesh
+            
+        except Exception as e:
+            import traceback
+            print(f"  - 오류: 상단 20% 제거 중 예외 발생: {str(e)}")
+            print(f"  - 상세 오류: {traceback.format_exc()}")
+            print(f"  - 상단 20% 제거 실패. 원본 메시를 사용합니다.")
+            print(f"  - 상단 20% 제거 시간: {time.time() - top_removal_start_time:.2f}초")
+            
+            print("=== Region Growing completed ===")
+            print(f"Number of selected vertices: {len(used_vertices)}")
+            print(f"Number of selected faces: {len(selected_faces)}")
+            print(f"Total time taken: {time.time() - start_time:.2f} seconds\n")
+            
+            return grown_mesh  # 원본 메시 반환
     
     def move_mask_to_origin(self, mask_mesh):
         """
@@ -772,64 +935,88 @@ class IOSLaminateRegistration:
             aligned_mesh: Moved Mesh object
             translation_matrix: Applied transformation matrix
         """
-        vertices = mask_mesh.vertices
-        faces = mask_mesh.faces
+        import time
+        move_start_time = time.time()
         
-        # 1. Find the largest value in the y direction (point with the largest +y value)
-        max_y = np.max(vertices[:, 1])
+        print(f"\n=== Starting move_mask_to_origin ===")
+        print(f"Input mesh: {len(mask_mesh.vertices)} 정점, {len(mask_mesh.faces)} 면")
         
-        # 2. Find the smallest value in the z direction (point with the smallest -z value)
-        min_z = np.min(vertices[:, 2])
-        
-        # 3. Calculate translation vector
-        # y=0 is needed by moving -max_y
-        # z=0 is needed by moving -min_z
-        translation = np.array([0, -max_y, -min_z])
-        
-        print(f"[Log] Translation vector: {translation}")
-        
-        # 4. Move vertices
-        aligned_vertices = vertices + translation
-        
-        # 5. Create new mesh
-        aligned_mesh = Mesh()
-        aligned_mesh.vertices = aligned_vertices
-        aligned_mesh.faces = faces
-        if mask_mesh.normals is not None:
-            aligned_mesh.normals = mask_mesh.normals
-        
-        # 6. Create transformation matrix and update
-        translation_matrix = np.eye(4)
-        translation_matrix[:3, 3] = translation
-        
-        # Add new transformation to existing transformation matrix
-        self.transform_matrix = np.dot(translation_matrix, self.transform_matrix)
-        
-        print(f"[Log] Mesh movement completed")
-        print(f"  - Y range before movement: [{np.min(vertices[:, 1]):.2f}, {np.max(vertices[:, 1]):.2f}]")
-        print(f"  - Y range after movement: [{np.min(aligned_vertices[:, 1]):.2f}, {np.max(aligned_vertices[:, 1]):.2f}]")
-        print(f"  - Z range before movement: [{np.min(vertices[:, 2]):.2f}, {np.max(vertices[:, 2]):.2f}]")
-        print(f"  - Z range after movement: [{np.min(aligned_vertices[:, 2]):.2f}, {np.max(aligned_vertices[:, 2]):.2f}]")
-        
-        return aligned_mesh, translation_matrix
+        try:
+            # 메시 검증
+            if len(mask_mesh.vertices) == 0 or len(mask_mesh.faces) == 0:
+                print(f"경고: 빈 메시가 입력되었습니다. 원본 메시를 반환합니다.")
+                return mask_mesh, np.eye(4)
+                
+            vertices = mask_mesh.vertices
+            faces = mask_mesh.faces
+            
+            # 1. Find the largest value in the y direction (point with the largest +y value)
+            max_y = np.max(vertices[:, 1])
+            
+            # 2. Find the smallest value in the z direction (point with the smallest -z value)
+            min_z = np.min(vertices[:, 2])
+            
+            # 3. Calculate translation vector
+            # y=0 is needed by moving -max_y
+            # z=0 is needed by moving -min_z
+            translation = np.array([0, -max_y, -min_z])
+            
+            print(f"[Log] Translation vector: {translation}")
+            
+            # 4. Move vertices
+            aligned_vertices = vertices + translation
+            
+            # 5. Create new mesh
+            aligned_mesh = Mesh()
+            aligned_mesh.vertices = aligned_vertices
+            aligned_mesh.faces = faces
+            if mask_mesh.normals is not None:
+                aligned_mesh.normals = mask_mesh.normals
+            
+            # 6. Create transformation matrix and update
+            translation_matrix = np.eye(4)
+            translation_matrix[:3, 3] = translation
+            
+            # Add new transformation to existing transformation matrix
+            self.transform_matrix = np.dot(translation_matrix, self.transform_matrix)
+            
+            print(f"[Log] Mesh movement completed")
+            print(f"  - Y range before movement: [{np.min(vertices[:, 1]):.2f}, {np.max(vertices[:, 1]):.2f}]")
+            print(f"  - Y range after movement: [{np.min(aligned_vertices[:, 1]):.2f}, {np.max(aligned_vertices[:, 1]):.2f}]")
+            print(f"  - Z range before movement: [{np.min(vertices[:, 2]):.2f}, {np.max(vertices[:, 2]):.2f}]")
+            print(f"  - Z range after movement: [{np.min(aligned_vertices[:, 2]):.2f}, {np.max(aligned_vertices[:, 2]):.2f}]")
+            print(f"=== move_mask_to_origin 완료: {time.time() - move_start_time:.2f}초 ===\n")
+            
+            return aligned_mesh, translation_matrix
+            
+        except Exception as e:
+            import traceback
+            print(f"오류: move_mask_to_origin 중 예외 발생: {str(e)}")
+            print(f"상세 오류: {traceback.format_exc()}")
+            print(f"=== move_mask_to_origin 실패: {time.time() - move_start_time:.2f}초 ===\n")
+            
+            # 실패 시 원본 메시와 단위 변환 행렬 반환
+            return mask_mesh, np.eye(4)
 
     def fast_registration(self, source_mesh, target_mesh, vis=None):
-        if self.visualization:
-            return self.fast_registration_with_vis(source_mesh, target_mesh, vis)
-        else:
-            return self.fast_registration_without_vis(source_mesh, target_mesh, vis)
-
-    def fast_registration_without_vis(self, source_mesh, target_mesh, vis=None):
         """
-        Perform ICP registration in 3 steps and visualize the process.
+        메쉬 등록(registration) 작업을 수행하는 통합 함수입니다.
+        여러 초기 위치(현재 위치, x축 +10, x축 -10)에서 ICP를 실행하고
+        가장 적합도가 높은 결과를 반환합니다.
+        
+        Args:
+            source_mesh: 소스 메쉬
+            target_mesh: 타겟 메쉬
+            vis: 시각화 객체 (None인 경우 시각화 없음)
+            
         Returns:
-            transformed_source_mesh: Transformed source mesh
-            transform_matrix: Applied transformation matrix
+            transformed_source_mesh: 변환된 소스 메쉬
+            current_transform: 적용된 변환 행렬
         """
-        import open3d as o3d
         import copy
-        import time
         import numpy as np
+        import open3d as o3d
+        import time
         
         # Mesh to Open3D PointCloud conversion
         def mesh_to_pointcloud(mesh):
@@ -837,7 +1024,7 @@ class IOSLaminateRegistration:
             pcd = o3d.geometry.PointCloud()
             pcd.points = o3d.utility.Vector3dVector(mesh.vertices)
             
-            # 2. Normal vector processing
+            # 2. Normal vector assignment or calculation
             if mesh.normals is not None:
                 pcd.normals = o3d.utility.Vector3dVector(mesh.normals)
             else:
@@ -853,317 +1040,223 @@ class IOSLaminateRegistration:
             )
             pcd.orient_normals_consistent_tangent_plane(k=100)
             
-            pcd.uniform_down_sample(every_k_points=2)
+            return pcd.uniform_down_sample(every_k_points=2)
+        
+        # 단일 위치에서 ICP 실행 함수
+        def run_icp_from_initial_position(source, target, initial_transform, visualizer=None):
+            """단일 초기 위치에서 3단계 ICP를 실행하는 함수"""
+            current_transform = copy.deepcopy(initial_transform)
+            source_pcd = None
+            target_pcd = None
+            total_iterations = 0  # 총 반복 횟수 카운터
             
-            return pcd
+            # 시각화 설정
+            if visualizer is not None:
+                source_pcd = copy.deepcopy(source)
+                source_pcd.paint_uniform_color([1, 0, 0])
+                
+                target_pcd = copy.deepcopy(target)
+                target_pcd.paint_uniform_color([0, 0, 1])
+                
+                # 시각화에 포인트 클라우드 추가
+                visualizer.clear_geometries()
+                
+                # 변환된 소스 추가
+                source_transformed = copy.deepcopy(source)
+                source_transformed.transform(current_transform)
+                source_transformed.paint_uniform_color([1, 0, 0])
+                
+                visualizer.add_geometry(source_transformed)
+                visualizer.add_geometry(target_pcd)
+                visualizer.poll_events()
+                visualizer.update_renderer()
+            
+            # 1단계: 거친 정렬 (coarse alignment)
+            print(f"  1단계 ICP 시작...")
+            for iteration in range(1000):
+                result = o3d.pipelines.registration.registration_icp(
+                    source, target,
+                    2.0,  # Distance threshold
+                    current_transform,
+                    o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+                    o3d.pipelines.registration.ICPConvergenceCriteria(
+                        relative_fitness=1e-7,
+                        relative_rmse=1e-7,
+                        max_iteration=1
+                    )
+                )
+                
+                total_iterations += 1  # 반복 횟수 증가
+                
+                # 시각화 업데이트
+                if visualizer is not None and source_pcd is not None and target_pcd is not None:
+                    source_transformed = copy.deepcopy(source)
+                    source_transformed.transform(current_transform)
+                    source_transformed.paint_uniform_color([1, 0, 0])
+                    
+                    visualizer.clear_geometries()
+                    visualizer.add_geometry(source_transformed)
+                    visualizer.add_geometry(target_pcd)
+                    visualizer.poll_events()
+                    visualizer.update_renderer()
+                
+                if np.allclose(result.transformation, current_transform, atol=1e-6):
+                    print(f"    1단계 수렴 (반복 {iteration})")
+                    break
+                    
+                current_transform = result.transformation
+            
+            # 2단계: 중간 정렬 (medium alignment)
+            print(f"  2단계 ICP 시작...")
+            for iteration in range(1000):
+                result = o3d.pipelines.registration.registration_icp(
+                    source, target,
+                    0.5,  # Distance threshold
+                    current_transform,
+                    o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+                    o3d.pipelines.registration.ICPConvergenceCriteria(
+                        relative_fitness=1e-7,
+                        relative_rmse=1e-7,
+                        max_iteration=1
+                    )
+                )
+                
+                total_iterations += 1  # 반복 횟수 증가
+                
+                # 시각화 업데이트
+                if visualizer is not None and source_pcd is not None and target_pcd is not None:
+                    source_transformed = copy.deepcopy(source)
+                    source_transformed.transform(current_transform)
+                    source_transformed.paint_uniform_color([1, 0, 0])
+                    
+                    visualizer.clear_geometries()
+                    visualizer.add_geometry(source_transformed)
+                    visualizer.add_geometry(target_pcd)
+                    visualizer.poll_events()
+                    visualizer.update_renderer()
+                
+                if np.allclose(result.transformation, current_transform, atol=1e-6):
+                    print(f"    2단계 수렴 (반복 {iteration})")
+                    break
+                    
+                current_transform = result.transformation
+            
+            # 3단계: 정밀 정렬 (fine alignment)
+            print(f"  3단계 ICP 시작...")
+            for iteration in range(1000):
+                result = o3d.pipelines.registration.registration_icp(
+                    source, target,
+                    0.01,  # Distance threshold
+                    current_transform,
+                    o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+                    o3d.pipelines.registration.ICPConvergenceCriteria(
+                        relative_fitness=1e-8,
+                        relative_rmse=1e-8,
+                        max_iteration=1
+                    )
+                )
+                
+                total_iterations += 1  # 반복 횟수 증가
+                
+                # 시각화 업데이트
+                if visualizer is not None and source_pcd is not None and target_pcd is not None:
+                    source_transformed = copy.deepcopy(source)
+                    source_transformed.transform(current_transform)
+                    source_transformed.paint_uniform_color([1, 0, 0])
+                    
+                    visualizer.clear_geometries()
+                    visualizer.add_geometry(source_transformed)
+                    visualizer.add_geometry(target_pcd)
+                    visualizer.poll_events()
+                    visualizer.update_renderer()
+                
+                if np.allclose(result.transformation, current_transform, atol=1e-6):
+                    print(f"    3단계 수렴 (반복 {iteration})")
+                    break
+                    
+                current_transform = result.transformation
+            
+            print(f"  총 반복 횟수: {total_iterations}, 최종 적합도: {result.fitness:.6f}")
+            return current_transform, result.fitness, total_iterations
         
         # Mesh to PointCloud conversion
-        print("\nConverting Mesh to PointCloud...")
+        print("\n메쉬를 포인트 클라우드로 변환 중...")
         source = mesh_to_pointcloud(source_mesh)
         target = mesh_to_pointcloud(target_mesh)
         
-        # ICP execution
-        print("\nStarting 1st ICP registration...")
-        current_transform = np.eye(4)
+        # 서로 다른 초기 위치 설정
+        initial_positions = []
         
-        for iteration in range(1000):
-            result = o3d.pipelines.registration.registration_icp(
-                source, target,
-                3.0,  # Distance threshold
-                current_transform,
-                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-                o3d.pipelines.registration.ICPConvergenceCriteria(
-                    relative_fitness=1e-7,
-                    relative_rmse=1e-7,
-                    max_iteration=1
-                )
-            )
-            
-            if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
-                break
-                
-            current_transform = result.transformation
+        # 1. 현재 위치
+        current_position = np.eye(4)
+        initial_positions.append(("현재 위치", current_position))
         
-        print("Starting 2nd ICP registration...")
-        for iteration in range(1000):
-            result = o3d.pipelines.registration.registration_icp(
-                source, target,
-                0.5,  # Distance threshold
-                current_transform,
-                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-                o3d.pipelines.registration.ICPConvergenceCriteria(
-                    relative_fitness=1e-7,
-                    relative_rmse=1e-7,
-                    max_iteration=1
-                )
-            )
-            
-            
-            if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
-                break
-                
-            current_transform = result.transformation
+        # 2. x축 방향 +10 이동
+        x_plus_position = np.eye(4)
+        x_plus_position[0, 3] = 10.0  # x축 방향으로 +10 이동
+        initial_positions.append(("X축 +10 위치", x_plus_position))
         
-        print("Starting 3rd ICP registration...")
-        for iteration in range(1000):
-            result = o3d.pipelines.registration.registration_icp(
-                source, target,
-                0.01,  # Distance threshold
-                current_transform,
-                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-                o3d.pipelines.registration.ICPConvergenceCriteria(
-                    relative_fitness=1e-8,
-                    relative_rmse=1e-8,
-                    max_iteration=1
-                )
-            )
-            
-            
-            if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
-                break
-                
-            current_transform = result.transformation
+        # 3. x축 방향 -10 이동
+        x_minus_position = np.eye(4)
+        x_minus_position[0, 3] = -10.0  # x축 방향으로 -10 이동
+        initial_positions.append(("X축 -10 위치", x_minus_position))
         
-        print("\n=== Registration completed ===")
-        print(f"Final fitness: {result.fitness:.6f}")
+        # 각 초기 위치에서 ICP 실행 결과 저장
+        results = []
         
-        # Create transformed source mesh
+        for position_name, initial_transform in initial_positions:
+            print(f"\n=== {position_name}에서 ICP 등록 시작 ===")
+            transform, fitness, total_iterations = run_icp_from_initial_position(source, target, initial_transform, vis)
+            results.append((position_name, transform, fitness, total_iterations))
+            print(f"=== {position_name} 적합도: {fitness:.6f}, 반복 횟수: {total_iterations} ===")
+        
+        # 결과가 없는 경우 처리
+        if not results:
+            print("\n=== 경고: 유효한 등록 결과가 없습니다. 기본 위치 사용 ===")
+            return source_mesh, np.eye(4)
+            
+        # 적합도 기반 최고 결과
+        best_by_fitness = max(results, key=lambda x: x[2])
+        best_fitness_position, best_fitness_transform, best_fitness, best_fitness_iterations = best_by_fitness
+        
+        # 반복 횟수 기반 최고 결과
+        best_by_iterations = min(results, key=lambda x: x[3])
+        best_iterations_position, best_iterations_transform, best_iterations_fitness, best_iterations = best_by_iterations
+        
+        # 적합도가 비슷한 경우 (상대 차이가 5% 이내) 반복 횟수가 적은 결과 선택
+        fitness_threshold = 0.05  # 5% 임계값
+        fitness_diff_ratio = abs(best_fitness - best_iterations_fitness) / max(best_fitness, 1e-10)
+        
+        if fitness_diff_ratio < fitness_threshold:
+            print(f"\n적합도 차이가 작음 ({fitness_diff_ratio:.2%}). 반복 횟수가 적은 결과 선택.")
+            best_result = best_by_iterations
+            best_position_name, best_transform, best_fitness, best_iterations = best_result
+            print(f"\n=== 최종 결과 선택: {best_position_name} (적합도: {best_fitness:.6f}, 반복 횟수: {best_iterations}) ===")
+        else:
+            best_result = best_by_fitness
+            best_position_name, best_transform, best_fitness, best_iterations = best_result
+            print(f"\n=== 최종 결과 선택: {best_position_name} (적합도: {best_fitness:.6f}, 반복 횟수: {best_iterations}) ===")
+        
+        # 시각화 창 유지 (필요한 경우)
+        if vis is not None:
+            print("시각화 창을 닫으려면 창을 닫으세요...")
+            try:
+                while True:
+                    if not vis.poll_events():
+                        break
+                    vis.update_renderer()
+                    time.sleep(0.1)
+            except:
+                print("시각화가 중단되었습니다.")
+        
+        # 변환된 소스 메쉬 생성
         transformed_source_mesh = copy.deepcopy(source_mesh)
         transformed_source_mesh.vertices = np.dot(
             source_mesh.vertices,
-            current_transform[:3, :3].T
-        ) + current_transform[:3, 3]
+            best_transform[:3, :3].T
+        ) + best_transform[:3, 3]
         
-        return transformed_source_mesh, current_transform
-
-
-
-    def fast_registration_with_vis(self, source_mesh, target_mesh, vis=None):
-        """
-        Perform ICP registration in 3 steps and visualize the process.
-        Returns:
-            transformed_source_mesh: Transformed source mesh
-            transform_matrix: Applied transformation matrix
-        """
-        import open3d as o3d
-        import copy
-        import time
-        import numpy as np
-        
-        # Mesh to Open3D PointCloud conversion
-        def mesh_to_pointcloud(mesh):
-            # 1. Create point cloud
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(mesh.vertices)
-            
-            # 2. Normal vector processing
-            if mesh.normals is not None:
-                pcd.normals = o3d.utility.Vector3dVector(mesh.normals)
-            else:
-                temp_mesh = o3d.geometry.TriangleMesh()
-                temp_mesh.vertices = o3d.utility.Vector3dVector(mesh.vertices)
-                temp_mesh.triangles = o3d.utility.Vector3iVector(mesh.faces)
-                temp_mesh.compute_vertex_normals()
-                pcd.normals = temp_mesh.vertex_normals
-            
-            # 3. Normal vector estimation and consistency check
-            pcd.estimate_normals(
-                search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30)
-            )
-            pcd.orient_normals_consistent_tangent_plane(k=100)
-            
-            pcd.uniform_down_sample(every_k_points=2)
-            
-            return pcd
-        
-        # Create visualization window
-        if vis is None:
-            vis = o3d.visualization.Visualizer()
-            vis.create_window(window_name='Registration', width=1280, height=720)
-            opt = vis.get_render_option()
-            opt.background_color = np.asarray([0.9, 0.9, 0.9])
-            opt.point_size = 2.0
-            
-            # Camera setting (+y direction to -y direction view)
-            ctr = vis.get_view_control()
-            ctr.set_zoom(0.8)
-            ctr.set_front([0, -1, 0])  # View -y direction
-            ctr.set_up([0, 0, 1])      # z-axis is up
-            
-            # Force camera setting application
-            vis.poll_events()
-            vis.update_renderer()
-            time.sleep(0.1)
-        
-        
-        # Converting Mesh to PointCloud
-        print("\nConverting Mesh to PointCloud...")
-        source = mesh_to_pointcloud(source_mesh)
-        target = mesh_to_pointcloud(target_mesh)
-        
-        # Set source to red, target to blue
-        source.paint_uniform_color([1, 0, 0])
-        target.paint_uniform_color([0, 0, 1])
-        
-        # Visualize initial state
-        vis.clear_geometries()
-        vis.add_geometry(source)
-        vis.add_geometry(target)
-        
-        # Reset camera view
-        ctr = vis.get_view_control()
-        ctr.set_zoom(0.8)
-        ctr.set_front([0, -1, 0])
-        ctr.set_up([0, 0, 1])
-        
-        vis.poll_events()
-        vis.update_renderer()
-        time.sleep(1)
-        
-        # Execute ICP
-        print("\nStarting 1st ICP registration...")
-        current_transform = np.eye(4)
-        
-        for iteration in range(1000):
-            result = o3d.pipelines.registration.registration_icp(
-                source, target,
-                3.0,  # Distance threshold
-                current_transform,
-                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-                o3d.pipelines.registration.ICPConvergenceCriteria(
-                    relative_fitness=1e-6,
-                    relative_rmse=1e-6,
-                    max_iteration=1
-                )
-            )
-            
-            if iteration % 20 == 0:  # Visualize every iteration
-                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
-                
-                # Update visualization
-                source_temp = copy.deepcopy(source)
-                source_temp.transform(result.transformation)
-                vis.clear_geometries()
-                vis.add_geometry(source_temp)
-                vis.add_geometry(target)
-                
-                # Reset camera view every iteration
-                ctr = vis.get_view_control()
-                ctr.set_zoom(0.8)
-                ctr.set_front([0, -1, 0])
-                ctr.set_up([0, 0, 1])
-                
-                vis.poll_events()
-                vis.update_renderer()
-                time.sleep(0.05)  # Control animation speed
-            
-            if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
-                break
-                
-            current_transform = result.transformation
-        
-        print("Starting 2nd ICP registration...")
-        for iteration in range(1000):
-            result = o3d.pipelines.registration.registration_icp(
-                source, target,
-                0.3,  # Distance threshold
-                current_transform,
-                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-                o3d.pipelines.registration.ICPConvergenceCriteria(
-                    relative_fitness=1e-6,
-                    relative_rmse=1e-6,
-                    max_iteration=1
-                )
-            )
-            
-            if iteration % 20 == 0:  # Visualize every iteration
-                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
-                
-                # Update visualization
-                source_temp = copy.deepcopy(source)
-                source_temp.transform(result.transformation)
-                vis.clear_geometries()
-                vis.add_geometry(source_temp)
-                vis.add_geometry(target)
-                
-                # Reset camera view every iteration
-                ctr = vis.get_view_control()
-                ctr.set_zoom(0.8)
-                ctr.set_front([0, -1, 0])
-                ctr.set_up([0, 0, 1])
-                
-                vis.poll_events()
-                vis.update_renderer()
-                time.sleep(0.05)  # Control animation speed
-            
-            if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
-                break
-                
-            current_transform = result.transformation
-        
-        print("Starting 3rd ICP registration...")
-        for iteration in range(1000):
-            result = o3d.pipelines.registration.registration_icp(
-                source, target,
-                0.05,  # Distance threshold
-                current_transform,
-                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-                o3d.pipelines.registration.ICPConvergenceCriteria(
-                    relative_fitness=1e-8,
-                    relative_rmse=1e-8,
-                    max_iteration=1
-                )
-            )
-            
-            if iteration % 20 == 0:  # Visualize every iteration
-                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
-                
-                # Update visualization
-                source_temp = copy.deepcopy(source)
-                source_temp.transform(result.transformation)
-                vis.clear_geometries()
-                vis.add_geometry(source_temp)
-                vis.add_geometry(target)
-                
-                # Reset camera view every iteration
-                ctr = vis.get_view_control()
-                ctr.set_zoom(0.8)
-                ctr.set_front([0, -1, 0])
-                ctr.set_up([0, 0, 1])
-                
-                vis.poll_events()
-                vis.update_renderer()
-                time.sleep(0.05)  # Control animation speed
-            
-            if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
-                break
-                
-            current_transform = result.transformation
-        
-        print("\n=== Registration completed ===")
-        print(f"Final fitness: {result.fitness:.6f}")
-        
-        # Keep visualization window open and allow mouse interaction
-        while True:
-            if not vis.poll_events():
-                break
-            vis.update_renderer()
-            time.sleep(0.1)
-        
-        # Create transformed source mesh
-        transformed_source_mesh = copy.deepcopy(source_mesh)
-        transformed_source_mesh.vertices = np.dot(
-            source_mesh.vertices,
-            current_transform[:3, :3].T
-        ) + current_transform[:3, 3]
-        
-        return transformed_source_mesh, current_transform
+        return transformed_source_mesh, best_transform
 
 if __name__ == "__main__":
     ios_laminate_registration = IOSLaminateRegistration("../../example/data/ios_with_smilearch.stl", "../../example/data/smile_arch_half.stl", visualization=True)
