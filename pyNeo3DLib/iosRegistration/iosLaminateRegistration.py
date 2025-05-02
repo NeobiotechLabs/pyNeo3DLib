@@ -119,7 +119,7 @@ class IOSLaminateRegistration:
             # 카메라 설정
             ctr = vis.get_view_control()
             ctr.set_zoom(0.8)
-            ctr.set_front([0, -1, 0])  # -y 방향으로 뷰
+            ctr.set_front([0, 1, 0])  # +y 방향으로 뷰
             ctr.set_up([0, 0, 1])      # z축이 위쪽
             
             # 카메라 설정 적용
@@ -1068,6 +1068,13 @@ class IOSLaminateRegistration:
                 
                 visualizer.add_geometry(source_transformed)
                 visualizer.add_geometry(target_pcd)
+                
+                # 카메라 설정
+                ctr = visualizer.get_view_control()
+                ctr.set_zoom(0.8)
+                ctr.set_front([0, 1, 0])  # +y 방향으로 뷰
+                ctr.set_up([0, 0, 1])      # z축이 위쪽
+                
                 visualizer.poll_events()
                 visualizer.update_renderer()
             
@@ -1097,6 +1104,13 @@ class IOSLaminateRegistration:
                     visualizer.clear_geometries()
                     visualizer.add_geometry(source_transformed)
                     visualizer.add_geometry(target_pcd)
+                    
+                    # 카메라 설정 유지
+                    ctr = visualizer.get_view_control()
+                    ctr.set_zoom(0.8)
+                    ctr.set_front([0, 1, 0])  # +y 방향으로 뷰
+                    ctr.set_up([0, 0, 1])      # z축이 위쪽
+                    
                     visualizer.poll_events()
                     visualizer.update_renderer()
                 
@@ -1132,6 +1146,13 @@ class IOSLaminateRegistration:
                     visualizer.clear_geometries()
                     visualizer.add_geometry(source_transformed)
                     visualizer.add_geometry(target_pcd)
+                    
+                    # 카메라 설정 유지
+                    ctr = visualizer.get_view_control()
+                    ctr.set_zoom(0.8)
+                    ctr.set_front([0, 1, 0])  # +y 방향으로 뷰
+                    ctr.set_up([0, 0, 1])      # z축이 위쪽
+                    
                     visualizer.poll_events()
                     visualizer.update_renderer()
                 
@@ -1146,7 +1167,7 @@ class IOSLaminateRegistration:
             for iteration in range(1000):
                 result = o3d.pipelines.registration.registration_icp(
                     source, target,
-                    0.01,  # Distance threshold
+                    0.3,  # Distance threshold
                     current_transform,
                     o3d.pipelines.registration.TransformationEstimationPointToPoint(),
                     o3d.pipelines.registration.ICPConvergenceCriteria(
@@ -1167,6 +1188,13 @@ class IOSLaminateRegistration:
                     visualizer.clear_geometries()
                     visualizer.add_geometry(source_transformed)
                     visualizer.add_geometry(target_pcd)
+                    
+                    # 카메라 설정 유지
+                    ctr = visualizer.get_view_control()
+                    ctr.set_zoom(0.8)
+                    ctr.set_front([0, 1, 0])  # +y 방향으로 뷰
+                    ctr.set_up([0, 0, 1])      # z축이 위쪽
+                    
                     visualizer.poll_events()
                     visualizer.update_renderer()
                 

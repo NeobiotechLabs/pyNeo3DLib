@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>WebSocket Test</h1>
+    <button id="sendButton" onclick="sendMessage()"`>Send Message</button>
+    <div id="messages"></div>
+    <script>
+        const ws = new WebSocket("ws://localhost:8000/ws");
+        
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            const messagesDiv = document.getElementById("messages");
+            messagesDiv.innerHTML += `<p>Recieved Text: ${event.data}</p>`;
+
+            // 20% 확률로 메시지 전송
+            if (Math.random() < 0.1) {
+                ws.send(`Received message from server : ${data.random_text}`);
+                console.log("20% 확률로 메시지를 전송했습니다.");
+            } else {
+                console.log("이번에는 메시지를 전송하지 않았습니다.");
+            }
+        };
+
+        const sendMessage = () => {
+            ws.send("Hello, server!");
+        }
+    </script>
+</body>
+</html>
