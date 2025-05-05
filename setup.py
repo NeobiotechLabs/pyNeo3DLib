@@ -16,7 +16,7 @@ setup(
         "uvicorn",
         "pydantic",
         "scipy",
-        "mediapipe==0.10.21",
+        "mediapipe>=0.10.9",
         "open3d",
         "opencv-python"
     ],
