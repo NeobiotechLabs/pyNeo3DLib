@@ -3,6 +3,7 @@ fastapi
 uvicorn
 pydantic
 scipy
+msvc-runtime
 mediapipe
 open3d
 opencv-python
