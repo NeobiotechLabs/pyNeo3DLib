@@ -4,5 +4,6 @@ uvicorn
 pydantic
 scipy
 mediapipe
+msvc-runtime
 open3d
 opencv-python
