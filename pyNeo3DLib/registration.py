@@ -95,6 +95,7 @@ class Neo3DRegistration:
             ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist()
             )
         
+        await self.websocket.send_json(progress_event(type="progress", progress=100, message="All registration completed").get_json())
         await self.websocket.send_json(progress_event(type="result", progress=100, message=result).get_json())
         await asyncio.sleep(0.1)
         return result
