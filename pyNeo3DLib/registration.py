@@ -201,7 +201,7 @@ class Neo3DRegistration:
         print("facescan_laminate_registration")
         facescan_data = self.parsed_json["facescan"]
         for facescan in facescan_data:
-            if facescan["subType"] == "smile":
+            if facescan["subType"] == "faceSmile":
                 print(f'facescan["path"]: {facescan["path"]}')
                 # Now register this file with the laminate model
                 facescan_laminate_registration = FaceLaminateRegistration(facescan["path"], LAMINATE_PATH, visualize)
@@ -213,10 +213,10 @@ class Neo3DRegistration:
         rest_path = None
         retraction_path = None
         for facescan in facescan_data:
-            if facescan["subType"] == "rest":
+            if facescan["subType"] == "faceRest":
                 print(f'facescan["path"]: {facescan["path"]}')
                 rest_path = facescan["path"]
-            elif facescan["subType"] == "retraction":
+            elif facescan["subType"] == "faceRetraction":
                 print(f'facescan["path"]: {facescan["path"]}')
                 retraction_path = facescan["path"]
 
