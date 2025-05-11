@@ -132,11 +132,11 @@ class Neo3DRegistration:
                 ios["transform_matrix"] = ios_lower_result
             
         for facescan in self.parsed_json["facescan"]:
-            if facescan["subType"] == "smile":
+            if facescan["subType"] == "faceSmile":
                 facescan["transform_matrix"] = facescan_laminate_result
-            elif facescan["subType"] == "rest":
+            elif facescan["subType"] == "faceRest":
                 facescan["transform_matrix"] = facescan_rest_result
-            elif facescan["subType"] == "retraction":
+            elif facescan["subType"] == "faceRetraction":
                 facescan["transform_matrix"] = facescan_retraction_result
 
         self.parsed_json["cbct"]["transform_matrix"] = cbct_result

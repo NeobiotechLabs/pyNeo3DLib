@@ -18,15 +18,15 @@
     ],
     "facescan": [
         {
-            "subType": "smile",
+            "subType": "faceSmile",
             "path": "D:/Git/PyNeo3DLib/example/data/FaceScan/Smile/Smile.obj"
         },
         {
-            "subType": "rest",
+            "subType": "faceRest",
             "path": "D:/Git/PyNeo3DLib/example/data/FaceScan/Rest/Smile.obj"
         },
         {
-            "subType": "retraction",
+            "subType": "faceRetraction",
             "path": "D:/Git/PyNeo3DLib/example/data/FaceScan/Retraction/Smile.obj"
         }
     ],
