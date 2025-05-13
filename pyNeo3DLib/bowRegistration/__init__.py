@@ -1,3 +1,3 @@
-from .iosLaminateRegistration import *
+from .iosBowRegistration import *
 
-__all__ = ["iosLaminateRegistration"] 
+__all__ = ["iosBowRegistration"] 

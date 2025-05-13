@@ -3,6 +3,7 @@ from pyNeo3DLib.fileLoader.mesh import Mesh
 import copy
 from scipy.spatial import ConvexHull
 from pyNeo3DLib.visualization.neovis import visualize_meshes
+import time
 
 
 class IOSBowRegistration:
@@ -336,7 +337,9 @@ class IOSBowRegistration:
     def find_z_direction(self, mesh, upper_jaw=True):
         """
         Find the z-axis direction of the mesh.
-        The direction is determined based on the relative position of the weight center and OBB center.
+        The direction is determined based on the following criteria:
+        1. Relative position of the weight center and OBB center
+        2. Flatness analysis - flatter side should face downward (-z direction)
         
         Args:
             mesh: Mesh object
@@ -373,12 +376,159 @@ class IOSBowRegistration:
         # weight center is above OBB center if weight_up is True
         weight_up = weight_center[2] > obb_center[2]
         
-        # 3. Determine rotation based on upper_jaw and weight_up status
-        # Rotation needed if upper_jaw is True and weight_up is True (upper jaw and weight center above)
-        # Rotation needed if upper_jaw is False and weight_up is False (lower jaw and weight center below)
-        need_rotation = (upper_jaw and weight_up) or (not upper_jaw and not weight_up)
+        # 3. 평평한 면 분석 (Flatness analysis)
+        # 면의 법선 벡터를 계산하여 평평한 부분 판별 - 면적 가중치 적용 및 일관성 확보
+        print("평평한 면 분석 시작...")
+        start_time = time.time()
         
-        # 4. Create rotation matrix
+        # 최적화 1: 얼굴 수가 적으면 평평한 면 분석을 건너뛰기
+        if len(faces) < 100:
+            print(f"메쉬 면 개수가 적어({len(faces)}개) 기본 방법으로 방향 결정")
+            need_rotation = (upper_jaw and weight_up) or (not upper_jaw and not weight_up)
+            print(f"회전 필요: {need_rotation} (upper_jaw={upper_jaw}, weight_up={weight_up})")
+            
+            # Create rotation matrix
+            rotation_matrix = np.eye(3)
+            if need_rotation:
+                # Only z-axis is reversed (y-axis remains unchanged)
+                rotation_matrix = np.array([
+                    [1, 0, 0],
+                    [0, 1, 0],
+                    [0, 0, -1]
+                ])
+                
+            # 정렬된 메쉬 생성
+            aligned_vertices = np.dot(vertices, rotation_matrix.T)
+            
+            aligned_mesh = Mesh()
+            aligned_mesh.vertices = aligned_vertices
+            aligned_mesh.faces = mesh.faces
+            if mesh.normals is not None:
+                aligned_mesh.normals = mesh.normals
+            
+            # 변환 행렬 업데이트
+            rotation_4x4 = np.eye(4)
+            rotation_4x4[:3, :3] = rotation_matrix
+            self.transform_matrix = np.dot(rotation_4x4, self.transform_matrix)
+            
+            return aligned_mesh, rotation_matrix
+            
+        # 최적화 2: 메쉬의 복잡도에 따라 샘플링하여 처리
+        try:
+            max_faces_to_process = 5000  # 처리할 최대 면 수
+            if len(faces) > max_faces_to_process:
+                # 균일한 샘플링 인덱스 생성
+                sampled_indices = np.random.choice(len(faces), max_faces_to_process, replace=False)
+                faces_to_process = faces[sampled_indices]
+                print(f"메쉬 면 개수가 많아({len(faces)}개) {max_faces_to_process}개로 샘플링")
+            else:
+                faces_to_process = faces
+                
+            # 삼각형의 정점 인덱스가 유효한지 확인 (배열 크기를 벗어나지 않는지)
+            valid_indices_mask = np.all(faces_to_process < len(vertices), axis=1)
+            if not np.all(valid_indices_mask):
+                print(f"경고: {np.sum(~valid_indices_mask)}개의 면이 유효하지 않은 정점 인덱스를 포함하여 제외됨")
+                faces_to_process = faces_to_process[valid_indices_mask]
+                
+            # 모든 면의 세 정점 좌표를 한 번에 가져옴
+            # 안전한 인덱싱을 위해 try-except 블록 추가
+            triangles = vertices[faces_to_process]  # 형태: (면 수, 3 정점, 3 좌표)
+            
+            # 두 변 벡터 계산 (벡터화)
+            edges1 = triangles[:, 1] - triangles[:, 0]  # 첫 번째 변
+            edges2 = triangles[:, 2] - triangles[:, 0]  # 두 번째 변
+            
+            # 법선 벡터 계산 (벡터화)
+            normals = np.cross(edges1, edges2)
+            
+            # 면적 계산 (벡터화)
+            areas = np.linalg.norm(normals, axis=1) * 0.5
+            
+            # 법선 벡터 정규화 (벡터화) - 차원 맞춤
+            norms = np.linalg.norm(normals, axis=1, keepdims=True)
+            valid_mask = (norms > 1e-8).reshape(-1)  # 1D 마스크 변환
+            
+            face_normals = np.zeros_like(normals)
+            face_normals[valid_mask] = normals[valid_mask] / norms[valid_mask]
+            
+            # 면 중심점 계산 (벡터화)
+            face_centers = np.mean(triangles, axis=1)
+            
+            # 무게 중심에서 면 중심까지의 방향 벡터
+            directions_to_faces = face_centers - weight_center
+            
+            # 방향 벡터 정규화 (벡터화)
+            norms = np.linalg.norm(directions_to_faces, axis=1, keepdims=True)
+            valid_mask = (norms > 1e-8).reshape(-1)
+            
+            normalized_directions = np.zeros_like(directions_to_faces)
+            normalized_directions[valid_mask] = directions_to_faces[valid_mask] / norms[valid_mask]
+            
+            # 법선 벡터와 면 중심 방향 내적 (벡터화)
+            dot_products = np.sum(normalized_directions * face_normals, axis=1)
+            
+            # 내적이 음수인 경우 법선 방향 반전 (벡터화)
+            face_normals[dot_products < 0] *= -1
+            
+            # 성능 측정
+            normal_time = time.time()
+            print(f"  법선 벡터 계산 시간: {normal_time - start_time:.3f}초")
+            print(f"  법선 벡터 방향 일관성 확보: {np.sum(dot_products < 0)}개 면의 법선 반전됨")
+            
+            # z 축 방향 필터링 (벡터화)
+            z_direction_threshold = 0.7  # z 방향 정렬 강도 임계값 (0.7 = 약 45도 이내)
+            
+            plus_z_mask = face_normals[:, 2] > z_direction_threshold
+            minus_z_mask = face_normals[:, 2] < -z_direction_threshold
+            
+            # 면적 가중치 적용 (벡터화)
+            plus_z_area = np.sum(areas[plus_z_mask])
+            minus_z_area = np.sum(areas[minus_z_mask])
+            
+            # 개수도 함께 출력 (참고용)
+            plus_z_count = np.sum(plus_z_mask)
+            minus_z_count = np.sum(minus_z_mask)
+            
+            # 성능 측정
+            area_time = time.time()
+            print(f"  면적 분석 시간: {area_time - normal_time:.3f}초")
+            
+            print(f"평평한 면 분석 결과:")
+            print(f"  +z 방향 면: {plus_z_count}개, 총 면적: {plus_z_area:.2f}")
+            print(f"  -z 방향 면: {minus_z_count}개, 총 면적: {minus_z_area:.2f}")
+            
+            # 평평한 면적이 더 넓은 방향 확인
+            flat_side_is_up = plus_z_area > minus_z_area
+            
+            # 평평함의 확실성 계산 (차이가 작으면 불확실)
+            total_oriented_area = plus_z_area + minus_z_area
+            if total_oriented_area > 0:
+                flatness_confidence = abs(plus_z_area - minus_z_area) / total_oriented_area
+            else:
+                flatness_confidence = 0
+                
+            print(f"평평한 쪽이 위에 있음: {flat_side_is_up} (확실성: {flatness_confidence:.2f})")
+            
+            # 확실성이 낮으면 기존 방법 (무게중심과 OBB) 사용
+            if flatness_confidence < 0.2:  # 20% 미만의 확실성은 신뢰하지 않음
+                print("평평함 판별 확실성이 낮아 무게중심과 OBB 위치 기반으로 결정합니다.")
+                need_rotation = (upper_jaw and weight_up) or (not upper_jaw and not weight_up)
+            else:
+                need_rotation = flat_side_is_up
+            
+            print(f"회전 필요: {need_rotation} (upper_jaw={upper_jaw}, weight_up={weight_up}, flat_side_is_up={flat_side_is_up}, confidence={flatness_confidence:.2f})")
+            print(f"전체 평평한 면 분석 시간: {time.time() - start_time:.3f}초")
+            
+        except Exception as e:
+            import traceback
+            print(f"면 분석 중 오류 발생: {e}")
+            print(traceback.format_exc())
+            print("단순한 방법으로 대체합니다.")
+            
+            # 오류 발생 시 단순한 방법으로 대체
+            need_rotation = (upper_jaw and weight_up) or (not upper_jaw and not weight_up)
+        
+        # 5. Create rotation matrix
         rotation_matrix = np.eye(3)
         if need_rotation:
             # Only z-axis is reversed (y-axis remains unchanged)
@@ -388,16 +538,17 @@ class IOSBowRegistration:
                 [0, 0, -1]
             ])
         
-        # 5. Sort mesh
+        # 6. Sort mesh
         aligned_vertices = np.dot(vertices, rotation_matrix.T)
         
         # Create sorted mesh
         aligned_mesh = Mesh()
         aligned_mesh.vertices = aligned_vertices
         aligned_mesh.faces = mesh.faces
-        aligned_mesh.normals = mesh.normals
+        if mesh.normals is not None:
+            aligned_mesh.normals = mesh.normals
         
-        # 6. Update transformation matrix
+        # 7. Update transformation matrix
         rotation_4x4 = np.eye(4)
         rotation_4x4[:3, :3] = rotation_matrix
         self.transform_matrix = np.dot(rotation_4x4, self.transform_matrix)
@@ -451,12 +602,7 @@ class IOSBowRegistration:
         """
         무게 중심에서 -z 방향으로 광선을 쏘는 것처럼 동작하여,
         해당 방향의 가장 바깥쪽 점들을 찾아 직사각형 영역을 선택합니다.
-        
-        범위 조정 방법 (내부 하드코딩된 값):
-        1. angle_spread_y_degrees: y축 방향 확산 각도 (기본값 2도)
-        2. angle_spread_x_degrees: x축 방향 확산 각도 (기본값 37도)
-        3. primary_direction_component_threshold: -z 방향 선택을 위한 z 성분의 최소 절댓값 임계값.
-                                                 (예: 0.80은 정규화된 방향 벡터의 z 성분이 -0.80보다 작아야 함을 의미)
+        이후, 선택된 점들 중 z값이 하위 5%에 있는 정점들과 연결된 면들을 선택합니다.
         
         Args:
             mesh: Mesh 객체
@@ -470,82 +616,93 @@ class IOSBowRegistration:
         # 1. 무게 중심 계산
         center = np.mean(vertices, axis=0)
         
-        # 2. -z 방향 벡터 정의 (개념적이며, 마스크 생성에 직접 사용되지는 않음)
-        # z_neg_direction = np.array([0, 0, -1])
-        
-        # 3. 각 정점까지의 방향 벡터 계산 (무게 중심 기준)
+        # 2. 각 정점까지의 방향 벡터 계산 (무게 중심 기준)
         directions = vertices - center
         distances = np.linalg.norm(directions, axis=1)
         
-        # 4. 방향 벡터 정규화
-        # 거리가 0인 경우 (정점이 정확히 중앙에 있는 경우) NaN 값 방지를 위해 처리합니다.
-        # 이러한 점들은 [0,0,0] 정규화된 방향을 가지며, angle_mask 조건에 의해 선택되지 않습니다.
+        # 3. 방향 벡터 정규화 (0으로 나누기 방지)
         normalized_directions = np.zeros_like(directions)
-        non_zero_dist_mask = distances > 1e-12 # 매우 작은 엡실론 사용
-        # 거리가 0이 아닌 경우에만 나누기 연산 수행
-        if np.any(non_zero_dist_mask):
-            normalized_directions[non_zero_dist_mask] = \
-                directions[non_zero_dist_mask] / distances[non_zero_dist_mask, np.newaxis]
-
-        # 5. 각도 범위 및 주 방향 임계값 설정
+        non_zero_mask = distances > 1e-12
+        normalized_directions[non_zero_mask] = directions[non_zero_mask] / distances[non_zero_mask, np.newaxis]
+        
+        # 4. 각도 범위 및 주 방향 임계값 설정
         angle_spread_y_degrees = 50    # y축 방향 확산 각도 (도)
         angle_spread_x_degrees = 50   # x축 방향 확산 각도 (도)
-        # 이 값은 정규화된 방향 벡터의 z 성분이 -0.80보다 작아야 함을 의미합니다.
-        primary_direction_component_threshold = 0.80 
+        primary_direction_component_threshold = 0.4
         
-        # 6. 정규화된 방향 벡터로부터 관련 성분 값 계산
-        # x축 확산을 위한 x 성분 절댓값
+        # 5. 각 방향 성분 계산
         abs_x_components = np.abs(normalized_directions[:, 0])
-        # y축 확산을 위한 y 성분 절댓값
         abs_y_components = np.abs(normalized_directions[:, 1])
-        # 주 방향(-z) 선택을 위한 z 성분
         z_components = normalized_directions[:, 2]
         
-        # 7. -z 방향 선택을 위한 조건에 따라 점 선택
+        # 6. -z 방향 선택을 위한 조건에 따라 점 선택
         angle_mask = (
-            (z_components < -primary_direction_component_threshold) &  # -z 방향으로 강하게 향하는 점 선택
-            (abs_x_components < np.sin(np.radians(angle_spread_x_degrees))) &  # x축 확산 제한
-            (abs_y_components < np.sin(np.radians(angle_spread_y_degrees)))    # y축 확산 제한
+            (z_components < -primary_direction_component_threshold) &
+            (abs_x_components < np.sin(np.radians(angle_spread_x_degrees))) &
+            (abs_y_components < np.sin(np.radians(angle_spread_y_degrees)))
         )
         
-        # 8. 각도에 따라 점 그룹화
+        # 7. 각도에 따라 점 그룹화 (바깥쪽 점 선택)
         angle_groups = {}
         for idx in np.where(angle_mask)[0]:
-            # 각도를 키로 사용 (적절한 정밀도로 반올림)
             angle_key = tuple(np.round(normalized_directions[idx], decimals=3))
-            
-            # 동일한 각도 그룹 내에서 거리가 더 먼 경우에만 업데이트
             if angle_key not in angle_groups or distances[idx] > distances[angle_groups[angle_key]]:
                 angle_groups[angle_key] = idx
         
-        # 9. 각 각도에서 가장 멀리 있는 점들만 선택
-        selected_vertices_idx = np.array(list(angle_groups.values()))
+        # 각도 필터링 후 선택된 정점
+        filtered_vertices_idx = list(angle_groups.values())
         
-        # # 8. 선택된 정점 인덱스 (이전 방식)
-        # selected_vertices_idx = np.where(angle_mask)[0]
+        if not filtered_vertices_idx:
+            print("각도 기반 필터링 후 선택된 정점이 없습니다.")
+            return Mesh()
         
-        # 9. 선택된 면 찾기 (모든 정점이 선택된 면만 선택)
-        selected_faces = []
-        for face in faces:
-            if all(v in selected_vertices_idx for v in face):
-                selected_faces.append(face)
+        # 8. 선택된 점들의 z 좌표를 기준으로 하위 5% 선택
+        filtered_vertices = vertices[filtered_vertices_idx]
+        z_values = filtered_vertices[:, 2]  # z 좌표만 추출
+        z_percentile = 7  # 하위 5% 선택 (조절 가능)
+        z_threshold = np.percentile(z_values, z_percentile)
         
-        selected_faces = np.array(selected_faces)
+        # z값이 z_threshold 이하인 정점들 선택
+        bottom_layer_mask = z_values <= z_threshold
+        bottom_layer_indices = np.array(filtered_vertices_idx)[bottom_layer_mask]
         
-        # 10. 새로운 정점 인덱스 매핑 생성
-        vertex_map = {idx: i for i, idx in enumerate(selected_vertices_idx)}
-        new_faces = np.array([[vertex_map[v] for v in face] for face in selected_faces])
+        if len(bottom_layer_indices) == 0:
+            print(f"z값 하위 {z_percentile}%에 해당하는 정점이 없습니다.")
+            return Mesh()
         
-        # 11. 새로운 메쉬 생성
+        print(f"총 필터링된 정점 수: {len(filtered_vertices_idx)}, 하위 {z_percentile}% z값 정점 수: {len(bottom_layer_indices)}")
+        
+        # 9. 원본 메쉬의 모든 정점에 대한 마스크 생성 (빠른 참조용)
+        bottom_vertices_mask = np.zeros(len(vertices), dtype=bool)
+        bottom_vertices_mask[bottom_layer_indices] = True
+        
+        # 10. 선택된 점들이 하나라도 포함된 면들 선택
+        selected_faces_indices = []
+        for i, face in enumerate(faces):
+            # 면의 정점들 중 하나라도 하위 5% z값 정점이면 선택
+            if np.any(bottom_vertices_mask[face]):
+                selected_faces_indices.append(i)
+        
+        if not selected_faces_indices:
+            print("선택된 정점들로 구성된 면이 없습니다.")
+            return Mesh()
+        
+        # 11. 선택된 면들에 포함된 모든 정점들 수집
+        selected_faces = faces[selected_faces_indices]
+        used_vertices_indices = np.unique(selected_faces.flatten())
+        
+        # 12. 새로운 메쉬 생성
         selected_mesh = Mesh()
-        if len(selected_vertices_idx) > 0:
-            selected_mesh.vertices = vertices[selected_vertices_idx]
-            selected_mesh.faces = new_faces
-            if mesh.normals is not None:
-                selected_mesh.normals = mesh.normals[selected_vertices_idx]
+        vertex_map = {old_idx: new_idx for new_idx, old_idx in enumerate(used_vertices_indices)}
         
-        print(f"Number of selected vertices: {len(selected_vertices_idx)}")
-        print(f"Number of created faces: {len(selected_faces)}")
+        selected_mesh.vertices = vertices[used_vertices_indices]
+        selected_mesh.faces = np.array([[vertex_map[v] for v in face] for face in selected_faces])
+        
+        if mesh.normals is not None:
+            selected_mesh.normals = mesh.normals[used_vertices_indices]
+        
+        print(f"Number of selected vertices: {len(selected_mesh.vertices)}")
+        print(f"Number of created faces: {len(selected_mesh.faces)}")
         
         return selected_mesh
     
@@ -776,8 +933,16 @@ class IOSBowRegistration:
         
         grown_mesh = Mesh()
         grown_mesh.vertices = vertices[used_vertices]
-        grown_mesh.faces = np.array([[vertex_map[v] for v in faces[face_idx]] 
-                                   for face_idx in selected_faces])
+        
+        # 면 인덱스 재매핑 - numpy.int32를 int로 변환하여 인덱싱 문제 방지
+        processed_faces = []
+        for face_idx in selected_faces:
+            # int()로 numpy.int32를 파이썬 int로 변환
+            face = faces[int(face_idx)]
+            processed_faces.append([vertex_map[v] for v in face])
+        
+        grown_mesh.faces = np.array(processed_faces)
+        
         if mesh.normals is not None:
             grown_mesh.normals = vertex_normals[used_vertices]
         
@@ -1275,9 +1440,37 @@ class IOSBowRegistration:
             best_result = best_by_fitness
             best_position_name, best_transform, best_fitness, best_iterations = best_result
             print(f"\n=== 최종 결과 선택: {best_position_name} (적합도: {best_fitness:.6f}, 반복 횟수: {best_iterations}) ===")
-        
-        # 시각화 창 유지 (필요한 경우)
+
+        # 최종 결과 시각화
         if vis is not None:
+            # 소스와 타겟 포인트 클라우드 복사
+            source_pcd = copy.deepcopy(source)
+            target_pcd = copy.deepcopy(target)
+            
+            # 색상 설정
+            source_pcd.paint_uniform_color([1, 0, 0])  # 빨간색
+            target_pcd.paint_uniform_color([0, 0, 1])  # 파란색
+            
+            # 최종 변환 적용
+            source_pcd.transform(best_transform)
+            
+            # 시각화 업데이트
+            vis.clear_geometries()
+            vis.add_geometry(source_pcd)
+            vis.add_geometry(target_pcd)
+            
+            # 카메라 설정
+            ctr = vis.get_view_control()
+            ctr.set_zoom(0.8)
+            ctr.set_front([0, 1, 0])  # +y 방향으로 뷰
+            ctr.set_up([0, 0, 1])     # z축이 위쪽
+            
+            vis.poll_events()
+            vis.update_renderer()
+            
+            print("\n최종 정렬 결과가 시각화되었습니다.")
+            
+            # 시각화 창 유지 (필요한 경우)
             print("시각화 창을 닫으려면 창을 닫으세요...")
             try:
                 while True:
@@ -1298,5 +1491,5 @@ class IOSBowRegistration:
         return transformed_source_mesh, best_transform
 
 if __name__ == "__main__":
-    ios_bow_registration = IOSBowRegistration("../../example/data/ios_with_smilearch.stl", "../../example/data/smile_arch_half.stl", visualization=True)
+    ios_bow_registration = IOSBowRegistration("../../example/data/ios_with_smilearch.stl", "../../example/data/center_pin.stl", visualization=True)
     ios_bow_registration.run_registration()
