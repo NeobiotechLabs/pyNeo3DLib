@@ -3,7 +3,15 @@ from pyNeo3DLib.fileLoader.mesh import Mesh
 import copy
 from scipy.spatial import ConvexHull
 from pyNeo3DLib.visualization.neovis import visualize_meshes
+from pyNeo3DLib.iosRegistration.iosAlignment import IosAlignment
+import time
 
+# 멀티프로세싱 지원 추가
+import multiprocessing as mp
+from functools import partial
+# queue 관련 유틸리티 추가
+from queue import PriorityQueue
+import heapq  # heapq 모듈 추가
 
 class IOSLaminateRegistration:
     def __init__(self, ios_path, laminate_path, visualization=False):
@@ -12,76 +20,55 @@ class IOSLaminateRegistration:
         self.visualization = visualization
         # Initialize transformation matrix (set as 4x4 matrix)
         self.transform_matrix = np.eye(4)
-
-        self.__load_models()
+        # time 모듈 참조를 클래스 내부에 명시적으로 저장
+        self.time_module = time
+        
+        # 초기화시에는 메시를 로드하지 않음
+        self.ios_mesh = None
+        self.laminate_mesh = None
 
     def run_registration(self):
         print("ios_laminate_registration")
-        aligned_ios_mesh, ios_rotation_matrix = self.align_with_obb(self.ios_mesh)
-    
-        if self.visualization:
-        # IOS mesh에 transformation matrix applied
-            transformed_ios_mesh = copy.deepcopy(self.ios_mesh)
-            transformed_ios_mesh.vertices = np.dot(
-                self.ios_mesh.vertices,
-                self.transform_matrix[:3, :3].T
-            ) + self.transform_matrix[:3, 3]
 
-            visualize_meshes(
-                    [aligned_ios_mesh, transformed_ios_mesh, self.ios_mesh], 
-                    ["Aligned IOS", "Transformed IOS"], 
-                    title="IOS Compare"
-                )
+        # 1. Align IOS mesh
+        alignmented_ios_mesh, transform_matrix = IosAlignment(self.ios_path).run_analysis()
         
+        # PyVista PolyData 객체를 Mesh 객체로 변환
+        self.ios_mesh = Mesh()
+        # points는 PyVista의 정점 배열, faces는 면 정보
+        ios_points = alignmented_ios_mesh.points
+        ios_faces_raw = alignmented_ios_mesh.faces
         
-        # Transformation matrix output
-        print("\n=== 1. Transformation matrix after OBB alignment ===")
-        print(self.transform_matrix)
+        # PyVista 면 배열 변환 (n, v1, v2, ..., vn 형식에서 [v1, v2, ..., vn] 형식으로)
+        ios_faces = []
+        i = 0
+        while i < len(ios_faces_raw):
+            n_vertices = ios_faces_raw[i]
+            face = ios_faces_raw[i+1:i+1+n_vertices]
+            ios_faces.append(face)
+            i += n_vertices + 1
+        
+        self.ios_mesh.vertices = ios_points
+        self.ios_mesh.faces = np.array(ios_faces)
+        self.transform_matrix = transform_matrix
 
-        # OBB center and weight center calculation
-        # obb_center, weight_center = ios_laminate_registration.get_obb_center_and_weight_center(aligned_ios_mesh)
-        
-        # 2. Y-axis alignment
-        y_aligned_ios_mesh, y_rotation_matrix = self.find_y_direction(aligned_ios_mesh)
-        
-        
-        if self.visualization:
-            visualize_meshes(
-                [aligned_ios_mesh, y_aligned_ios_mesh], 
-                ["Aligned IOS", "Y Aligned IOS"], 
-                title="IOS Compare"
-            )
-        
-        print("\n=== 2. Transformation matrix after Y-axis alignment ===")
-        print(self.transform_matrix)
+        # 2. Load laminate model
+        self.__load_laminate_model()
 
-        # 3. Z-axis alignment
-        z_aligned_ios_mesh, z_rotation_matrix = self.find_z_direction(y_aligned_ios_mesh)
-
+        # 3. Find ray mesh intersection approximate
+        selected_mesh = self.find_ray_mesh_intersection_approximate(self.ios_mesh)        
         if self.visualization:
             visualize_meshes(
-                [y_aligned_ios_mesh, z_aligned_ios_mesh], 
-                ["Y Aligned IOS", "Z Aligned IOS"], 
-                title="IOS Compare"
-            )
-        
-        print("\n=== 3. Transformation matrix after Z-axis alignment ===")
-        print(self.transform_matrix)
-        
-        # 4. Region selection
-        selected_mesh = self.find_ray_mesh_intersection_approximate(z_aligned_ios_mesh)
-        if self.visualization:
-            visualize_meshes(
-                [z_aligned_ios_mesh, selected_mesh], 
+                [self.ios_mesh, selected_mesh], 
                 ["Z Aligned IOS", "Selected Region"], 
                 title="IOS Compare"
             )
 
-        # 5. Region growing
-        region_growing_mesh = self.region_growing(z_aligned_ios_mesh, selected_mesh)
+        # 4. Region growing
+        region_growing_mesh = self.region_growing(self.ios_mesh, selected_mesh)
         if self.visualization:
             visualize_meshes(
-                [z_aligned_ios_mesh, selected_mesh, region_growing_mesh], 
+                [self.ios_mesh, selected_mesh, region_growing_mesh], 
                 ["Z Aligned IOS", "Selected Region", "Region Growing"], 
                 title="IOS Compare"
             )
@@ -93,7 +80,7 @@ class IOSLaminateRegistration:
                 title="IOS Compare"
             )
 
-        # 6. Move to origin
+        # 5. Move to origin
         aligned_laminate_mesh, translation_matrix = self.move_mask_to_origin(region_growing_mesh)
         if self.visualization:
             visualize_meshes(
@@ -105,7 +92,7 @@ class IOSLaminateRegistration:
         print("\n=== 4. Transformation matrix after origin movement ===")
         print(self.transform_matrix)
 
-        # 7. ICP registration
+        # 6. ICP registration
         # 시각화가 활성화된 경우 Open3D visualizer 생성
         vis = None
         if self.visualization:
@@ -151,302 +138,13 @@ class IOSLaminateRegistration:
         return final_transform
         
 
-    def __load_models(self):
+    def __load_laminate_model(self):
         print(f"loading model from {self.ios_path} and {self.laminate_path}")
-        self.ios_mesh = Mesh()
         self.laminate_mesh = Mesh()
-
-        self.ios_mesh = self.ios_mesh.from_file(self.ios_path)
         self.laminate_mesh = self.laminate_mesh.from_file(self.laminate_path)
-
-        print(self.ios_mesh.faces)
         print(self.laminate_mesh.faces)
-        return self.ios_mesh, self.laminate_mesh
-    
-    def find_obb(self, mesh):
-        """
-        Find the OBB (Oriented Bounding Box) of the mesh.
-        
-        Args:
-            mesh: Mesh object
-            
-        Returns:
-            obb_center: OBB center point
-            obb_axes: OBB axes vectors (3x3 matrix)
-            obb_extents: OBB size (length in each axis direction)
-        """
-        # 1. Find convex hull
-        hull = ConvexHull(mesh.vertices)
-        hull_points = mesh.vertices[hull.vertices]
-        
-        # 2. Calculate convex hull center point
-        hull_center = np.mean(hull_points, axis=0)
-        
-        # 3. Transform convex hull vertices to be centered around the center point
-        centered_points = hull_points - hull_center
-        
-        # 4. Calculate covariance matrix
-        cov_matrix = np.cov(centered_points.T)
-        
-        # 5. Find principal axes using eigenvalue decomposition
-        eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
-        
-        # 6. Sort eigenvalues (descending order)
-        idx = eigenvalues.argsort()[::-1]
-        eigenvalues = eigenvalues[idx]
-        eigenvectors = eigenvectors[:, idx]
-        
-        # 7. Set OBB axes vectors
-        obb_axes = np.zeros((3, 3))
-        obb_axes[:, 0] = eigenvectors[:, 0]  # Longest axis
-        obb_axes[:, 1] = eigenvectors[:, 1]  # Middle length axis
-        obb_axes[:, 2] = eigenvectors[:, 2]  # Shortest axis
-        
-        # 8. Project convex hull vertices onto OBB axes
-        projected_points = np.dot(centered_points, obb_axes)
-        
-        # 9. Calculate minimum/maximum coordinates in each axis direction
-        min_coords = np.min(projected_points, axis=0)
-        max_coords = np.max(projected_points, axis=0)
-        
-        # 10. Calculate OBB size
-        obb_extents = max_coords - min_coords
-        
-        # 11. Calculate OBB center point
-        obb_center = hull_center + np.dot((min_coords + max_coords) / 2, obb_axes.T)
-        
-        return obb_center, obb_axes, obb_extents
+ 
 
-    def align_with_obb(self, ios_mesh):
-        """
-        Align the IOS mesh only based on the OBB axes. The laminate mesh remains in its original position.
-        The shortest axis is z-axis, the longest axis is x-axis, and the middle length axis is y-axis.
-        
-        Specific transformation process:
-        1. Calculate OBB of IOS mesh and its center point and axes
-        2. Sort mesh based on OBB axes
-        
-        Args:
-            ios_mesh: IOS mesh
-            
-        Returns:
-            aligned_ios_mesh: Sorted IOS mesh
-            rotation_matrix: IOS mesh rotation matrix
-        """
-        # 1. Find OBB
-        obb_center, obb_axes, obb_extents = self.find_obb(ios_mesh)
-        
-        # 2. Transform IOS mesh to be centered around OBB center point
-        ios_vertices_centered = ios_mesh.vertices - obb_center
-        
-        # 3. Sort mesh based on OBB axes
-        ios_vertices_aligned = np.dot(ios_vertices_centered, obb_axes)
-        
-        # Create sorted IOS mesh
-        aligned_ios_mesh = Mesh()
-        aligned_ios_mesh.vertices = ios_vertices_aligned
-        aligned_ios_mesh.faces = ios_mesh.faces
-        aligned_ios_mesh.normals = ios_mesh.normals
-        
-        # Result storage
-        self.aligned_ios_mesh = aligned_ios_mesh
-        self.rotation_matrix = obb_axes  # Use OBB axes as rotation matrix
-        
-        # Update transformation matrix
-        # 1. Create transformation matrix for center point movement
-        center_translation = np.eye(4)
-        center_translation[:3, 3] = -obb_center
-        
-        # 2. Expand rotation matrix to 4x4 matrix
-        rotation_4x4 = np.eye(4)
-        rotation_4x4[:3, :3] = obb_axes
-        
-        # 3. Accumulate transformation matrix (rotate then move center point)
-        self.transform_matrix = np.dot(rotation_4x4, center_translation)
-        
-        return aligned_ios_mesh, obb_axes
-    
-    
-   
-    
-    def find_y_direction(self, mesh):
-        """
-        Find the y-axis direction of the mesh.
-        The direction is determined based on the relative position of the weight center and OBB center.
-        
-        Args:
-            mesh: Mesh object
-            
-        Returns:
-            aligned_mesh: Mesh object with y-axis aligned
-            rotation_matrix: Applied rotation matrix
-        """
-        vertices = mesh.vertices
-        faces = mesh.faces
-        
-        # 1. Calculate weight center and OBB center
-        weight_center = np.mean(vertices, axis=0)
-        
-        # OBB center calculation
-        # Move vertices to be centered around the center point
-        centered_vertices = vertices - weight_center
-        # Calculate covariance matrix
-        cov_matrix = np.cov(centered_vertices.T)
-        # Eigenvalue decomposition
-        eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
-        # Project vertices to be aligned with principal axes
-        projected_vertices = np.dot(centered_vertices, eigenvectors)
-        # Calculate minimum/maximum coordinates in each axis direction
-        min_coords = np.min(projected_vertices, axis=0)
-        max_coords = np.max(projected_vertices, axis=0)
-        # OBB center calculation (average of minimum/maximum coordinates)
-        obb_center_projected = (min_coords + max_coords) / 2
-        # Convert OBB center point to original coordinate system
-        obb_center = np.dot(obb_center_projected, eigenvectors.T) + weight_center
-        
-        # 2. Calculate y-axis direction based on y-coordinate difference between weight center and OBB center
-        y_direction = 1 if weight_center[1] > obb_center[1] else -1
-        
-        # 3. Create rotation matrix
-        rotation_matrix = np.eye(3)
-        if y_direction == -1:
-            # Rotate 180 degrees if y-axis direction is opposite
-            rotation_matrix = np.array([
-                [1, 0, 0],
-                [0, -1, 0],
-                [0, 0, 1]
-            ])
-        
-        # 4. Sort mesh
-        aligned_vertices = np.dot(vertices, rotation_matrix.T)
-        
-        # Create sorted mesh
-        aligned_mesh = Mesh()
-        aligned_mesh.vertices = aligned_vertices
-        aligned_mesh.faces = mesh.faces
-        aligned_mesh.normals = mesh.normals
-        
-        # 5. Update transformation matrix
-        rotation_4x4 = np.eye(4)
-        rotation_4x4[:3, :3] = rotation_matrix
-        self.transform_matrix = np.dot(rotation_4x4, self.transform_matrix)
-        
-        return aligned_mesh, rotation_matrix
-    
-    def find_z_direction(self, mesh, upper_jaw=True):
-        """
-        Find the z-axis direction of the mesh.
-        The direction is determined based on the relative position of the weight center and OBB center.
-        
-        Args:
-            mesh: Mesh object
-            upper_jaw: True for upper jaw (teeth direction is down), False for lower jaw (teeth direction is up)
-            
-        Returns:
-            aligned_mesh: Mesh object with z-axis aligned
-            rotation_matrix: Applied rotation matrix
-        """
-        vertices = mesh.vertices
-        faces = mesh.faces
-        
-        # 1. Calculate weight center and OBB center
-        weight_center = np.mean(vertices, axis=0)
-        
-        # OBB center calculation
-        # Move vertices to be centered around the center point
-        centered_vertices = vertices - weight_center
-        # Calculate covariance matrix
-        cov_matrix = np.cov(centered_vertices.T)
-        # Eigenvalue decomposition
-        eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
-        # Project vertices to be aligned with principal axes
-        projected_vertices = np.dot(centered_vertices, eigenvectors)
-        # Calculate minimum/maximum coordinates in each axis direction
-        min_coords = np.min(projected_vertices, axis=0)
-        max_coords = np.max(projected_vertices, axis=0)
-        # OBB center calculation (average of minimum/maximum coordinates)
-        obb_center_projected = (min_coords + max_coords) / 2
-        # Convert OBB center point to original coordinate system
-        obb_center = np.dot(obb_center_projected, eigenvectors.T) + weight_center
-        
-        # 2. Calculate z-axis direction based on z-coordinate difference between weight center and OBB center
-        # weight center is above OBB center if weight_up is True
-        weight_up = weight_center[2] > obb_center[2]
-        
-        # 3. Determine rotation based on upper_jaw and weight_up status
-        # Rotation needed if upper_jaw is True and weight_up is True (upper jaw and weight center above)
-        # Rotation needed if upper_jaw is False and weight_up is False (lower jaw and weight center below)
-        need_rotation = (upper_jaw and weight_up) or (not upper_jaw and not weight_up)
-        
-        # 4. Create rotation matrix
-        rotation_matrix = np.eye(3)
-        if need_rotation:
-            # Only z-axis is reversed (y-axis remains unchanged)
-            rotation_matrix = np.array([
-                [1, 0, 0],
-                [0, 1, 0],
-                [0, 0, -1]
-            ])
-        
-        # 5. Sort mesh
-        aligned_vertices = np.dot(vertices, rotation_matrix.T)
-        
-        # Create sorted mesh
-        aligned_mesh = Mesh()
-        aligned_mesh.vertices = aligned_vertices
-        aligned_mesh.faces = mesh.faces
-        aligned_mesh.normals = mesh.normals
-        
-        # 6. Update transformation matrix
-        rotation_4x4 = np.eye(4)
-        rotation_4x4[:3, :3] = rotation_matrix
-        self.transform_matrix = np.dot(rotation_4x4, self.transform_matrix)
-        
-        return aligned_mesh, rotation_matrix
-    
-    def create_ball(self, radius, center):
-        """
-        Create a sphere with given radius and center point.
-        
-        Args:
-            radius: Sphere radius
-            center: Sphere center point coordinates (numpy array)
-            
-        Returns:
-            ball_mesh: Mesh object representing the sphere
-        """
-        # Create vertices and faces to represent the sphere
-        phi = np.linspace(0, np.pi, 20)
-        theta = np.linspace(0, 2 * np.pi, 20)
-        phi, theta = np.meshgrid(phi, theta)
-
-        # Convert from spherical coordinates to Cartesian coordinates
-        x = radius * np.sin(phi) * np.cos(theta) + center[0]
-        y = radius * np.sin(phi) * np.sin(theta) + center[1]
-        z = radius * np.cos(phi) + center[2]
-
-        # Create vertex array
-        vertices = np.vstack((x.flatten(), y.flatten(), z.flatten())).T
-
-        # Create faces
-        faces = []
-        n_phi, n_theta = phi.shape
-        for i in range(n_phi - 1):
-            for j in range(n_theta - 1):
-                v1 = i * n_theta + j
-                v2 = i * n_theta + (j + 1)
-                v3 = (i + 1) * n_theta + (j + 1)
-                v4 = (i + 1) * n_theta + j
-                faces.append([v1, v2, v3])
-                faces.append([v1, v3, v4])
-
-        # Create Mesh object
-        ball_mesh = Mesh()
-        ball_mesh.vertices = vertices
-        ball_mesh.faces = np.array(faces)
-        
-        return ball_mesh
-    
     def find_ray_mesh_intersection_approximate(self, mesh):
         """
         Shoot a light from the weight center in the +y direction,
@@ -467,7 +165,7 @@ class IOSLaminateRegistration:
         faces = mesh.faces
         
         # 1. Calculate weight center
-        center = np.mean(vertices, axis=0)
+        center = np.mean(vertices, axis=0) #+ np.min(vertices, axis=0))/2
         
         # 2. Define +y direction vector
         y_direction = np.array([0, 1, 0])
@@ -491,10 +189,10 @@ class IOSLaminateRegistration:
         
         # 7. Select points based on conditions
         angle_mask = (
-            (y_components > min_y_component) &  # Select only front faces
-            (x_components < np.sin(np.radians(horizontal_angle))) &  # Horizontal range
-            (z_components < np.sin(np.radians(vertical_angle))) &  # Vertical range
-            (normalized_directions[:, 1] > 0)  # Select only +y direction
+            (y_components > min_y_component) &  # 전면만 선택
+            (np.abs(normalized_directions[:, 0]) < np.sin(np.radians(horizontal_angle))) &  # 양쪽 수평 범위
+            (np.abs(normalized_directions[:, 2]) < np.sin(np.radians(vertical_angle))) &  # 양쪽 수직 범위
+            (normalized_directions[:, 1] > 0)  # y+ 방향만 선택
         )
         
         # 8. Group points based on angle
@@ -631,297 +329,353 @@ class IOSLaminateRegistration:
         Returns:
             grown_mesh: Selected region Mesh object
         """
-        import time
         from scipy.spatial import KDTree
+        import heapq
         
         print("\n=== Region Growing started ===")
         start_time = time.time()
         
+        # 1. 메시 데이터 준비 및 검증
+        vertices, faces, mesh_stats = self._prepare_mesh_data(mesh)
+        print(f"메시 통계: {mesh_stats}")
+        
+        # 2. 법선 벡터 계산 - 별도 함수로 분리
+        vertex_normals = self._compute_vertex_normals(vertices, faces)
+        print(f"법선 벡터 계산 완료: {time.time() - start_time:.2f}초")
+        
+        # 3. 공간 검색 구조 생성
+        tree = KDTree(vertices)
+        
+        # 4. 시드 포인트 찾기
+        seed_vertices, seed_stats = self._find_seed_points(tree, seed_mesh)
+        print(f"시드 포인트 찾기 완료: {time.time() - start_time:.2f}초")
+        print(f"시드 포인트 통계: {seed_stats}")
+        
+        # 5. 영역 성장 매개변수 설정
+        params = self._prepare_region_growing_params(vertices, vertex_normals, seed_vertices)
+        
+        # 6. 향상된 영역 성장 알고리즘 실행 - 우선순위 큐 사용
+        selected_vertices = self._grow_region_with_priority(vertices, vertex_normals, tree, params)
+        print(f"영역 성장 완료: {time.time() - start_time:.2f}초")
+        
+        # 7. 선택된 영역으로 메시 생성
+        grown_mesh = self._create_mesh_from_selection(mesh, vertices, faces, selected_vertices, vertex_normals)
+        
+        # 8. 상단 부분 제거 처리
+        result_mesh = self._remove_top_section(grown_mesh)
+        
+        print("=== Region Growing completed ===")
+        print(f"총 소요 시간: {time.time() - start_time:.2f}초\n")
+        
+        return result_mesh
+    
+    def _prepare_mesh_data(self, mesh):
+        """메시 데이터 준비 및 검증"""
+        if mesh is None or not hasattr(mesh, 'vertices') or not hasattr(mesh, 'faces'):
+            raise ValueError("유효하지 않은 메시 입력")
+        
         vertices = mesh.vertices
         faces = mesh.faces
         
-        # 1. Calculate normal vectors
-        print("1. Computing normal vectors...")
-        normals_start = time.time()
+        # 메시 통계 정보
+        stats = {
+            'vertices': len(vertices),
+            'faces': len(faces),
+            'bbox_size': np.ptp(vertices, axis=0)
+        }
         
-        def compute_vertex_normals(vertices, faces):
-            # Calculate face normals
-            v1 = vertices[faces[:, 0]]
-            v2 = vertices[faces[:, 1]]
-            v3 = vertices[faces[:, 2]]
-            
-            vec1 = v2 - v1
-            vec2 = v3 - v1
-            
-            face_normals = np.cross(vec1, vec2)
-            face_norms = np.linalg.norm(face_normals, axis=1, keepdims=True)
-            face_norms[face_norms == 0] = 1.0
-            face_normals = face_normals / face_norms
-            
-            # Calculate vertex normals (average of face normals)
-            vertex_normals = np.zeros_like(vertices)
-            vertex_counts = np.zeros(len(vertices))
-            
-            for i, face in enumerate(faces):
-                for vertex in face:
-                    vertex_normals[vertex] += face_normals[i]
-                    vertex_counts[vertex] += 1
-            
-            # Normalize
-            vertex_counts[vertex_counts == 0] = 1
-            vertex_normals = vertex_normals / vertex_counts.reshape(-1, 1)
-            norms = np.linalg.norm(vertex_normals, axis=1, keepdims=True)
-            norms[norms == 0] = 1.0
-            vertex_normals = vertex_normals / norms
-            
-            return vertex_normals
+        return vertices, faces, stats
+    
+    def _compute_vertex_normals(self, vertices, faces):
+        """정점 법선 벡터 계산 - 벡터화 및 최적화"""
+        print("법선 벡터 계산 중...")
+        normal_start = time.time()
         
-        vertex_normals = compute_vertex_normals(vertices, faces)
-        print(f"  - Normal vectors calculation completed: {time.time() - normals_start:.2f} seconds")
+        # 면의 법선 벡터 계산
+        v1 = vertices[faces[:, 0]]
+        v2 = vertices[faces[:, 1]]
+        v3 = vertices[faces[:, 2]]
+            
+        # 벡터화된 계산
+        vec1 = v2 - v1
+        vec2 = v3 - v1
+        face_normals = np.cross(vec1, vec2)
         
-        # 2. Create KDTree
-        print("2. Creating KDTree...")
-        tree_start = time.time()
-        tree = KDTree(vertices)
-        print(f"  - KDTree creation completed: {time.time() - tree_start:.2f} seconds")
+        # 정규화
+        face_norms = np.linalg.norm(face_normals, axis=1, keepdims=True)
+        face_norms[face_norms < 1e-8] = 1.0  # 0으로 나누기 방지
+        face_normals = face_normals / face_norms
+            
+        # 정점 법선 계산 (메모리 효율적 접근)
+        vertex_normals = np.zeros_like(vertices)
+        vertex_counts = np.zeros(len(vertices), dtype=np.int32)
+            
+        # 각 면에서 법선 정보 누적
+        for i, face in enumerate(faces):
+            for vertex in face:
+                vertex_normals[vertex] += face_normals[i]
+                vertex_counts[vertex] += 1
+            
+        # 정규화
+        vertex_counts[vertex_counts == 0] = 1  # 0으로 나누기 방지
+        vertex_normals = vertex_normals / vertex_counts.reshape(-1, 1)
         
-        # 3. Find starting points
-        print("3. Finding starting points...")
-        seed_start = time.time()
+        # 최종 정규화
+        norms = np.linalg.norm(vertex_normals, axis=1, keepdims=True)
+        norms[norms < 1e-8] = 1.0
+        vertex_normals = vertex_normals / norms
+            
+        print(f"법선 계산 완료: {time.time() - normal_start:.2f}초")
+        return vertex_normals
         
-        # Find seed_mesh vertices and their nearest points in the original mesh
+    def _find_seed_points(self, tree, seed_mesh):
+        """시드 포인트 찾기"""
         seed_vertices = seed_mesh.vertices
+        
+        # 원본 메시에서 가장 가까운 정점 찾기
         distances, indices = tree.query(seed_vertices, k=1)
-        start_vertices = set(indices)
         
-        print(f"  - Starting points found: {time.time() - seed_start:.2f} seconds")
-        print(f"  - Number of starting points: {len(start_vertices)}")
+        # 중복 제거하여 시드 정점 집합 생성
+        seed_indices = set(indices.flatten())
         
-        # 4. Region growing parameter setting
-        max_angle_diff = 40.0  # 각도 제한을 3.0에서 2.0으로 줄임
-        max_distance = np.ptp(vertices, axis=0).max() * 0.2  # 거리 제한을 2%에서 1%로 줄임
+        stats = {
+            'seed_vertices': len(seed_vertices),
+            'unique_seed_indices': len(seed_indices),
+            'avg_distance': np.mean(distances)
+        }
         
-        # seed 영역의 평균 법선 벡터 계산
-        seed_normals = vertex_normals[list(start_vertices)]
+        return seed_indices, stats
+    
+    def _prepare_region_growing_params(self, vertices, vertex_normals, seed_indices):
+        """영역 성장 매개변수 설정"""
+        # 시드 영역의 평균 법선 벡터
+        seed_normals = vertex_normals[list(seed_indices)]
         seed_avg_normal = np.mean(seed_normals, axis=0)
         seed_avg_normal = seed_avg_normal / np.linalg.norm(seed_avg_normal)
         
-        # seed 영역의 중심점 계산
-        seed_center = np.mean(vertices[list(start_vertices)], axis=0)
+        # 시드 영역의 중심점
+        seed_center = np.mean(vertices[list(seed_indices)], axis=0)
         
-        # 5. Region growing
+        # 경계 매개변수 (메시 크기에 따라 동적 조정)
+        bbox_diag = np.linalg.norm(np.ptp(vertices, axis=0))
+        max_distance = bbox_diag * 0.2  # 메시 전체 크기의 20%로 제한
+        
+        return {
+            'seed_center': seed_center,
+            'seed_avg_normal': seed_avg_normal,
+            'max_angle_diff': 40.0,  # 법선 벡터 유사도 각도 제한
+            'max_distance': max_distance,
+            'max_iterations': 100000  # 무한 루프 방지
+        }
+    
+    def _grow_region_with_priority(self, vertices, vertex_normals, tree, params):
+        """우선순위 큐를 사용한 향상된 영역 성장 알고리즘"""
+        # 초기화
         selected_vertices = np.zeros(len(vertices), dtype=bool)
-        selected_vertices[list(start_vertices)] = True
-        queue = list(start_vertices)
-        in_queue = np.zeros(len(vertices), dtype=bool)
-        in_queue[list(start_vertices)] = True
+        seed_center = params['seed_center']
+        seed_avg_normal = params['seed_avg_normal']
         
-        while queue:
-            current_vertex = queue.pop(0)
+        # 시드 포인트를 찾기 위해 KDTree 사용
+        distances, seed_indices = tree.query([seed_center], k=50)
+        seed_indices = seed_indices.flatten()
+        
+        selected_vertices[seed_indices] = True
+        
+        # 우선순위 큐 기반 처리 (각도 유사성이 높은 순서로 처리)
+        priority_queue = []
+        visited = np.zeros(len(vertices), dtype=bool)
+        visited[seed_indices] = True
+        
+        # 초기 시드 정점 큐에 추가
+        for seed_idx in seed_indices:
+            seed_normal = vertex_normals[seed_idx]
+            seed_similarity = np.dot(seed_avg_normal, seed_normal)
+            # 각도를 우선순위로 사용 (음수로 변환하여 높은 유사성이 먼저 처리되도록)
+            heapq.heappush(priority_queue, (-seed_similarity, seed_idx))
+        
+        iterations = 0
+        processed_count = 0
+        
+        # 영역 성장 실행
+        while priority_queue and iterations < params['max_iterations']:
+            iterations += 1
+            
+            # 10000개마다 진행상황 출력
+            if iterations % 10000 == 0:
+                print(f"영역 성장 진행 중: {iterations}회 반복, {processed_count}개 정점 처리됨")
+            
+            # 우선순위가 가장 높은(유사도가 높은) 정점 처리
+            _, current_vertex = heapq.heappop(priority_queue)
+            
+            # 이미 처리된 정점이면 스킵
+            if not selected_vertices[current_vertex]:
+                continue
+                
             current_normal = vertex_normals[current_vertex]
+            processed_count += 1
             
-            # 현재 점과 seed 중심점과의 거리 계산
+            # 현재 정점과 시드 중심점과의 거리
             current_distance = np.linalg.norm(vertices[current_vertex] - seed_center)
+            if current_distance > params['max_distance'] * 1.5:
+                continue
             
-            # Find nearby points
-            distances, neighbors = tree.query(vertices[current_vertex], k=10)  # k=20에서 k=10으로 줄임
+            # 주변 정점 탐색 (k=15로 증가하여 더 많은 이웃점 고려)
+            distances, neighbors = tree.query(vertices[current_vertex], k=15)
             
             for i, neighbor_idx in enumerate(neighbors):
-                if neighbor_idx >= len(vertices) or selected_vertices[neighbor_idx] or in_queue[neighbor_idx]:
+                # 범위, 이미 방문 여부 확인
+                if neighbor_idx >= len(vertices) or selected_vertices[neighbor_idx] or visited[neighbor_idx]:
                     continue
                 
-                # 거리 제한 (현재 점과 seed 중심점과의 거리 고려)
-                if distances[i] > max_distance or current_distance > max_distance * 1.5:  # 2배에서 1.5배로 줄임
+                # 거리 제한
+                if distances[i] > params['max_distance'] or current_distance > params['max_distance'] * 1.5:
                     continue
                 
                 neighbor_normal = vertex_normals[neighbor_idx]
                 
-                # 1. 현재 점과의 법선 벡터 비교
+                # 현재 정점과의 법선 유사도
                 current_similarity = np.dot(current_normal, neighbor_normal)
                 current_angle_diff = np.degrees(np.arccos(np.clip(current_similarity, -1.0, 1.0)))
                 
-                # 2. seed 평균 법선 벡터와의 비교
+                # 시드 평균 법선과의 유사도
                 seed_similarity = np.dot(seed_avg_normal, neighbor_normal)
                 seed_angle_diff = np.degrees(np.arccos(np.clip(seed_similarity, -1.0, 1.0)))
                 
-                # 두 조건 모두 만족해야 선택 (seed_angle_diff 기준을 더 엄격하게)
-                if current_angle_diff <= max_angle_diff and seed_angle_diff <= max_angle_diff * 1.2:  # 1.5배에서 1.2배로 줄임
+                # 조건 확인 (더 엄격하게 조정)
+                if current_angle_diff <= params['max_angle_diff'] and seed_angle_diff <= params['max_angle_diff'] * 1.2:
                     selected_vertices[neighbor_idx] = True
-                    queue.append(neighbor_idx)
-                    in_queue[neighbor_idx] = True
+                    visited[neighbor_idx] = True
+                    
+                    # 우선순위 큐에 추가 (각도 유사성 기준)
+                    # 음수로 변환하여 높은 유사성이 먼저 처리되도록 함
+                    heapq.heappush(priority_queue, (-seed_similarity, neighbor_idx))
         
-        # 6. Select faces based on selected vertices
-        print("5. Creating result mesh...")
-        result_start_time = time.time()  # 변수명을 더 명확하게 변경
+        print(f"영역 성장 알고리즘 완료: {iterations}회 반복, {processed_count}개 정점 처리, {np.sum(selected_vertices)}개 정점 선택됨")
+        return selected_vertices
+    
+    def _create_mesh_from_selection(self, mesh, vertices, faces, selected_vertices, vertex_normals=None):
+        """선택된 정점으로 메시 생성"""
+        print("결과 메시 생성 중...")
+        mesh_creation_start = time.time()
         
+        # 선택된 정점만 포함하는 면 찾기
         selected_faces = []
         for i, face in enumerate(faces):
             if all(selected_vertices[v] for v in face):
                 selected_faces.append(i)
         
+        if not selected_faces:
+            print("경고: 선택된 면이 없습니다. 빈 메시 반환")
+            result_mesh = Mesh()
+            result_mesh.vertices = np.zeros((0, 3))
+            result_mesh.faces = np.zeros((0, 3), dtype=np.int32)
+            return result_mesh
+        
+        # 선택된 면 배열
         selected_faces = np.array(selected_faces)
+        
+        # 사용된 정점만 추출
         used_vertices = np.unique(faces[selected_faces].flatten())
+        
+        # 새 인덱스 매핑 생성
         vertex_map = {old_idx: new_idx for new_idx, old_idx in enumerate(used_vertices)}
         
-        grown_mesh = Mesh()
-        grown_mesh.vertices = vertices[used_vertices]
-        grown_mesh.faces = np.array([[vertex_map[v] for v in faces[face_idx]] 
+        # 결과 메시 생성
+        result_mesh = Mesh()
+        result_mesh.vertices = vertices[used_vertices]
+        
+        # 면의 정점 인덱스 업데이트
+        result_mesh.faces = np.array([[vertex_map[v] for v in faces[face_idx]] 
                                    for face_idx in selected_faces])
-        if mesh.normals is not None:
-            grown_mesh.normals = vertex_normals[used_vertices]
         
-        print(f"  - Result mesh creation completed: {time.time() - result_start_time:.2f} seconds")
+        # 법선 벡터 전달 (있는 경우)
+        if vertex_normals is not None:
+            result_mesh.normals = vertex_normals[used_vertices]
+        elif mesh.normals is not None:
+            result_mesh.normals = mesh.normals[used_vertices]
         
-        # 상단 10% 제거 (z축 기준)
-        top_removal_start_time = time.time()
+        print(f"결과 메시 생성 완료: 정점 {len(result_mesh.vertices)}개, 면 {len(result_mesh.faces)}개")
+        print(f"메시 생성 시간: {time.time() - mesh_creation_start:.2f}초")
+        
+        return result_mesh
+    
+    def _remove_top_section(self, mesh, removal_ratio=0.3):
+        """상단 부분 제거 처리"""
+        if mesh is None or len(mesh.vertices) == 0 or len(mesh.faces) == 0:
+            print("경고: 빈 메시로 상단 부분 제거를 건너뜁니다.")
+            return mesh
+            
+        print(f"상단 {removal_ratio*100:.0f}% 제거 처리 시작...")
+        removal_start = time.time()
         
         try:
-            # 1. 원본 메시 백업
-            print(f"  - 상단 20% 제거 시작: 원본 메시 정점 수 = {len(grown_mesh.vertices)}, 면 수 = {len(grown_mesh.faces)}")
-            original_grown_mesh = copy.deepcopy(grown_mesh)
+            # 원본 메시 백업
+            original_mesh = copy.deepcopy(mesh)
             
-            # 2. 메시의 z 좌표 범위 계산
-            z_coords = grown_mesh.vertices[:, 2]  # z 좌표만 추출
+            # z 좌표 범위 계산
+            vertices = mesh.vertices
+            z_coords = vertices[:, 2]
             z_min, z_max = np.min(z_coords), np.max(z_coords)
             z_range = z_max - z_min
             
-            # 3. 상단 20%에 해당하는 z 좌표 임계값 계산
-            z_threshold = z_max - (z_range * 0.3)
-            print(f"  - Z 좌표 범위: {z_min:.2f} ~ {z_max:.2f}, 임계값: {z_threshold:.2f}")
+            # z 임계값 계산 (상단 removal_ratio 비율 제거)
+            z_threshold = z_max - (z_range * removal_ratio)
+            print(f"Z 범위: {z_min:.2f} ~ {z_max:.2f}, 임계값: {z_threshold:.2f}")
             
-            # 4. z 좌표가 임계값보다 낮은 정점만 선택 (상단 20% 제외)
+            # 임계값보다 낮은 정점만 선택
             keep_vertices_mask = z_coords < z_threshold
             selected_count = np.sum(keep_vertices_mask)
             
-            print(f"  - 상단 20% 제거 후 남은 정점 수: {selected_count} / {len(z_coords)}")
-            
-            # 5. 선택된 정점 수 확인 - 최소 정점 수는 메시 크기에 비례하도록 설정
-            min_vertices = max(100, int(len(grown_mesh.vertices) * 0.3))  # 최소한 원본 메시의 30% 이상이 남아야 함
-            
+            # 최소 정점 수 확인
+            min_vertices = max(100, int(len(vertices) * 0.3))
             if selected_count < min_vertices:
-                print(f"  - 경고: 상단 20% 제거 후 남은 정점이 너무 적습니다 ({selected_count} < {min_vertices}). 원본 메시를 사용합니다.")
-                print(f"  - 상단 20% 제거 시간: {time.time() - top_removal_start_time:.2f}초")
-                
-                print("=== Region Growing completed ===")
-                print(f"Number of selected vertices: {len(used_vertices)}")
-                print(f"Number of selected faces: {len(selected_faces)}")
-                print(f"Total time taken: {time.time() - start_time:.2f} seconds\n")
-                
-                return grown_mesh  # 원본 메시 반환
+                print(f"경고: 선택된 정점이 너무 적습니다 ({selected_count} < {min_vertices}). 원본 메시 사용.")
+                return original_mesh
             
-            # 6. 선택된 정점만 유지
-            print(f"  - 새 정점 배열 생성 중...")
-            new_vertices = grown_mesh.vertices[keep_vertices_mask]
-            if grown_mesh.normals is not None:
-                new_normals = grown_mesh.normals[keep_vertices_mask]
-            print(f"  - 새 정점 배열 생성 완료: {len(new_vertices)} 정점")
+            # 선택된 정점 집합
+            new_vertices = vertices[keep_vertices_mask]
             
-            # 7. 원래 정점 인덱스와 새로운 인덱스 간 매핑 생성
-            print(f"  - 정점 인덱스 매핑 생성 중...")
-            old_to_new_idx = np.full(len(grown_mesh.vertices), -1, dtype=np.int32)
-            old_to_new_idx[keep_vertices_mask] = np.arange(np.sum(keep_vertices_mask))
-            print(f"  - 정점 인덱스 매핑 생성 완료")
+            # 법선 벡터 처리
+            new_normals = None
+            if mesh.normals is not None:
+                new_normals = mesh.normals[keep_vertices_mask]
             
-            # 8. 유지된 정점에 대한 페이스만 유지
-            print(f"  - 새 페이스 배열 생성 중... 총 {len(grown_mesh.faces)} 개의 페이스 처리")
+            # 인덱스 매핑 생성
+            old_to_new_idx = np.full(len(vertices), -1, dtype=np.int32)
+            old_to_new_idx[keep_vertices_mask] = np.arange(selected_count)
+            
+            # 유효한 면만 선택
             new_faces = []
-            valid_faces = 0
+            for face in mesh.faces:
+                # 모든 정점이 유지되는 면만 선택
+                if all(v < len(keep_vertices_mask) and keep_vertices_mask[v] for v in face):
+                    new_face = [old_to_new_idx[v] for v in face]
+                    new_faces.append(new_face)
             
-            # 처리 중인 면의 개수를 주기적으로 출력하여 진행 상황 추적
-            total_faces = len(grown_mesh.faces)
-            checkpoint = max(1, total_faces // 10)  # 10% 단위로 진행 상황 출력
+            # 최소 면 수 확인
+            if len(new_faces) < 50:
+                print(f"경고: 선택된 면이 너무 적습니다 ({len(new_faces)} < 50). 원본 메시 사용.")
+                return original_mesh
             
-            for i, face in enumerate(grown_mesh.faces):
-                if i % checkpoint == 0:
-                    print(f"  - 페이스 처리 중: {i}/{total_faces} ({i/total_faces*100:.1f}%)")
-                
-                # 모든 정점이 유지되는 페이스만 선택
-                if all(v < len(keep_vertices_mask) for v in face):  # 인덱스 범위 확인
-                    if all(keep_vertices_mask[v] for v in face):
-                        # 정점 인덱스 업데이트
-                        try:
-                            new_face = [old_to_new_idx[v] for v in face]
-                            if all(idx != -1 for idx in new_face):  # 모든 인덱스가 유효한지 확인
-                                new_faces.append(new_face)
-                                valid_faces += 1
-                        except Exception as e:
-                            print(f"  - 경고: 페이스 {i}, 정점 {face}의 인덱스 변환 중 오류: {e}")
+            # 결과 메시 생성
+            result_mesh = Mesh()
+            result_mesh.vertices = new_vertices
+            result_mesh.faces = np.array(new_faces)
+            if new_normals is not None:
+                result_mesh.normals = new_normals
             
-            print(f"  - 새 페이스 배열 생성 완료: {len(new_faces)} 페이스 (유효: {valid_faces})")
-            
-            # 9. 페이스 수 확인
-            min_faces = max(50, int(len(grown_mesh.faces) * 0.3))  # 최소한 원본 메시의 30% 이상이 남아야 함
-            
-            if len(new_faces) < min_faces:
-                print(f"  - 경고: 상단 20% 제거 후 남은 페이스가 너무 적습니다 ({len(new_faces)} < {min_faces}). 원본 메시를 사용합니다.")
-                print(f"  - 상단 20% 제거 시간: {time.time() - top_removal_start_time:.2f}초")
-                
-                print("=== Region Growing completed ===")
-                print(f"Number of selected vertices: {len(used_vertices)}")
-                print(f"Number of selected faces: {len(selected_faces)}")
-                print(f"Total time taken: {time.time() - start_time:.2f} seconds\n")
-                
-                return grown_mesh  # 원본 메시 반환
-            
-            # 10. numpy 배열로 변환
-            print(f"  - 페이스 배열을 numpy로 변환 중...")
-            if len(new_faces) > 0:
-                new_faces = np.array(new_faces)
-                print(f"  - 페이스 배열 변환 완료: 형태 {new_faces.shape}")
-            else:
-                print(f"  - 경고: 변환할 페이스가 없습니다. 원본 메시를 사용합니다.")
-                
-                print("=== Region Growing completed ===")
-                print(f"Number of selected vertices: {len(used_vertices)}")
-                print(f"Number of selected faces: {len(selected_faces)}")
-                print(f"Total time taken: {time.time() - start_time:.2f} seconds\n")
-                
-                return grown_mesh  # 원본 메시 반환
-            
-            # 11. 새로운 메시 생성
-            print(f"  - 새 메시 객체 생성 중...")
-            top_removed_mesh = Mesh()
-            top_removed_mesh.vertices = new_vertices
-            top_removed_mesh.faces = new_faces
-            if grown_mesh.normals is not None:
-                top_removed_mesh.normals = new_normals
-            print(f"  - 새 메시 객체 생성 완료")
-            
-            print(f"  - 상단 20% 제거 완료: 정점 {len(grown_mesh.vertices)} -> {len(new_vertices)}")
-            print(f"  - 상단 20% 제거 완료: 면 {len(grown_mesh.faces)} -> {len(new_faces)}")
-            print(f"  - 상단 20% 제거 시간: {time.time() - top_removal_start_time:.2f}초")
-            
-            # 12. 메시 일관성 검사
-            print(f"  - 메시 일관성 검사 중...")
-            if (len(top_removed_mesh.vertices) > 0 and len(top_removed_mesh.faces) > 0 and 
-                np.max(top_removed_mesh.faces) < len(top_removed_mesh.vertices)):
-                print(f"  - 메시 일관성 검사 통과")
-                result_mesh = top_removed_mesh
-            else:
-                print(f"  - 경고: 메시 일관성 검사 실패. 원본 메시를 사용합니다.")
-                result_mesh = grown_mesh
-            
-            print("=== Region Growing completed ===")
-            print(f"Number of selected vertices: {len(used_vertices)}")
-            print(f"Number of selected faces: {len(selected_faces)}")
-            print(f"Total time taken: {time.time() - start_time:.2f} seconds\n")
+            print(f"상단 부분 제거 완료: 정점 {len(mesh.vertices)} -> {len(result_mesh.vertices)}")
+            print(f"면 수: {len(mesh.faces)} -> {len(result_mesh.faces)}")
+            print(f"처리 시간: {time.time() - removal_start:.2f}초")
             
             return result_mesh
             
         except Exception as e:
             import traceback
-            print(f"  - 오류: 상단 20% 제거 중 예외 발생: {str(e)}")
-            print(f"  - 상세 오류: {traceback.format_exc()}")
-            print(f"  - 상단 20% 제거 실패. 원본 메시를 사용합니다.")
-            print(f"  - 상단 20% 제거 시간: {time.time() - top_removal_start_time:.2f}초")
-            
-            print("=== Region Growing completed ===")
-            print(f"Number of selected vertices: {len(used_vertices)}")
-            print(f"Number of selected faces: {len(selected_faces)}")
-            print(f"Total time taken: {time.time() - start_time:.2f} seconds\n")
-            
-            return grown_mesh  # 원본 메시 반환
-    
+            print(f"상단 부분 제거 중 오류 발생: {str(e)}")
+            print(traceback.format_exc())
+            return mesh  # 오류 발생 시 원본 반환
+
     def move_mask_to_origin(self, mask_mesh):
         """
         Move the mask mesh so that the point with the largest +y value is at y=0,
@@ -1287,5 +1041,9 @@ class IOSLaminateRegistration:
         return transformed_source_mesh, best_transform
 
 if __name__ == "__main__":
-    ios_laminate_registration = IOSLaminateRegistration("../../example/data/ios_with_smilearch.stl", "../../example/data/smile_arch_half.stl", visualization=True)
+    ios_path = "../../example/data/ios_with_smilearch.stl"
+    laminate_path = "../../example/data/smile_arch_half.stl"
+    
+    ios_laminate_registration = IOSLaminateRegistration(ios_path, laminate_path, visualization=True)
     ios_laminate_registration.run_registration()
+
