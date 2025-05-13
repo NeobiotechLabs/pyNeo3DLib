@@ -7,3 +7,4 @@ mediapipe
 msvc-runtime
 open3d
 opencv-python
+pyvista
