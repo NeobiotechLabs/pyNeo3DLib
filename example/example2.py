@@ -67,7 +67,7 @@ def show_result(result):
     
     # 3. facescan[smile] 모델 로드 및 변환 매트릭스 적용
     for face_item in result['facescan']:
-        if face_item['subType'] == 'smile':
+        if face_item['subType'] == 'faceSmile':
             face_path = face_item['path']
             if check_file(face_path):
                 face_mesh = o3d.io.read_triangle_mesh(face_path)
