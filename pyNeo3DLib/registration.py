@@ -1,13 +1,16 @@
 import json
 import numpy as np
 import asyncio
+import os
 from dataclasses import dataclass
 from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegistration
 from pyNeo3DLib.faceRegisration.faceLaminateRegistration import FaceLaminateRegistration
 from pyNeo3DLib.faceRegisration.facesRegistration import FacesRegistration
+from pyNeo3DLib.bowRegistration.iosBowRegistration import IOSBowRegistration
 
-import os
+
 LAMINATE_PATH = os.path.join(os.path.dirname(__file__), "smile_arch_half.stl")
+CENTERPIN_PATH = os.path.join(os.path.dirname(__file__), "center_pin.stl")
 
 
 class progress_event:
@@ -89,7 +92,7 @@ class Neo3DRegistration:
 
         await self.websocket.send_json(progress_event(type="progress", progress=6, message="ios_bow_registration").get_json())
         await asyncio.sleep(0.1)
-        ios_bow_result = self.__ios_bow_registration()
+        ios_bow_result = self.__ios_bow_registration(ios_laminate_result, visualize=visualize)
 
         result = self.__make_result_json(
             ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist()
@@ -179,7 +182,8 @@ class Neo3DRegistration:
                 print(f'ios["path"]: {ios["path"]}')
                 # Now register this file with the laminate model
                 ios_laminate_registration = IOSLaminateRegistration(ios["path"], LAMINATE_PATH, visualize)
-                return ios_laminate_registration.run_registration()
+                result_matrix = ios_laminate_registration.run_registration()
+                return result_matrix
 
     def __ios_upper_registration(self):
         print("ios_upper_registration")
@@ -240,10 +244,25 @@ class Neo3DRegistration:
                            [0, 0, 0, 1]])
         return matrix
     
-    def __ios_bow_registration(self):
+    def __ios_bow_registration(self, ios_laminate_result, visualize=False):
         print("ios_bow_registration")
-        matrix = np.array([[1, 0, 0, 0],
-                           [0, 1, 0, 0],
-                           [0, 0, 1, 0],
-                           [0, 0, 0, 1]])
-        return matrix
+        ios_data = self.parsed_json["ios"]
+        for ios in ios_data:
+            if ios["subType"] == "smileArch":
+                ios_bow_registration = IOSBowRegistration(ios["path"], CENTERPIN_PATH, visualize)
+                # result_matrix 는 ios 정렬된 상태에서의 bow 이동 매트릭스
+                result_matrix = ios_bow_registration.run_registration()
+
+                # ios_laminate_result 는 정렬 + 라미네이트 정합 이동의 합
+                # 이를 빼고 라미네이트 정합 이동만 구하기 위해해 역행렬 적용
+                ios_transform_matrix_inv = np.linalg.inv(ios_bow_registration.ios_transform_matrix)
+                ios_moved = np.dot(ios_laminate_result, ios_transform_matrix_inv)
+                
+                # 라미네이트 정합 이동 + bow 이동 적용
+                # final_result = np.dot(bow_moved, ios_laminate_result)
+                final_result = np.dot(ios_moved, result_matrix)
+                print(f'final_result: {final_result}')
+
+                return final_result
+
+

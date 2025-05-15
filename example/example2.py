@@ -81,6 +81,15 @@ def show_result(result):
                 
                 models.append(face_mesh)
             break
+
+    bow_path = result['smilearch_bow']['path']
+    if check_file(bow_path):
+        bow_mesh = o3d.io.read_triangle_mesh(bow_path)
+        bow_mesh.compute_vertex_normals()  # 빛 효과를 위한 법선 벡터 계산
+        bow_mesh.paint_uniform_color([0.8, 0.5, 0.5])
+        transform_matrix = np.array(result['smilearch_bow']['transform_matrix'])
+        bow_mesh.transform(transform_matrix)
+        models.append(bow_mesh)
     
     # 모델이 로드되지 않았다면 중단
     if not models:
@@ -133,7 +142,7 @@ async def main():
         reg = Neo3DRegistration(json_string, fastserver.ws)
         print(reg.version)
         print(reg.parsed_json)
-        result = await reg.run_registration(visualize=True)
+        result = await reg.run_registration(visualize=False)
 
     show_result(result)
 

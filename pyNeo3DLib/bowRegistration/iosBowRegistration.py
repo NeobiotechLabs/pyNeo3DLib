@@ -1,9 +1,7 @@
 import numpy as np
 from pyNeo3DLib.fileLoader.mesh import Mesh
-import copy
 from scipy.spatial import ConvexHull
 from pyNeo3DLib.visualization.neovis import visualize_meshes
-import time
 from pyNeo3DLib.iosRegistration.iosAlignment import IosAlignment
 
 class IOSBowRegistration:
@@ -44,7 +42,7 @@ class IOSBowRegistration:
 
 
         # 4. Move to origin
-        moved_origin_centerpin_mesh, centerpin_translation_matrix = self.move_origin_pin_to_found_pin(region_growing_mesh)
+        moved_origin_centerpin_mesh = self.move_origin_pin_to_found_pin(region_growing_mesh)
         if self.visualization:
             visualize_meshes(
                 [region_growing_mesh, moved_origin_centerpin_mesh], 
@@ -55,7 +53,7 @@ class IOSBowRegistration:
         print("\n=== 4. Transformation matrix after origin centerpin movement ===")
         print(self.centerpin_transform_matrix)
 
-        # 7. ICP registration
+        # 5. ICP registration
         # 시각화가 활성화된 경우 Open3D visualizer 생성
         vis = None
         if self.visualization:
@@ -76,31 +74,14 @@ class IOSBowRegistration:
             vis.poll_events()
             vis.update_renderer()
         
-        transformed_mesh, fast_registration_transform_matrix = self.fast_registration(moved_origin_centerpin_mesh, region_growing_mesh, vis)
+        registered_origin_centerpin_mesh, fast_registration_transform_matrix = self.fast_registration(moved_origin_centerpin_mesh, region_growing_mesh, vis)
+        self.centerpin_transform_matrix = np.dot(fast_registration_transform_matrix, self.centerpin_transform_matrix)
         
         print("\n=== 5. ICP transformation matrix ===")
-        print(fast_registration_transform_matrix)
+        print(self.centerpin_transform_matrix)
 
-        # Original IOS mesh with all transformations applied in order
-        final_ios_mesh = copy.deepcopy(self.ios_mesh)
+        return self.centerpin_transform_matrix
         
-        # Multiply transformation matrices in order
-        # 1. OBB, Y, Z alignment (transform_matrix)
-        # 2. Origin movement (translation_matrix)
-        # 3. ICP transformation (fast_registration_transform_matrix)
-        final_transform = np.dot(fast_registration_transform_matrix, 
-                                    self.ios_transform_matrix)
-        
-        if self.visualization:
-            # Final transformation applied once
-            final_ios_mesh.vertices = np.dot(
-                final_ios_mesh.vertices,
-                final_transform[:3, :3].T
-            ) + final_transform[:3, 3]
-
-        return final_transform
-        
-
     def __convert_pyvista_mesh_to_mesh(self, pyvista_mesh):
         # PyVista PolyData 객체를 Mesh 객체로 변환
         mesh = Mesh()
@@ -440,7 +421,7 @@ class IOSBowRegistration:
         
         print(f"센터핀 메시 정렬: 이동 벡터 = {translation_vector}")
         
-        return aligned_mesh, translation_matrix
+        return aligned_mesh
 
     def fast_registration(self, source_mesh, target_mesh, vis=None):
         """
