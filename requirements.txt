@@ -4,7 +4,7 @@ uvicorn
 pydantic
 scipy
 mediapipe
-msvc-runtime
+msvc-runtime;platform_system=='Windows'
 open3d
 opencv-python
 pyvista

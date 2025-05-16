@@ -16,7 +16,7 @@ setup(
         "uvicorn",
         "pydantic",
         "scipy",
-        "msvc-runtime",
+        "msvc-runtime;platform_system=='Windows'",
         "mediapipe>=0.10.9",
         "open3d",
         "opencv-python",
