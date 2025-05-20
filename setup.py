@@ -10,7 +10,7 @@ setup(
         "pyNeo3DLib": ["*.stl"]
     },
     install_requires=[
-        "numpy",
+        "numpy==1.25.2",
         "fastapi",
         "uvicorn[standard]",
         "uvicorn",
