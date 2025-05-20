@@ -268,8 +268,22 @@ class Neo3DRegistration:
                 # 라미네이트 정합 이동 + bow 이동 적용
                 # final_result = np.dot(bow_moved, ios_laminate_result)
                 final_result = np.dot(ios_moved, result_matrix)
+                final_result = self.__correct_reflection(final_result)
                 print(f'final_result: {final_result}')
 
                 return final_result
+            
+    def __correct_reflection(self, matrix):
+        # 3x3 회전 행렬의 행렬식 계산
+        det = np.linalg.det(matrix[:3, :3])
+        
+        # 행렬식이 음수면 반사 변환이 있음
+        if det < 0:
+            print(f"반사 변환 감지됨 (행렬식: {det}). 보정 중...")
+            # x축 반전 적용 (다른 축을 선택해도 됨)
+            reflection_fix = np.eye(4)
+            reflection_fix[0, 0] = -1
+            return np.dot(reflection_fix, matrix)
+        return matrix
 
 
