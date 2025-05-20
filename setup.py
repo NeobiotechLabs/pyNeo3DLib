@@ -10,7 +10,7 @@ setup(
         "pyNeo3DLib": ["*.stl"]
     },
     install_requires=[
-        "numpy==1.24.*",
+        "numpy",
         "fastapi",
         "uvicorn[standard]",
         "uvicorn",
@@ -32,5 +32,5 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires="==3.10.*",
+    #python_requires="==3.10.*",
 )
