@@ -210,6 +210,20 @@ class IosAlignment:
         if not np.allclose(np.dot(rotation_matrix.T, rotation_matrix), np.eye(3), rtol=1e-5, atol=1e-5):
             print("경고: 계산된 회전 행렬이 직교행렬이 아닙니다.")
         
+        # 회전 행렬의 행렬식 확인 (반사가 포함되었는지 확인)
+        det = np.linalg.det(rotation_matrix)
+        print(f"회전 행렬의 행렬식: {det}")
+        
+        # 행렬식이 음수인 경우 (반사가 포함된 경우) 보정
+        if det < 0:
+            print("회전 행렬에 반사가 포함되어 있어 보정합니다...")
+            # SVD 분해를 통한 보정
+            U, S, Vt = np.linalg.svd(rotation_matrix)
+            # 마지막 특이값의 부호를 바꿔 오른손 좌표계 유지
+            corrected_rotation = U @ np.diag([1, 1, np.sign(det)]) @ Vt
+            rotation_matrix = corrected_rotation
+            print("회전 행렬 보정 완료, 새 행렬식:", np.linalg.det(rotation_matrix))
+        
         # 회전 행렬을 표준 좌표계로 변환
         transform_matrix = np.eye(4)
         transform_matrix[:3, :3] = rotation_matrix.T  # 표준 좌표계로 변환하기 위해 전치

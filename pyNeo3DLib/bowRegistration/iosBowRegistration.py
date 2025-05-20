@@ -80,6 +80,8 @@ class IOSBowRegistration:
         print("\n=== 5. ICP transformation matrix ===")
         print(self.centerpin_transform_matrix)
 
+        self.centerpin_transform_matrix = self.correct_reflection(self.centerpin_transform_matrix)
+
         return self.centerpin_transform_matrix
         
     def __convert_pyvista_mesh_to_mesh(self, pyvista_mesh):
@@ -706,6 +708,19 @@ class IOSBowRegistration:
         
         return transformed_source_mesh, best_transform
 
+    def correct_reflection(self, matrix):
+        # 3x3 회전 행렬의 행렬식 계산
+        det = np.linalg.det(matrix[:3, :3])
+        
+        # 행렬식이 음수면 반사 변환이 있음
+        if det < 0:
+            print(f"반사 변환 감지됨 (행렬식: {det}). 보정 중...")
+            # x축 반전 적용 (다른 축을 선택해도 됨)
+            reflection_fix = np.eye(4)
+            reflection_fix[0, 0] = -1
+            return np.dot(reflection_fix, matrix)
+        return matrix
+    
 if __name__ == "__main__":
     ios_bow_registration = IOSBowRegistration("../../example/data/ios_with_smilearch.stl", "../../example/data/center_pin.stl", visualization=True)
     ios_bow_registration.run_registration()

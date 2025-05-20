@@ -81,7 +81,7 @@ class IOSLaminateRegistration:
             )
 
         # 5. Move to origin
-        aligned_laminate_mesh, translation_matrix = self.move_mask_to_origin(region_growing_mesh)
+        aligned_laminate_mesh = self.move_mask_to_origin(region_growing_mesh)
         if self.visualization:
             visualize_meshes(
                 [self.laminate_mesh, aligned_laminate_mesh], 
@@ -134,6 +134,9 @@ class IOSLaminateRegistration:
                 final_ios_mesh.vertices,
                 final_transform[:3, :3].T
             ) + final_transform[:3, 3]
+
+        # 최종 행렬 계산 후 반사 보정
+        final_transform = self.correct_reflection(final_transform)
 
         return final_transform
         
@@ -741,7 +744,7 @@ class IOSLaminateRegistration:
             print(f"  - Z range after movement: [{np.min(aligned_vertices[:, 2]):.2f}, {np.max(aligned_vertices[:, 2]):.2f}]")
             print(f"=== move_mask_to_origin 완료: {time.time() - move_start_time:.2f}초 ===\n")
             
-            return aligned_mesh, translation_matrix
+            return aligned_mesh
             
         except Exception as e:
             import traceback
@@ -1039,6 +1042,19 @@ class IOSLaminateRegistration:
         ) + best_transform[:3, 3]
         
         return transformed_source_mesh, best_transform
+
+    def correct_reflection(self, matrix):
+        # 3x3 회전 행렬의 행렬식 계산
+        det = np.linalg.det(matrix[:3, :3])
+        
+        # 행렬식이 음수면 반사 변환이 있음
+        if det < 0:
+            print(f"반사 변환 감지됨 (행렬식: {det}). 보정 중...")
+            # x축 반전 적용 (다른 축을 선택해도 됨)
+            reflection_fix = np.eye(4)
+            reflection_fix[0, 0] = -1
+            return np.dot(reflection_fix, matrix)
+        return matrix
 
 if __name__ == "__main__":
     ios_path = "../../example/data/ios_with_smilearch.stl"
