@@ -90,6 +90,16 @@ def show_result(result):
         transform_matrix = np.array(result['smilearch_bow']['transform_matrix'])
         bow_mesh.transform(transform_matrix)
         models.append(bow_mesh)
+        
+    # 콘딜 메시 생성
+    condyle_vertices = np.array(result['condyle']['mesh']['vertices'])
+    condyle_faces = np.array(result['condyle']['mesh']['faces'])
+    condyle_mesh = o3d.geometry.TriangleMesh()
+    condyle_mesh.vertices = o3d.utility.Vector3dVector(condyle_vertices)
+    condyle_mesh.triangles = o3d.utility.Vector3iVector(condyle_faces)
+    condyle_mesh.compute_vertex_normals()
+    condyle_mesh.paint_uniform_color([1.0, 1.0, 0.0])  # 노란색으로 설정
+    models.append(condyle_mesh)
     
     # 모델이 로드되지 않았다면 중단
     if not models:
@@ -120,9 +130,8 @@ def show_result(result):
         pass
     
     # 반투명 효과를 위한 설정
-    opt.mesh_show_wireframe = True  # 와이어프레임 표시
+    opt.mesh_show_wireframe = False  # 와이어프레임 끄기 (더 깔끔한 표시)
     opt.mesh_show_back_face = True  # 뒷면 표시
-    opt.line_width = 1.0  # 와이어프레임 선 두께 감소
     opt.point_size = 3.0  # 점 크기 설정
     
     # 카메라 위치 설정
