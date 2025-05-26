@@ -7,7 +7,7 @@ from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegist
 from pyNeo3DLib.faceRegisration.faceLaminateRegistration import FaceLaminateRegistration
 from pyNeo3DLib.faceRegisration.facesRegistration import FacesRegistration
 from pyNeo3DLib.bowRegistration.iosBowRegistration import IOSBowRegistration
-
+from pyNeo3DLib.condyleFinder.condyleFinder import CondyleFinder
 
 LAMINATE_PATH = os.path.join(os.path.dirname(__file__), "smile_arch_half.stl")
 CENTERPIN_PATH = os.path.join(os.path.dirname(__file__), "center_pin.stl")
@@ -99,9 +99,15 @@ class Neo3DRegistration:
             await self.websocket.send_json(progress_event(type="progress", progress=6, message="ios_bow_registration").get_json())
             await asyncio.sleep(0.1)
         ios_bow_result = self.__ios_bow_registration(ios_laminate_result, visualize=visualize)
+        
+        if(self.websocket is not None):
+            await self.websocket.send_json(progress_event(type="progress", progress=7, message="condyle_registration").get_json())
+            await asyncio.sleep(0.1)
+        condyle_result = self.__condyle_detection(facescan_laminate_result, visualize)
+        print(f'__condyle_detection result: {condyle_result}')
 
         result = self.__make_result_json(
-            ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist()
+            ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist(), condyle_result
         )
         
         if(self.websocket is not None):
@@ -117,7 +123,8 @@ class Neo3DRegistration:
                             facescan_rest_result, 
                             facescan_retraction_result, 
                             cbct_result, 
-                            ios_bow_result):
+                            ios_bow_result,
+                            condyle_result):
         
         print("=====================================")
         print(f'ios_laminate_result: {ios_laminate_result}')
@@ -131,6 +138,7 @@ class Neo3DRegistration:
         print(f'cbct_result: {cbct_result}')
 
         print(f'ios_bow_result: {ios_bow_result}')
+        print(f'condyle_result: {condyle_result}')
         print("=====================================")
 
         for ios in self.parsed_json["ios"]:
@@ -151,6 +159,16 @@ class Neo3DRegistration:
 
         self.parsed_json["cbct"]["transform_matrix"] = cbct_result
         self.parsed_json["smilearch_bow"]["transform_matrix"] = ios_bow_result
+        
+        # condyle 정보 추가
+        if condyle_result is not None:
+            vertices, faces = self.__make_condyle_plane(condyle_result)
+            condyle_json = {
+                "vertices": vertices.tolist(),
+                "faces": faces.tolist(),
+                "points": condyle_result.tolist()
+            }
+            self.parsed_json["condyle"] = {"mesh": condyle_json}
 
         return self.parsed_json
         
@@ -273,6 +291,50 @@ class Neo3DRegistration:
 
                 return final_result
             
+    def __condyle_detection(self, face_registration_result, visualize=False):
+        print("condyle detection")
+        facescan_data = self.parsed_json["facescan"]
+        for facescan in facescan_data:
+            if facescan["subType"] == "faceSmile":
+                print(f'facescan["path"]: {facescan["path"]}')
+                # Now register this file with the laminate model
+                condyle_finder = CondyleFinder(facescan["path"], visualize)
+                result = condyle_finder.run_analysis()
+                
+                # face_registration_result 변환 행렬을 콘딜 점들에 적용
+                if result is not None and len(result) > 0:
+                    # result를 numpy 배열로 변환
+                    condyle_points = np.array(result)
+                    
+                    # 동차 좌표로 변환 (4x4 행렬 적용을 위해)
+                    ones = np.ones((condyle_points.shape[0], 1))
+                    homogeneous_points = np.hstack([condyle_points, ones])
+                    
+                    # 변환 행렬 적용
+                    transformed_points = np.dot(homogeneous_points, face_registration_result.T)
+                    
+                    # 3D 좌표만 추출 (동차 좌표에서 w=1로 나누기)
+                    result = transformed_points[:, :3] / transformed_points[:, 3:4]
+                
+                return result
+            
+    def __make_condyle_plane(self, condyle_points):
+        print("make_condyle_plane")
+        # 콘딜 점들을 포함하는 평면 만들기
+        if condyle_points is not None and len(condyle_points) == 2:
+            points = np.array(condyle_points)
+            
+            # 세 번째 점 생성 (첫 번째 점에서 y축으로 10만큼 이동)
+            third_point = np.array([0, 0, 0])
+            points = np.vstack([points, third_point])
+
+            # 삼각형 메시 생성
+            vertices = points
+            faces = np.array([[0, 1, 2]])  # 세 점을 연결하는 하나의 삼각형
+
+            return vertices, faces
+        
+
     def __correct_reflection(self, matrix):
         # 3x3 회전 행렬의 행렬식 계산
         det = np.linalg.det(matrix[:3, :3])
