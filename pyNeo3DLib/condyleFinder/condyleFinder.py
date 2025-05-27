@@ -256,5 +256,11 @@ class CondyleFinder:
             
 
 if __name__ == "__main__":
-    condyle_finder = CondyleFinder(face_mesh_path="../../example/data/FaceScan/Smile/Smile.obj", visualization=True)
+    # condyle_finder = CondyleFinder(face_mesh_path="../../example/data/FaceScan/Smile/Smile.obj", visualization=True)
+    condyle_finder = CondyleFinder(face_mesh_path="../../example/data/choi/Smile.obj", visualization=True)
+    # condyle_finder = CondyleFinder(face_mesh_path="../../example/data/sim/Smile.obj", visualization=True)
+    # condyle_finder = CondyleFinder(face_mesh_path="../../example/data/park1/Smile.obj", visualization=True)
+    # condyle_finder = CondyleFinder(face_mesh_path="../../example/data/park2/Smile.obj", visualization=True)
+    # condyle_finder = CondyleFinder(face_mesh_path="../../example/data/oh/Smile.obj", visualization=True)
+    # condyle_finder = CondyleFinder(face_mesh_path="../../example/data/kim/Smile.obj", visualization=True)
     condyle_finder.run_analysis()

@@ -716,6 +716,7 @@ class FaceLaminateRegistration:
 
 
 if __name__ == "__main__":
-    face_laminate_registration = FaceLaminateRegistration("../../example/data/FaceScan/Smile/Smile.obj", "../../example/data/smile_arch_half.stl", visualization=True)
+    # face_laminate_registration = FaceLaminateRegistration("../../example/data/FaceScan/Smile/Smile.obj", "../../example/data/smile_arch_half.stl", visualization=True)
+    face_laminate_registration = FaceLaminateRegistration("../../example/data/park1/Smile.obj", "../../example/data/smile_arch_half.stl", visualization=True)
     final_transform = face_laminate_registration.run_registration()
     print(final_transform)

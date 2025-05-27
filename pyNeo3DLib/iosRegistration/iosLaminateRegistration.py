@@ -167,8 +167,28 @@ class IOSLaminateRegistration:
         vertices = mesh.vertices
         faces = mesh.faces
         
+        # 바운딩 박스의 xyz 축 비율 계산
+        bbox_min = np.min(vertices, axis=0)
+        bbox_max = np.max(vertices, axis=0)
+        bbox_size = bbox_max - bbox_min
+        
+        # xyz 축 비율 계산 및 로그 출력
+        print(f"\n=== 바운딩 박스 축 비율 ===")
+        print(f"X축 길이: {bbox_size[0]:.2f}")
+        print(f"Y축 길이: {bbox_size[1]:.2f}") 
+        print(f"Z축 길이: {bbox_size[2]:.2f}")
+        print(f"X:Y:Z 비율 = {bbox_size[0]:.2f}:{bbox_size[1]:.2f}:{bbox_size[2]:.2f}")
+        
+        
+        if(bbox_size[2]/bbox_size[0] > 0.5):
+            print("Z축 길이가 X축 길이의 50% 이상입니다. 높이 조절 필요")
+            center = np.mean(vertices, axis=0) + np.array([0, 0, bbox_size[2]/5])  
+        else:
+            center = np.mean(vertices, axis=0)
+        
+        
         # 1. Calculate weight center
-        center = np.mean(vertices, axis=0) #+ np.min(vertices, axis=0))/2
+        # center = np.mean(vertices, axis=0) #+ np.min(vertices, axis=0))/2
         
         # 2. Define +y direction vector
         y_direction = np.array([0, 1, 0])
