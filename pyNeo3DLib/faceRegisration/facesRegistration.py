@@ -39,8 +39,14 @@ class FacesRegistration:
         Returns:
             Transformed face_rest_mesh and face_retraction_mesh
         """
-        # Calculate centroid of face_smile_mesh
-        smile_center = np.mean(self.face_smile_mesh.vertices, axis=0)
+        # Calculate centroid of face_smile_mesh (Open3D 메시인 경우)
+        if hasattr(self.face_smile_mesh, 'vertices') and hasattr(self.face_smile_mesh.vertices, '__len__'):
+            # Open3D TriangleMesh인 경우
+            smile_vertices = np.asarray(self.face_smile_mesh.vertices)
+        else:
+            # 커스텀 Mesh인 경우
+            smile_vertices = self.face_smile_mesh.vertices
+        smile_center = np.mean(smile_vertices, axis=0)
         
         # Calculate centroid of face_rest_mesh and transform
         rest_center = np.mean(self.face_rest_mesh.vertices, axis=0)
@@ -88,21 +94,34 @@ class FacesRegistration:
         def mesh_to_pointcloud(mesh):
             # 1. 포인트 클라우드 생성
             pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(mesh.vertices)
+            
+            # 메시 타입에 따라 vertices 처리
+            if hasattr(mesh, 'vertices') and hasattr(mesh.vertices, '__len__'):
+                # Open3D TriangleMesh인 경우
+                vertices = np.asarray(mesh.vertices)
+                faces = np.asarray(mesh.triangles) if hasattr(mesh, 'triangles') else mesh.faces
+                normals = np.asarray(mesh.vertex_normals) if hasattr(mesh, 'vertex_normals') else mesh.normals
+            else:
+                # 커스텀 Mesh인 경우
+                vertices = mesh.vertices
+                faces = mesh.faces
+                normals = mesh.normals
+            
+            pcd.points = o3d.utility.Vector3dVector(vertices)
             
             down_sample_rate = 10
             # 먼저 다운샘플링 수행
             pcd = pcd.uniform_down_sample(every_k_points=down_sample_rate)
             
             # 2. 법선 벡터 처리 (다운샘플된 점들에 대해서만)
-            if mesh.normals is not None:
-                normals = np.asarray(mesh.normals)[::down_sample_rate]  # 다운샘플링과 동일한 비율로 법선 벡터 선택
-                pcd.normals = o3d.utility.Vector3dVector(normals)
+            if normals is not None:
+                normals_sampled = np.asarray(normals)[::down_sample_rate]  # 다운샘플링과 동일한 비율로 법선 벡터 선택
+                pcd.normals = o3d.utility.Vector3dVector(normals_sampled)
             else:
                 # 다운샘플된 점들에 대해서만 법선 계산
                 temp_mesh = o3d.geometry.TriangleMesh()
                 temp_mesh.vertices = pcd.points
-                temp_mesh.triangles = o3d.utility.Vector3iVector(mesh.faces)
+                temp_mesh.triangles = o3d.utility.Vector3iVector(faces)
                 temp_mesh.compute_vertex_normals()
                 pcd.normals = temp_mesh.vertex_normals
             

@@ -1,0 +1,39 @@
+{
+    "laminate": {
+        "path": "D:/Git/PyNeo3DLib/example/data/smile_arch_half.stl"
+    },
+    "ios": [
+        {
+            "subType": "smileArch",
+            "path": "D:/Git/PyNeo3DLib/example/data/ios_with_smilearch.stl"
+        },
+        {
+            "subType": "upper",
+            "path": "D:/Git/PyNeo3DLib/example/data/smile_arch_origin.stl"
+        },
+        {
+            "subType": "lower",
+            "path": "D:/Git/PyNeo3DLib/example/data/smile_arch_origin.stl"
+        }
+    ],
+    "facescan": [
+        {
+            "subType": "faceSmile",
+            "path": "D:/Git/PyNeo3DLib/example/data/photo/face0.jpg"
+        },
+        {
+            "subType": "faceRest",
+            "path": "D:/Git/PyNeo3DLib/example/data/photo/face1.jpg"
+        },
+        {
+            "subType": "faceRetraction",
+            "path": "D:/Git/PyNeo3DLib/example/data/photo/face2.jpg"
+        }
+    ],
+    "cbct": {
+        "path": "D:/Git/PyNeo3DLib/example/data/cbct/"
+    },
+    "smilearch_bow": {
+        "path": "D:/Git/PyNeo3DLib/example/data/bow/smilearch_bow.stl"
+    }
+}

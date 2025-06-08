@@ -2,12 +2,17 @@ import json
 import numpy as np
 import asyncio
 import os
+from PIL import Image
+import io
+import base64
 from dataclasses import dataclass
 from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegistration
 from pyNeo3DLib.faceRegisration.faceLaminateRegistration import FaceLaminateRegistration
+from pyNeo3DLib.faceRegisration.facePhotoRegistration import FacePhotoRegistration
 from pyNeo3DLib.faceRegisration.facesRegistration import FacesRegistration
 from pyNeo3DLib.bowRegistration.iosBowRegistration import IOSBowRegistration
 from pyNeo3DLib.condyleFinder.condyleFinder import CondyleFinder
+
 
 LAMINATE_PATH = os.path.join(os.path.dirname(__file__), "smile_arch_half.stl")
 CENTERPIN_PATH = os.path.join(os.path.dirname(__file__), "center_pin.stl")
@@ -81,14 +86,24 @@ class Neo3DRegistration:
         if(self.websocket is not None):
             await self.websocket.send_json(progress_event(type="progress", progress=3, message="facescan_laminate_registration").get_json())
             await asyncio.sleep(0.1)
-        facescan_laminate_result, transformed_face_smile_mesh = self.__facescan_laminate_registration(visualize=visualize)
-        if transformed_face_smile_mesh is None:
-            raise ValueError("transformed_face_smile_mesh is None")
+        facescan_laminate_result, transformed_face_smile_mesh, type_of_facedata = self.__facescan_laminate_registration(visualize=visualize)
 
-        if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=4, message="facescan_rest_registration").get_json())
-            await asyncio.sleep(0.1)
-        facescan_rest_result, facescan_retraction_result = self.__facescan_rest_registration(transformed_face_smile_mesh, facescan_laminate_result, visualize=visualize)
+        if(type_of_facedata == "FaceScan"):
+            if(self.websocket is not None):
+                await self.websocket.send_json(progress_event(type="progress", progress=4, message="facescan_rest_registration").get_json())
+                await asyncio.sleep(0.1)
+            facescan_rest_result, facescan_retraction_result = self.__facescan_rest_registration(transformed_face_smile_mesh, facescan_laminate_result, visualize=visualize)
+            facephoto_mesh = None
+        else:
+            facephoto_mesh = transformed_face_smile_mesh
+            facescan_rest_result = np.array([[1, 0, 0, 0],
+                                              [0, 1, 0, 0],
+                                              [0, 0, 1, 0],
+                                              [0, 0, 0, 1]])
+            facescan_retraction_result = np.array([[1, 0, 0, 0],
+                                                    [0, 1, 0, 0],
+                                                    [0, 0, 1, 0],
+                                                    [0, 0, 0, 1]])
 
         if(self.websocket is not None):
             await self.websocket.send_json(progress_event(type="progress", progress=5, message="cbct_registration").get_json())
@@ -107,7 +122,7 @@ class Neo3DRegistration:
         print(f'__condyle_detection result: {condyle_result}')
 
         result = self.__make_result_json(
-            ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist(), condyle_result
+            ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facephoto_mesh, facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist(), condyle_result
         )
         
         if(self.websocket is not None):
@@ -120,6 +135,7 @@ class Neo3DRegistration:
                             ios_upper_result, 
                             ios_lower_result, 
                             facescan_laminate_result, 
+                            facephoto_mesh,
                             facescan_rest_result, 
                             facescan_retraction_result, 
                             cbct_result, 
@@ -132,6 +148,7 @@ class Neo3DRegistration:
         print(f'ios_lower_result: {ios_lower_result}')
 
         print(f'facescan_laminate_result: {facescan_laminate_result}')
+        print(f'transformed_face_smile_mesh (only for photo): {facephoto_mesh}')
         print(f'facescan_rest_result: {facescan_rest_result}')
         print(f'facescan_retraction_result: {facescan_retraction_result}') 
 
@@ -170,6 +187,43 @@ class Neo3DRegistration:
             }
             self.parsed_json["condyle"] = {"mesh": condyle_json}
 
+        if facephoto_mesh is not None:
+            # 3D 평면에 사진 텍스처를 입힌 모델을 JSON으로 변환
+            vertices = np.asarray(facephoto_mesh.vertices)
+            triangles = np.asarray(facephoto_mesh.triangles)
+            
+            photo_json = {
+                "vertices": vertices.tolist(),
+                "triangles": triangles.tolist()
+            }
+            
+            # UV 좌표가 있다면 추가
+            if hasattr(facephoto_mesh, 'triangle_uvs') and len(facephoto_mesh.triangle_uvs) > 0:
+                triangle_uvs = np.asarray(facephoto_mesh.triangle_uvs)
+                photo_json["triangle_uvs"] = triangle_uvs.tolist()
+            
+            # 텍스처 정보가 있다면 추가
+            if hasattr(facephoto_mesh, 'textures') and len(facephoto_mesh.textures) > 0:
+                photo_json["has_texture"] = True
+                textures_data = []
+                for texture in facephoto_mesh.textures:
+                    # open3d.geometry.Image를 PIL.Image로 변환
+                    pil_img = Image.fromarray(np.asarray(texture))
+                    
+                    # PIL.Image를 메모리 내 바이트 스트림으로 변환
+                    buffer = io.BytesIO()
+                    pil_img.save(buffer, format="PNG") # PNG for lossless conversion
+                    
+                    # Base64로 인코딩
+                    encoded_string = base64.b64encode(buffer.getvalue()).decode("utf-8")
+                    
+                    textures_data.append({
+                        "format": "png",
+                        "data": encoded_string
+                    })
+                photo_json["textures"] = textures_data
+            
+            self.parsed_json["photo"] = photo_json
         return self.parsed_json
         
 
@@ -232,9 +286,17 @@ class Neo3DRegistration:
         for facescan in facescan_data:
             if facescan["subType"] == "faceSmile":
                 print(f'facescan["path"]: {facescan["path"]}')
-                # Now register this file with the laminate model
-                facescan_laminate_registration = FaceLaminateRegistration(facescan["path"], LAMINATE_PATH, visualize)
-                return facescan_laminate_registration.run_registration()
+                if facescan["path"].endswith(".obj"):
+                    # Now register this file with the laminate model
+                    facescan_laminate_registration = FaceLaminateRegistration(facescan["path"], LAMINATE_PATH, visualize)
+                    final_transform, moved_smile_mesh = facescan_laminate_registration.run_registration()
+                    return final_transform, moved_smile_mesh, "FaceScan"
+                elif facescan["path"].endswith(".jpg"):
+                    facephoto_registration = FacePhotoRegistration(facescan["path"], visualize)
+                    M_total_homogeneous, image_plane = facephoto_registration.run_registration()
+                    return M_total_homogeneous, image_plane, "FacePhoto"
+                else:
+                    return None
 
     def __facescan_rest_registration(self, transformed_face_smile_mesh, facescan_laminate_result, visualize=False):
         print("facescan_rest_registration")
@@ -248,10 +310,21 @@ class Neo3DRegistration:
             elif facescan["subType"] == "faceRetraction":
                 print(f'facescan["path"]: {facescan["path"]}')
                 retraction_path = facescan["path"]
+                
+        if rest_path.endswith(".obj"):
+            facescan_rest_registration = FacesRegistration(transformed_face_smile_mesh, facescan_laminate_result, rest_path, retraction_path, visualize)
+            result_for_rest, result_for_retraction = facescan_rest_registration.run_registration()
+        else:
+            result_for_rest = np.array([[1, 0, 0, 0],
+                                        [0, 1, 0, 0],
+                                        [0, 0, 1, 0],
+                                        [0, 0, 0, 1]])
+            result_for_retraction = np.array([[1, 0, 0, 0],
+                                                [0, 1, 0, 0],
+                                                [0, 0, 1, 0],
+                                                [0, 0, 0, 1]])
 
-        facescan_rest_registration = FacesRegistration(transformed_face_smile_mesh, facescan_laminate_result, rest_path, retraction_path, visualize)
-
-        return facescan_rest_registration.run_registration()
+        return result_for_rest, result_for_retraction
 
     def __facescan_retraction_registration(self):
         print("facescan_retraction_registration")
@@ -297,26 +370,29 @@ class Neo3DRegistration:
         for facescan in facescan_data:
             if facescan["subType"] == "faceSmile":
                 print(f'facescan["path"]: {facescan["path"]}')
-                # Now register this file with the laminate model
-                condyle_finder = CondyleFinder(facescan["path"], visualize)
-                result = condyle_finder.run_analysis()
-                
-                # face_registration_result 변환 행렬을 콘딜 점들에 적용
-                if result is not None and len(result) > 0:
-                    # result를 numpy 배열로 변환
-                    condyle_points = np.array(result)
+                if facescan["path"].endswith(".obj"):                
+                    # Now register this file with the laminate model
+                    condyle_finder = CondyleFinder(facescan["path"], visualize)
+                    result = condyle_finder.run_analysis()
                     
-                    # 동차 좌표로 변환 (4x4 행렬 적용을 위해)
-                    ones = np.ones((condyle_points.shape[0], 1))
-                    homogeneous_points = np.hstack([condyle_points, ones])
+                    # face_registration_result 변환 행렬을 콘딜 점들에 적용
+                    if result is not None and len(result) > 0:
+                        # result를 numpy 배열로 변환
+                        condyle_points = np.array(result)
+                        
+                        # 동차 좌표로 변환 (4x4 행렬 적용을 위해)
+                        ones = np.ones((condyle_points.shape[0], 1))
+                        homogeneous_points = np.hstack([condyle_points, ones])
+                        
+                        # 변환 행렬 적용
+                        transformed_points = np.dot(homogeneous_points, face_registration_result.T)
+                        
+                        # 3D 좌표만 추출 (동차 좌표에서 w=1로 나누기)
+                        result = transformed_points[:, :3] / transformed_points[:, 3:4]
                     
-                    # 변환 행렬 적용
-                    transformed_points = np.dot(homogeneous_points, face_registration_result.T)
-                    
-                    # 3D 좌표만 추출 (동차 좌표에서 w=1로 나누기)
-                    result = transformed_points[:, :3] / transformed_points[:, 3:4]
-                
-                return result
+                    return result
+                else:
+                    return None
             
     def __make_condyle_plane(self, condyle_points):
         print("make_condyle_plane")
