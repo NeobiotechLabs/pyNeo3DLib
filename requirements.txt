@@ -8,3 +8,4 @@ msvc-runtime;platform_system=='Windows'
 open3d
 opencv-python
 pyvista
+imageio
