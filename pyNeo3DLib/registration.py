@@ -59,7 +59,7 @@ class Neo3DRegistration:
 
         data = {
             "type": "progress",
-            "progress": 0,
+            "progress": 1,
             "message": "ios_laminate_registration",
             "random_text": "random_text",
             "timestamp": "sdafkljhsdf"
@@ -74,23 +74,23 @@ class Neo3DRegistration:
         ios_laminate_result = self.__ios_laminate_registration(visualize=visualize)
 
         if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=1, message="ios_upper_registration").get_json())            
+            await self.websocket.send_json(progress_event(type="progress", progress=2, message="ios_upper_registration").get_json())            
             await asyncio.sleep(0.1)
         ios_upper_result = self.__ios_upper_registration()
 
         if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=2, message="ios_lower_registration").get_json())
+            await self.websocket.send_json(progress_event(type="progress", progress=3, message="ios_lower_registration").get_json())
             await asyncio.sleep(0.1)
         ios_lower_result = self.__ios_lower_registration()
 
         if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=3, message="facescan_laminate_registration").get_json())
+            await self.websocket.send_json(progress_event(type="progress", progress=4, message="facescan_laminate_registration").get_json())
             await asyncio.sleep(0.1)
         facescan_laminate_result, transformed_face_smile_mesh, type_of_facedata = self.__facescan_laminate_registration(visualize=visualize)
 
         if(type_of_facedata == "FaceScan"):
             if(self.websocket is not None):
-                await self.websocket.send_json(progress_event(type="progress", progress=4, message="facescan_rest_registration").get_json())
+                await self.websocket.send_json(progress_event(type="progress", progress=5, message="facescan_rest_registration").get_json())
                 await asyncio.sleep(0.1)
             facescan_rest_result, facescan_retraction_result = self.__facescan_rest_registration(transformed_face_smile_mesh, facescan_laminate_result, visualize=visualize)
             facephoto_mesh = None
@@ -106,17 +106,17 @@ class Neo3DRegistration:
                                                     [0, 0, 0, 1]])
 
         if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=5, message="cbct_registration").get_json())
+            await self.websocket.send_json(progress_event(type="progress", progress=6, message="cbct_registration").get_json())
             await asyncio.sleep(0.1)
         cbct_result = self.__cbct_registration()
 
         if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=6, message="ios_bow_registration").get_json())
+            await self.websocket.send_json(progress_event(type="progress", progress=7, message="ios_bow_registration").get_json())
             await asyncio.sleep(0.1)
         ios_bow_result = self.__ios_bow_registration(ios_laminate_result, visualize=visualize)
         
         if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=7, message="condyle_registration").get_json())
+            await self.websocket.send_json(progress_event(type="progress", progress=8, message="condyle_registration").get_json())
             await asyncio.sleep(0.1)
         condyle_result = self.__condyle_detection(facescan_laminate_result, visualize)
         print(f'__condyle_detection result: {condyle_result}')
@@ -126,7 +126,6 @@ class Neo3DRegistration:
         )
         
         if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=100, message="All registration completed").get_json())
             await self.websocket.send_json(progress_event(type="result", progress=100, message=result).get_json())
             await asyncio.sleep(0.1)
         return result
