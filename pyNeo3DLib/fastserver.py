@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, BackgroundTasks, Body
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, Body
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import threading
@@ -57,21 +57,25 @@ async def websocket_endpoint(websocket: WebSocket):
     global ws
     ws = websocket
     await websocket.accept()
-    while True:
-        # random_text = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
-        # # 현재 시간
-        # current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # # 데이터 전송
-        # await websocket.send_json({
-        #     "random_text": random_text,
-        #     "timestamp": current_time
-        # })
-        
-        # 1초 대기
-        await asyncio.sleep(1)
-        data = await websocket.receive_text()
-        print(f"Received: {data}")
+    try:
+        while True:
+            # random_text = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+            # # 현재 시간
+            # current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # # 데이터 전송
+            # await websocket.send_json({
+            #     "random_text": random_text,
+            #     "timestamp": current_time
+            # })
+            
+            # 1초 대기
+            await asyncio.sleep(1)
+            data = await websocket.receive_text()
+            print(f"Received: {data}")
+    except WebSocketDisconnect:
+        print("WebSocket disconnected")
+        ws = None
         
 
 @app.post("/registration")
