@@ -9,3 +9,4 @@ open3d
 opencv-python
 pyvista
 imageio
+trimesh
