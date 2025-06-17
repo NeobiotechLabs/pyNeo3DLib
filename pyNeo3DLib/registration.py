@@ -12,6 +12,7 @@ from pyNeo3DLib.faceRegisration.facePhotoRegistration import FacePhotoRegistrati
 from pyNeo3DLib.faceRegisration.facesRegistration import FacesRegistration
 from pyNeo3DLib.bowRegistration.iosBowRegistration import IOSBowRegistration
 from pyNeo3DLib.condyleFinder.condyleFinder import CondyleFinder
+from pyNeo3DLib.smileArchOuterline.landmark.landmark_detector import SmileArchOuterlineDetector
 
 
 LAMINATE_PATH = os.path.join(os.path.dirname(__file__), "smile_arch_half.stl")
@@ -57,7 +58,7 @@ class Neo3DRegistration:
     async def run_registration(self, visualize=False):       
         self.__verify_file_info()
         
-        total_progress = 8
+        total_progress = 9
 
         data = {
             "type": "progress",
@@ -122,9 +123,14 @@ class Neo3DRegistration:
             await asyncio.sleep(0.1)
         condyle_result = self.__condyle_detection(facescan_laminate_result, visualize)
         print(f'__condyle_detection result: {condyle_result}')
+        
+        if(self.websocket is not None):
+            await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 8, message="smilearch_outerline_registration").get_json())
+            await asyncio.sleep(0.1)
+        smilearch_outerline_result = self.__smilearch_outerline_detect(ios_laminate_result)
 
         result = self.__make_result_json(
-            ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facephoto_mesh, facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist(), condyle_result
+            ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facephoto_mesh, facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist(), condyle_result, smilearch_outerline_result
         )
         
         if(self.websocket is not None):
@@ -142,7 +148,8 @@ class Neo3DRegistration:
                             facescan_retraction_result, 
                             cbct_result, 
                             ios_bow_result,
-                            condyle_result):
+                            condyle_result,
+                            smilearch_outerline_result):
         
         print("=====================================")
         print(f'ios_laminate_result: {ios_laminate_result}')
@@ -158,6 +165,7 @@ class Neo3DRegistration:
 
         print(f'ios_bow_result: {ios_bow_result}')
         print(f'condyle_result: {condyle_result}')
+        print(f'smilearch_outerline_result: {smilearch_outerline_result}')
         print("=====================================")
 
         for ios in self.parsed_json["ios"]:
@@ -188,6 +196,19 @@ class Neo3DRegistration:
                 "points": condyle_result.tolist()
             }
             self.parsed_json["condyle"] = {"mesh": condyle_json}
+            
+        if smilearch_outerline_result is not None:
+            arch_depth, molar_width, landmark_points = smilearch_outerline_result
+            smilearch_outerline_json = {
+                "arch_depth": arch_depth,
+                "molar_width": molar_width,
+                "landmark_points": landmark_points
+            }
+            for ios in self.parsed_json["ios"]:
+                if ios["subType"] == "smileArch":
+                    ios["outerlineInfo"] = smilearch_outerline_json
+                    break
+            
 
         if facephoto_mesh is not None:
             # 3D 평면에 사진 텍스처를 입힌 모델을 JSON으로 변환
@@ -395,6 +416,22 @@ class Neo3DRegistration:
                     return result
                 else:
                     return None
+                
+    def __smilearch_outerline_detect(self, ios_laminate_result):
+        print("smilearch_outerline_detect")
+        smilearch_data = self.parsed_json["ios"]
+        for smilearch in smilearch_data:
+            if smilearch["subType"] == "smileArch":
+                print(f'smilearch["path"]: {smilearch["path"]}')
+                detector = SmileArchOuterlineDetector()
+                mesh = detector.load_mesh(smilearch["path"])
+                mesh.transform(ios_laminate_result, inplace=True)
+                arch_depth, molar_width, landmark_points = detector.analyze_smile_arch(mesh)
+                return arch_depth, molar_width, landmark_points
+            
+        return None
+
+        return matrix
             
     def __make_condyle_plane(self, condyle_points):
         print("make_condyle_plane")
