@@ -96,6 +96,18 @@ async def get_registration(background_tasks: BackgroundTasks, registration: Dict
         "request_id": request_id
     }
 
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint for server status monitoring
+    Returns 200 status code when server is running properly
+    """
+    return {
+        "status": "healthy",
+        "message": "Server is running",
+        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+
 # @app.get("/")
 # async def root():
 #     return {"message": "Hello World"}
