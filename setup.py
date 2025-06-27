@@ -23,8 +23,10 @@ setup(
         "pyvista",
         "imageio",
         "trimesh",
-        "retina-face",
-        "tf-keras"
+        "retina-face==0.0.14",
+        "tensorflow==2.12.0",
+        "keras==2.12.0"
+        "scikit-image==0.22.0"
     ],
     author="NeoBiotech",
     description="3D 데이터 처리를 위한 파이썬 라이브러리",

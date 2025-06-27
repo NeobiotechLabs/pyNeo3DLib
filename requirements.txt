@@ -11,4 +11,6 @@ pyvista
 imageio
 trimesh
 retina-face
-tf-keras
+tensorflow==2.12.0
+keras==2.12.0
+scikit-image==0.22.0
