@@ -343,7 +343,7 @@ class FaceAlignment3D:
             print("Left face processing failed, continuing without left face")
         
         # Combine results
-        return FaceAlignmentResult(
+        result = FaceAlignmentResult(
             front_plane=front_result.front_plane,
             front_texture=front_result.front_texture,
             front_plane_params=front_result.front_plane_params,
@@ -354,6 +354,19 @@ class FaceAlignment3D:
             left_texture=left_result[1] if left_result else None,
             left_plane_params=left_result[2] if left_result else None
         )
+        
+        # Rotate all planes 180 degrees around the Z-axis to face +Y direction
+        center = np.array([0, 0, 0])
+        R = o3d.geometry.get_rotation_matrix_from_xyz((0, 0, np.pi))
+        
+        if result.front_plane:
+            result.front_plane.rotate(R, center=center)
+        if result.right_plane:
+            result.right_plane.rotate(R, center=center)
+        if result.left_plane:
+            result.left_plane.rotate(R, center=center)
+            
+        return result
     
     def process_front_face(self) -> Optional[FaceAlignmentResult]:
         """Process the front face"""
