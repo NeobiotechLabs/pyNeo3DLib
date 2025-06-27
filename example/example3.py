@@ -106,42 +106,59 @@ def show_result(result):
     # models.append(condyle_mesh)
     
     # 데이터 타입을 원본과 동일하게 명시적으로 지정하여 안정성 확보
-    photo_vertices = np.array(result['photo']['vertices'], dtype=np.float64)
-    photo_triangles = np.array(result['photo']['triangles'], dtype=np.int32)
     
-    photo_mesh = o3d.geometry.TriangleMesh()
-    photo_mesh.vertices = o3d.utility.Vector3dVector(photo_vertices)
-    photo_mesh.triangles = o3d.utility.Vector3iVector(photo_triangles)
-    photo_mesh.compute_vertex_normals()
-    
-    # 텍스처 좌표(UV) 할당
-    if 'triangle_uvs' in result['photo']:
-        triangle_uvs = np.array(result['photo']['triangle_uvs'], dtype=np.float64)
-        if len(triangle_uvs) > 0:
-            photo_mesh.triangle_uvs = o3d.utility.Vector2dVector(triangle_uvs)
-    
-    # Base64 텍스처 데이터 처리
-    base64_data = result['photo']['textures'][0]['data']
-    image_data = base64.b64decode(base64_data)
-    image_stream = io.BytesIO(image_data)
-    pil_image = Image.open(image_stream)
-    
-    if pil_image.mode == 'RGBA':
-        pil_image = pil_image.convert('RGB')
+    def create_textured_mesh_from_data(plane_data, name=""):
+        """
+        단일 평면 데이터(딕셔너리)로부터 텍스처가 적용된 Open3D 메시를 생성합니다.
+        """
+        # 평면 데이터가 유효하지 않으면 아무것도 하지 않음
+        if not plane_data or not isinstance(plane_data, dict):
+            print(f"-> '{name}' plane data is missing or invalid. Skipping.")
+            return None
         
-    o3d_image = o3d.geometry.Image(np.array(pil_image))
+        try:
+            # 1. 메시 기본 정보 (정점, 삼각형) 생성
+            vertices = np.array(plane_data['vertices'], dtype=np.float64)
+            triangles = np.array(plane_data['triangles'], dtype=np.int32)
+            
+            new_mesh = o3d.geometry.TriangleMesh(
+                o3d.utility.Vector3dVector(vertices),
+                o3d.utility.Vector3iVector(triangles)
+            )
+            new_mesh.compute_vertex_normals()
 
-    # 메시에 텍스처와 재질 ID 할당
-    photo_mesh.textures = [o3d_image]
+            # 2. 텍스처 정보가 있는지 확인하고 적용
+            if 'triangle_uvs' in plane_data and 'texture' in plane_data:
+                # UV 좌표 할당
+                uvs = np.array(plane_data['triangle_uvs'], dtype=np.float64)
+                new_mesh.triangle_uvs = o3d.utility.Vector2dVector(uvs)
+                
+                # Base64 텍스처 이미지 디코딩
+                texture_info = plane_data['texture']
+                image_data = base64.b64decode(texture_info['data'])
+                pil_image = Image.open(io.BytesIO(image_data)).convert('RGB')
+                o3d_image = o3d.geometry.Image(np.array(pil_image))
+                
+                # 메시에 텍스처와 재질 ID 할당
+                new_mesh.textures = [o3d_image]
+                new_mesh.triangle_material_ids = o3d.utility.IntVector([0] * len(triangles))
+            
+            print(f"-> Successfully created mesh for '{name}' plane.")
+            return new_mesh
+        
+        except (KeyError, Exception) as e:
+            print(f"-> Error processing '{name}' plane data: {e}")
+            return None
+        
+    print("Result Photo =================================")
+    print(result['photo'])
     
-    # === 문제의 핵심 코드 ===
-    # 각 삼각형이 어떤 텍스처를 사용할지 명시적으로 지정합니다.
-    # 이 속성이 누락되어 렌더링이 실패한 것으로 보입니다.
-    num_triangles = len(photo_mesh.triangles)
-    photo_mesh.triangle_material_ids = o3d.utility.IntVector([0] * num_triangles)
-    
-    models.append(photo_mesh)
-    
+    if 'photo' in result and result['photo'] is not None:
+        for plane_name in ['front', 'left', 'right']:
+            plane_data = result['photo'][plane_name]
+            photo_mesh = create_textured_mesh_from_data(plane_data, plane_name)
+            models.append(photo_mesh)
+            
     # 모델이 로드되지 않았다면 중단
     if not models:
         print("오류: 표시할 모델이 없습니다. 파일 경로를 확인하세요.")

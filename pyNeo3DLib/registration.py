@@ -13,6 +13,7 @@ from pyNeo3DLib.faceRegisration.facesRegistration import FacesRegistration
 from pyNeo3DLib.bowRegistration.iosBowRegistration import IOSBowRegistration
 from pyNeo3DLib.condyleFinder.condyleFinder import CondyleFinder
 from pyNeo3DLib.smileArchOuterline.landmark.landmark_detector import SmileArchOuterlineDetector
+from pyNeo3DLib.faceRegisration.faceAlign import FaceAlignment3D
 
 
 LAMINATE_PATH = os.path.join(os.path.dirname(__file__), "smile_arch_half.stl")
@@ -96,9 +97,9 @@ class Neo3DRegistration:
                 await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 4, message="facescan_rest_registration").get_json())
                 await asyncio.sleep(0.1)
             facescan_rest_result, facescan_retraction_result = self.__facescan_rest_registration(transformed_face_smile_mesh, facescan_laminate_result, visualize=visualize)
-            facephoto_mesh = None
+            facephoto_meshes = None
         else:
-            facephoto_mesh = transformed_face_smile_mesh
+            facephoto_meshes = transformed_face_smile_mesh
             facescan_rest_result = np.array([[1, 0, 0, 0],
                                               [0, 1, 0, 0],
                                               [0, 0, 1, 0],
@@ -130,7 +131,7 @@ class Neo3DRegistration:
         smilearch_outerline_result = self.__smilearch_outerline_detect(ios_laminate_result)
 
         result = self.__make_result_json(
-            ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facephoto_mesh, facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist(), condyle_result, smilearch_outerline_result
+            ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facephoto_meshes, facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist(), condyle_result, smilearch_outerline_result
         )
         
         if(self.websocket is not None):
@@ -143,7 +144,7 @@ class Neo3DRegistration:
                             ios_upper_result, 
                             ios_lower_result, 
                             facescan_laminate_result, 
-                            facephoto_mesh,
+                            facephoto_meshes,
                             facescan_rest_result, 
                             facescan_retraction_result, 
                             cbct_result, 
@@ -157,7 +158,7 @@ class Neo3DRegistration:
         print(f'ios_lower_result: {ios_lower_result}')
 
         print(f'facescan_laminate_result: {facescan_laminate_result}')
-        print(f'transformed_face_smile_mesh (only for photo): {facephoto_mesh}')
+        print(f'transformed_face_smile_mesh (only for photo): {facephoto_meshes}')
         print(f'facescan_rest_result: {facescan_rest_result}')
         print(f'facescan_retraction_result: {facescan_retraction_result}') 
 
@@ -210,42 +211,43 @@ class Neo3DRegistration:
                     break
             
 
-        if facephoto_mesh is not None:
-            # 3D 평면에 사진 텍스처를 입힌 모델을 JSON으로 변환
-            vertices = np.asarray(facephoto_mesh.vertices)
-            triangles = np.asarray(facephoto_mesh.triangles)
-            
-            photo_json = {
-                "vertices": vertices.tolist(),
-                "triangles": triangles.tolist()
-            }
-            
-            # UV 좌표가 있다면 추가
-            if hasattr(facephoto_mesh, 'triangle_uvs') and len(facephoto_mesh.triangle_uvs) > 0:
-                triangle_uvs = np.asarray(facephoto_mesh.triangle_uvs)
-                photo_json["triangle_uvs"] = triangle_uvs.tolist()
-            
-            # 텍스처 정보가 있다면 추가
-            if hasattr(facephoto_mesh, 'textures') and len(facephoto_mesh.textures) > 0:
-                photo_json["has_texture"] = True
-                textures_data = []
-                for texture in facephoto_mesh.textures:
-                    # open3d.geometry.Image를 PIL.Image로 변환
+        if facephoto_meshes is not None:            
+            def mesh_to_json(mesh):
+                if not mesh:
+                    return None
+                
+                vertices = np.asarray(mesh.vertices)
+                triangles = np.asarray(mesh.triangles)
+                
+                plane_json = {
+                    "vertices": vertices.tolist(),
+                    "triangles": triangles.tolist()
+                }
+                
+                if hasattr(mesh, 'triangle_uvs') and len(mesh.triangle_uvs) > 0:
+                    plane_json["triangle_uvs"] = np.asarray(mesh.triangle_uvs).tolist()
+                
+                if hasattr(mesh, 'textures') and len(mesh.textures) > 0:
+                    texture = mesh.textures[0]
                     pil_img = Image.fromarray(np.asarray(texture))
-                    
-                    # PIL.Image를 메모리 내 바이트 스트림으로 변환
                     buffer = io.BytesIO()
-                    pil_img.save(buffer, format="PNG") # PNG for lossless conversion
-                    
-                    # Base64로 인코딩
+                    pil_img.save(buffer, format="PNG")
                     encoded_string = base64.b64encode(buffer.getvalue()).decode("utf-8")
-                    
-                    textures_data.append({
+                    plane_json["texture"] = {
                         "format": "png",
                         "data": encoded_string
-                    })
-                photo_json["textures"] = textures_data
+                    }
+                return plane_json
             
+            front_json = mesh_to_json(facephoto_meshes.front_plane)
+            right_json = mesh_to_json(facephoto_meshes.right_plane)
+            left_json = mesh_to_json(facephoto_meshes.left_plane)
+            
+            photo_json = {
+                "front": front_json,
+                "right": right_json,
+                "left": left_json
+            }
             self.parsed_json["photo"] = photo_json
         return self.parsed_json
         
@@ -315,9 +317,19 @@ class Neo3DRegistration:
                     final_transform, moved_smile_mesh = facescan_laminate_registration.run_registration()
                     return final_transform, moved_smile_mesh, "FaceScan"
                 elif facescan["path"].endswith(".jpg"):
-                    facephoto_registration = FacePhotoRegistration(facescan["path"], visualize)
-                    M_total_homogeneous, image_plane = facephoto_registration.run_registration()
-                    return M_total_homogeneous, image_plane, "FacePhoto"
+                    # facephoto_registration = FacePhotoRegistration(facescan["path"], visualize)
+                    # M_total_homogeneous, image_plane = facephoto_registration.run_registration()
+                    
+                    for face in facescan_data:
+                        if face["subType"] == "faceRest":
+                            print(f'facescan2["path"]: {face["path"]}')
+                            rest_path = face["path"]
+                        elif face["subType"] == "faceRetraction":
+                            print(f'facescan2["path"]: {face["path"]}')
+                            retraction_path = face["path"]
+                    face_aligner = FaceAlignment3D(front_image_path=facescan["path"], right_image_path=rest_path, left_image_path=retraction_path)
+                    M_total_homogeneous, image_planes = face_aligner.run_registration(visualize=visualize)
+                    return M_total_homogeneous, image_planes, "FacePhoto"
                 else:
                     return None
 
@@ -349,13 +361,6 @@ class Neo3DRegistration:
 
         return result_for_rest, result_for_retraction
 
-    def __facescan_retraction_registration(self):
-        print("facescan_retraction_registration")
-        matrix = np.array([[1, 0, 0, 0],
-                           [0, 1, 0, 0],
-                           [0, 0, 1, 0],
-                           [0, 0, 0, 1]])
-        return matrix
     
     def __cbct_registration(self):
         print("cbct_registration")
