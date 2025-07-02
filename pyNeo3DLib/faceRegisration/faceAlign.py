@@ -356,15 +356,15 @@ class FaceAlignment3D:
         )
         
         # Rotate all planes 180 degrees around the Z-axis to face +Y direction
-        center = np.array([0, 0, 0])
-        R = o3d.geometry.get_rotation_matrix_from_xyz((0, 0, np.pi))
+        # center = np.array([0, 0, 0])
+        # R = o3d.geometry.get_rotation_matrix_from_xyz((0, 0, np.pi))
         
-        if result.front_plane:
-            result.front_plane.rotate(R, center=center)
-        if result.right_plane:
-            result.right_plane.rotate(R, center=center)
-        if result.left_plane:
-            result.left_plane.rotate(R, center=center)
+        # if result.front_plane:
+        #     result.front_plane.rotate(R, center=center)
+        # if result.right_plane:
+        #     result.right_plane.rotate(R, center=center)
+        # if result.left_plane:
+        #     result.left_plane.rotate(R, center=center)
             
         return result
     
