@@ -7,6 +7,7 @@ from . import faceRegisration
 from . import iosRegistration
 from . import fileLoader
 from . import visualization
+from . import teethTemplateRecommender
 
 __all__ = [
     "fastserver", 
@@ -15,5 +16,6 @@ __all__ = [
     "faceRegisration",
     "iosRegistration",
     "fileLoader",
-    "visualization"
+    "visualization",
+    "teethTemplateRecommender"
 ]
