@@ -25,6 +25,11 @@ git clone https://github.com/사용자명/pyNeo3DLib.git
 cd pyNeo3DLib
 pip install -e .
 ```
+### 서버 실행
+
+```bash
+uvicorn pyNeo3DLib.fastserver:app --host 127.0.0.1 --port 8000 --reload
+```
 
 ## 요구사항
 
