@@ -23,6 +23,8 @@ class Mesh:
             return mesh._read_stl(file_path)
         elif path.suffix.lower() == '.obj':
             return mesh._read_obj(file_path)
+        elif path.suffix.lower() == '.ply':
+            return mesh._read_ply(file_path)
         else:
             raise ValueError(f"Unsupported file format: {path.suffix}")
     
@@ -239,6 +241,248 @@ class Mesh:
             
         except Exception as e:
             raise ValueError(f"Failed to read OBJ file: {str(e)}")
+    
+    def _read_ply(self, file_path):
+        """Read PLY file using Open3D for better compatibility."""
+        path = Path(file_path)
+        
+        try:
+            import open3d as o3d
+            
+            # Load PLY file using Open3D
+            print(f"Loading PLY file using Open3D: {file_path}")
+            mesh_o3d = o3d.io.read_triangle_mesh(str(path))
+            
+            if len(mesh_o3d.vertices) == 0:
+                print("Open3D returned empty mesh, trying manual parsing")
+                raise ValueError("No vertices found in PLY file")
+            
+            # Convert Open3D mesh to our format
+            self.vertices = np.asarray(mesh_o3d.vertices)
+            self.faces = np.asarray(mesh_o3d.triangles, dtype=np.int32)  # Ensure integer type
+            
+            print(f"Open3D successfully loaded: {len(self.vertices)} vertices, {len(self.faces)} faces")
+            
+            if mesh_o3d.has_vertex_normals():
+                self.normals = np.asarray(mesh_o3d.vertex_normals)
+                print("Loaded vertex normals from PLY file")
+            else:
+                self._compute_normals()
+                print("Computed vertex normals")
+                
+            # Try to load UV coordinates manually (Open3D doesn't handle PLY UVs well)
+            print("Attempting UV coordinate loading from PLY file...")
+            uv_loaded = self._try_load_ply_uvs_simple(file_path)
+            print(f"UV loading result: {uv_loaded}")
+            
+            if uv_loaded:
+                print(f"Loaded {len(self.uvs)} UV coordinates from PLY file")
+                # Ensure face_uvs are integers and same as faces for PLY
+                if hasattr(self, 'uvs') and self.uvs is not None:
+                    self.face_uvs = np.array(self.faces, dtype=np.int32)
+            else:
+                print("UV coordinate loading failed from PLY file")
+                print("WARNING: No UV coordinates available - lip detection may not work correctly")
+                # Don't create default UVs as they were incorrect
+                # self._try_create_default_uvs()  # Disabled - use actual texture UV coordinates only
+            
+            # Final safety check: ensure face_uvs exists and is integer type
+            if not hasattr(self, 'face_uvs') or self.face_uvs is None:
+                print("Warning: face_uvs not set, creating from faces")
+                self.face_uvs = np.array(self.faces, dtype=np.int32)
+            else:
+                # Ensure face_uvs is integer type
+                if self.face_uvs.dtype != np.int32:
+                    print(f"Warning: Converting face_uvs from {self.face_uvs.dtype} to int32")
+                    self.face_uvs = self.face_uvs.astype(np.int32)
+            
+            print(f"Final check: faces dtype={self.faces.dtype}, face_uvs dtype={self.face_uvs.dtype}")
+            
+            return self
+            
+        except ImportError:
+            print("Open3D not available, falling back to simple PLY parsing")
+            return self._read_ply_simple_fallback(file_path)
+        except Exception as e:
+            print(f"Open3D PLY loading failed: {e}")
+            print("Falling back to simple PLY parsing")  
+            return self._read_ply_simple_fallback(file_path)
+    
+    def _try_load_ply_uvs_simple(self, file_path):
+        """Simple UV coordinate loader for binary PLY files."""
+        print("Attempting to load UV coordinates from PLY file...")
+        try:
+            with open(file_path, 'rb') as f:
+                # Read header
+                header_lines = []
+                while True:
+                    line = f.readline().decode('utf-8', errors='ignore').strip()
+                    header_lines.append(line)
+                    if 'end_header' in line:
+                        break
+                
+                print(f"PLY Header lines: {header_lines[:10]}")  # Print first 10 header lines
+                
+                # Check format and find UV properties
+                is_binary = any('format binary' in line for line in header_lines)
+                vertex_count = 0
+                uv_indices = {'u_idx': -1, 'v_idx': -1}
+                
+                # Parse vertex properties to find UV coordinates
+                in_vertex_section = False
+                prop_index = 0
+                
+                for line in header_lines:
+                    if line.startswith('element vertex'):
+                        vertex_count = int(line.split()[-1])
+                        in_vertex_section = True
+                        prop_index = 0  # Reset property index
+                        print(f"Found vertex count: {vertex_count}")
+                    elif line.startswith('element') and not line.startswith('element vertex'):
+                        in_vertex_section = False  # End of vertex properties
+                    elif line.startswith('property') and in_vertex_section:
+                        print(f"Vertex property {prop_index}: {line}")
+                        if 'texture_u' in line:
+                            uv_indices['u_idx'] = prop_index
+                            print(f"Found U coordinate at index {prop_index}")
+                        elif 'texture_v' in line:
+                            uv_indices['v_idx'] = prop_index
+                            print(f"Found V coordinate at index {prop_index}")
+                        prop_index += 1
+                
+                print(f"UV indices found: {uv_indices}")
+                print(f"Is binary: {is_binary}, Vertex count: {vertex_count}")
+                
+                if vertex_count > 0 and uv_indices['u_idx'] >= 0 and uv_indices['v_idx'] >= 0:
+                    print(f"Found UV coordinates at indices {uv_indices['u_idx']}, {uv_indices['v_idx']}")
+                    
+                    if is_binary:
+                        # Read binary UV coordinates (8 floats per vertex)
+                        uvs = []
+                        print(f"Reading {vertex_count} UV coordinates from binary PLY (8 floats format)...")
+                        
+                        try:
+                            for i in range(vertex_count):
+                                # Read exactly 8 floats: x,y,z,nx,ny,nz,texture_u,texture_v
+                                vertex_data = struct.unpack('<8f', f.read(32))  # 8 * 4 bytes = 32 bytes
+                                
+                                # Extract UV coordinates using the found indices
+                                u = vertex_data[uv_indices['u_idx']]
+                                v = vertex_data[uv_indices['v_idx']]
+                                uvs.append([u, v])
+                                
+                                # Progress report
+                                if i % 20000 == 0 and i > 0:
+                                    print(f"Read {i}/{vertex_count} UV coordinates... (u={u:.3f}, v={v:.3f})")
+                                    
+                        except Exception as e:
+                            print(f"Error reading UV coordinates at vertex {i}: {e}")
+                            print(f"Successfully read {len(uvs)} UV coordinates")
+                        
+                        if uvs and len(uvs) > 0:
+                            print(f"Loaded {len(uvs)} UV coordinates")
+                            print(f"UV sample: {uvs[:3]}")
+                            self.uvs = np.array(uvs)
+                            # Ensure face_uvs are integers (PLY files sometimes have float indices)
+                            self.face_uvs = np.array(self.faces, dtype=np.int32)
+                            return True
+                        else:
+                            print("No UV coordinates could be read")
+                else:
+                    print("No UV coordinate properties found in PLY header")
+                            
+        except Exception as e:
+            print(f"Could not load UV coordinates: {e}")
+            
+        return False
+    
+    def _try_create_default_uvs(self):
+        """Create default UV coordinates based on vertex positions."""
+        if hasattr(self, 'vertices') and self.vertices is not None and len(self.vertices) > 0:
+            print("Creating default UV coordinates from vertex positions...")
+            
+            # Create UV coordinates based on XY projection
+            vertices = self.vertices
+            min_x, max_x = np.min(vertices[:, 0]), np.max(vertices[:, 0])
+            min_y, max_y = np.min(vertices[:, 1]), np.max(vertices[:, 1])
+            
+            # Avoid division by zero
+            range_x = max_x - min_x if max_x != min_x else 1.0
+            range_y = max_y - min_y if max_y != min_y else 1.0
+            
+            # Normalize to 0-1 range
+            uvs = []
+            for vertex in vertices:
+                u = (vertex[0] - min_x) / range_x
+                v = (vertex[1] - min_y) / range_y
+                uvs.append([u, v])
+            
+            self.uvs = np.array(uvs)
+            self.face_uvs = np.array(self.faces, dtype=np.int32)
+            
+            print(f"Created {len(uvs)} default UV coordinates")
+            print(f"UV range: U({np.min(self.uvs[:, 0]):.3f}-{np.max(self.uvs[:, 0]):.3f}), V({np.min(self.uvs[:, 1]):.3f}-{np.max(self.uvs[:, 1]):.3f})")
+            return True
+        else:
+            print("Cannot create default UVs - no vertices available")
+            return False
+    
+    def _read_ply_simple_fallback(self, file_path):
+        """Super simple PLY fallback - create basic mesh from vertices only."""
+        print("Using simple fallback PLY loader")
+        
+        try:
+            # Create a basic mesh with vertices from the binary data
+            with open(file_path, 'rb') as f:
+                # Skip header
+                while True:
+                    line = f.readline().decode('utf-8', errors='ignore').strip()
+                    if 'end_header' in line:
+                        break
+                
+                # Try to read some vertices (assuming standard x,y,z,nx,ny,nz,u,v format)
+                vertices = []
+                uvs = []
+                
+                try:
+                    for i in range(min(50000, 113066)):  # Read up to 50k vertices
+                        vertex_data = struct.unpack('<8f', f.read(32))  # 8 floats
+                        x, y, z, nx, ny, nz, u, v = vertex_data
+                        vertices.append([x, y, z])
+                        uvs.append([u, v])
+                        
+                        if i % 10000 == 0:
+                            print(f"Read {i} vertices...")
+                            
+                except:
+                    print(f"Read {len(vertices)} vertices before error")
+                
+                if len(vertices) > 100:
+                    self.vertices = np.array(vertices)
+                    self.uvs = np.array(uvs)
+                    
+                    # Create simple triangular faces
+                    faces = []
+                    for i in range(0, len(vertices) - 2, 3):
+                        faces.append([i, i+1, i+2])
+                    
+                    self.faces = np.array(faces, dtype=np.int32)
+                    self.face_uvs = np.array(faces, dtype=np.int32)
+                    
+                    # Compute normals
+                    self._compute_normals()
+                    
+                    print(f"Simple PLY loader: {len(vertices)} vertices, {len(faces)} faces, {len(uvs)} UVs")
+                    return self
+                    
+        except Exception as e:
+            print(f"Simple PLY fallback failed: {e}")
+            
+        raise ValueError("Could not load PLY file with any method")
+    
+        # This function is no longer used - removed complex manual parser
+    
+        # Removed all complex PLY parsing functions - using Open3D instead
     
     def _read_mtl(self, mtl_file):
         """Read MTL file."""

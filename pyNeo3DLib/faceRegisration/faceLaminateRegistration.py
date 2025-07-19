@@ -217,12 +217,26 @@ class FaceLaminateRegistration:
         # Prepare mesh data
         prep_start = time.time()
         faces = np.asarray(mesh.faces)
+        
+        # Check if UV coordinates exist
+        if not hasattr(mesh, 'uvs') or mesh.uvs is None:
+            print("Error: No UV coordinates found in mesh")
+            print(f"Mesh attributes: {[attr for attr in dir(mesh) if not attr.startswith('_')]}")
+            raise ValueError("UV coordinates are required for lip detection but not found in mesh")
+        
         uvs = np.asarray(mesh.uvs)
         face_uvs = np.asarray(mesh.face_uvs)
         
-        # Debug: Check data types and fix if necessary
+        # Debug: Check data types and dimensions
         print(f"Debug: faces dtype: {faces.dtype}, face_uvs dtype: {face_uvs.dtype}")
         print(f"Debug: faces shape: {faces.shape}, face_uvs shape: {face_uvs.shape}")
+        print(f"Debug: uvs shape: {uvs.shape}, uvs dtype: {uvs.dtype}")
+        print(f"Debug: uvs content preview: {uvs[:5] if len(uvs.shape) > 0 and uvs.shape[0] > 0 else 'Empty or 0-dimensional'}")
+        
+        # Check UV array dimensions
+        if uvs.ndim == 0 or (uvs.ndim > 0 and uvs.shape[0] == 0):
+            print("Error: UV coordinates array is empty or 0-dimensional")
+            raise ValueError("UV coordinates are empty - cannot proceed with lip detection")
         
         # Ensure face_uvs are integers
         if face_uvs.dtype != np.int32:
