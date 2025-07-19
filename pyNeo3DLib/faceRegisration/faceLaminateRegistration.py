@@ -89,12 +89,13 @@ class FaceLaminateRegistration:
         """
         analyzer = FaceMeshAnalyzer()
         
-        # Extract image file path (assuming image file has same name as obj file)
-        image_path = self.face_smile_path.replace('.obj', '.png')
+        # Extract image file path (supporting both .obj and .ply files)
+        base_path = self.face_smile_path.rsplit('.', 1)[0]  # Remove extension
+        image_path = base_path + '.png'
         if not os.path.exists(image_path):
-            image_path = self.face_smile_path.replace('.obj', '.jpg')
+            image_path = base_path + '.jpg'
             if not os.path.exists(image_path):
-                raise FileNotFoundError(f"Image file not found: image version of {self.face_smile_path}")
+                raise FileNotFoundError(f"Image file not found: {base_path}.png or {base_path}.jpg")
         
         # Load image
         image = cv2.imread(image_path)
@@ -218,6 +219,16 @@ class FaceLaminateRegistration:
         faces = np.asarray(mesh.faces)
         uvs = np.asarray(mesh.uvs)
         face_uvs = np.asarray(mesh.face_uvs)
+        
+        # Debug: Check data types and fix if necessary
+        print(f"Debug: faces dtype: {faces.dtype}, face_uvs dtype: {face_uvs.dtype}")
+        print(f"Debug: faces shape: {faces.shape}, face_uvs shape: {face_uvs.shape}")
+        
+        # Ensure face_uvs are integers
+        if face_uvs.dtype != np.int32:
+            print(f"Warning: Converting face_uvs from {face_uvs.dtype} to int32")
+            face_uvs = face_uvs.astype(np.int32)
+        
         print(f"[Time Measurement] Mesh data preparation: {time.time() - prep_start:.4f} seconds")
         
         # Convert to numpy array and ensure closed boundary
@@ -662,12 +673,13 @@ class FaceLaminateRegistration:
         """
         Visualize lip landmarks on the image.
         """
-        # Extract image file path (assuming image file has same name as obj file)
-        image_path = self.face_smile_path.replace('.obj', '.png')
+        # Extract image file path (supporting both .obj and .ply files)
+        base_path = self.face_smile_path.rsplit('.', 1)[0]  # Remove extension
+        image_path = base_path + '.png'
         if not os.path.exists(image_path):
-            image_path = self.face_smile_path.replace('.obj', '.jpg')
+            image_path = base_path + '.jpg'
             if not os.path.exists(image_path):
-                raise FileNotFoundError(f"Image file not found: image version of {self.face_smile_path}")
+                raise FileNotFoundError(f"Image file not found: {base_path}.png or {base_path}.jpg")
         
         # Load image
         image = cv2.imread(image_path)
@@ -717,6 +729,7 @@ class FaceLaminateRegistration:
 
 if __name__ == "__main__":
     # face_laminate_registration = FaceLaminateRegistration("../../example/data/FaceScan/Smile/Smile.obj", "../../example/data/smile_arch_half.stl", visualization=True)
-    face_laminate_registration = FaceLaminateRegistration("../../example/data/park1/Smile.obj", "../../example/data/smile_arch_half.stl", visualization=True)
+    # face_laminate_registration = FaceLaminateRegistration("../../example/data/park1/Smile.obj", "../../example/data/smile_arch_half.stl", visualization=True)
+    face_laminate_registration = FaceLaminateRegistration("../../example/data/ahn/Smile_Scan.ply", "../../example/data/smile_arch_half.stl", visualization=True)
     final_transform = face_laminate_registration.run_registration()
     print(final_transform)
