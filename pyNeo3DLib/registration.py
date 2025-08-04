@@ -311,7 +311,7 @@ class Neo3DRegistration:
         for facescan in facescan_data:
             if facescan["subType"] == "faceSmile":
                 print(f'facescan["path"]: {facescan["path"]}')
-                if facescan["path"].endswith(".obj"):
+                if facescan["path"].endswith(".obj") or facescan["path"].endswith(".ply"):
                     # Now register this file with the laminate model
                     facescan_laminate_registration = FaceLaminateRegistration(facescan["path"], LAMINATE_PATH, visualize)
                     final_transform, moved_smile_mesh = facescan_laminate_registration.run_registration()
@@ -346,7 +346,7 @@ class Neo3DRegistration:
                 print(f'facescan["path"]: {facescan["path"]}')
                 retraction_path = facescan["path"]
                 
-        if rest_path.endswith(".obj"):
+        if rest_path.endswith(".obj") or rest_path.endswith(".ply"):
             facescan_rest_registration = FacesRegistration(transformed_face_smile_mesh, facescan_laminate_result, rest_path, retraction_path, visualize)
             result_for_rest, result_for_retraction = facescan_rest_registration.run_registration()
         else:
@@ -398,7 +398,7 @@ class Neo3DRegistration:
         for facescan in facescan_data:
             if facescan["subType"] == "faceSmile":
                 print(f'facescan["path"]: {facescan["path"]}')
-                if facescan["path"].endswith(".obj"):                
+                if facescan["path"].endswith(".obj") or facescan["path"].endswith(".ply"):                
                     # Now register this file with the laminate model
                     condyle_finder = CondyleFinder(facescan["path"], visualize)
                     result = condyle_finder.run_analysis()

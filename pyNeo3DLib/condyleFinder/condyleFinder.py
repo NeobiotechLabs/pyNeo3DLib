@@ -27,9 +27,14 @@ class CondyleFinder:
         self.face_mesh_path = face_mesh_path
         self.visualization = visualization
         
-        image_path = self.face_mesh_path.replace('.obj', '.png')
+        # 파일 확장자에 따라 이미지 파일 경로 생성
+        base_path = self.face_mesh_path.rsplit('.', 1)[0]  # 확장자 제거
+        
+        # PNG 파일 먼저 확인
+        image_path = base_path + '.png'
         if not os.path.exists(image_path):
-            image_path = self.face_mesh_path.replace('.obj', '.jpg')
+            # JPG 파일 확인
+            image_path = base_path + '.jpg'
             if not os.path.exists(image_path):
                 raise FileNotFoundError(f"Image file not found: image version of {self.face_mesh_path}")
         self.face_image_path = image_path
@@ -68,10 +73,14 @@ class CondyleFinder:
     def find_condyles_via_analyze_face_landmark(self):
         analyzer = FaceMeshAnalyzer()
         
-        # Extract image file path (assuming image file has same name as obj file)
-        image_path = self.face_mesh_path.replace('.obj', '.png')
+        # Extract image file path (assuming image file has same name as mesh file)
+        base_path = self.face_mesh_path.rsplit('.', 1)[0]  # 확장자 제거
+        
+        # PNG 파일 먼저 확인
+        image_path = base_path + '.png'
         if not os.path.exists(image_path):
-            image_path = self.face_mesh_path.replace('.obj', '.jpg')
+            # JPG 파일 확인
+            image_path = base_path + '.jpg'
             if not os.path.exists(image_path):
                 raise FileNotFoundError(f"Image file not found: image version of {self.face_mesh_path}")
         
