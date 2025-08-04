@@ -1,8 +1,23 @@
+import os
+import logging
+import warnings
+
+# TensorFlow 경고 메시지 숨기기 (다른 import 전에 설정)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # 0=INFO, 1=WARNING, 2=ERROR, 3=FATAL
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # GPU 사용 비활성화
+
+# TensorFlow 관련 경고 메시지 필터링
+warnings.filterwarnings('ignore', category=UserWarning, module='tensorflow')
+warnings.filterwarnings('ignore', category=FutureWarning, module='tensorflow')
+
+# TensorFlow 로깅 레벨 설정
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, Body
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import threading
-import os, signal
+import signal
 import asyncio
 import random
 import string
@@ -11,6 +26,7 @@ from typing import Dict, Any
 import json
 
 from .registration import Neo3DRegistration
+from .teethTemplateFinder.teethTemplateFinder import TeethTemplateFinder
 
 app = FastAPI()
 app.add_middleware(
@@ -23,6 +39,7 @@ app.add_middleware(
 
 s_thread = None
 ws = None
+teeth_template_finder = None
 
 async def process_registration_async(registration_data, request_id):
     global ws
@@ -107,6 +124,97 @@ async def health_check():
         "message": "Server is running",
         "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
+
+@app.post("/template_finder/start")
+async def start_template_finder(db_path: str = Body(..., embed=True)):
+    """
+    템플릿 파인더 시작 API
+    """
+    global teeth_template_finder
+    
+    try:
+        teeth_template_finder = TeethTemplateFinder()
+        teeth_template_finder.start_template_finder(db_path)
+        
+        return {
+            "status": "success",
+            "message": "Template finder started successfully",
+            "db_path": db_path,
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to start template finder: {str(e)}",
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+@app.post("/template_finder/search")
+async def find_template(search_request: Dict[str, Any] = Body(...)):
+    """
+    템플릿 검색 API
+    """
+    global teeth_template_finder
+    
+    if teeth_template_finder is None:
+        return {
+            "status": "error",
+            "message": "Template finder not initialized. Please call /template_finder/start first.",
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+    
+    try:
+        # 필수 파라미터 추출
+        arch_depth = search_request.get("arch_depth")
+        molar_width = search_request.get("molar_width")
+        landmarks = search_request.get("landmarks")
+        
+        if arch_depth is None or molar_width is None or landmarks is None:
+            return {
+                "status": "error",
+                "message": "Missing required parameters: arch_depth, molar_width, landmarks",
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+        
+        # 선택적 파라미터 추출
+        teeth_shape_type = search_request.get("teeth_shape_type")
+        teeth_height_type = search_request.get("teeth_height_type")
+        teeth_size_type = search_request.get("teeth_size_type")
+        top_k = search_request.get("top_k", 5)
+        
+        # 템플릿 검색 실행
+        results = teeth_template_finder.find_template(
+            arch_depth=arch_depth,
+            molar_width=molar_width,
+            landmarks=landmarks,
+            teeth_shape_type=teeth_shape_type,
+            teeth_height_type=teeth_height_type,
+            teeth_size_type=teeth_size_type,
+            top_k=top_k
+        )
+        
+        return {
+            "status": "success",
+            "message": f"Found {len(results)} templates",
+            "results": results,
+            "search_params": {
+                "arch_depth": arch_depth,
+                "molar_width": molar_width,
+                "landmarks_count": len(landmarks),
+                "teeth_shape_type": teeth_shape_type,
+                "teeth_height_type": teeth_height_type,
+                "teeth_size_type": teeth_size_type,
+                "top_k": top_k
+            },
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Search failed: {str(e)}",
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
 
 # @app.get("/")
 # async def root():
