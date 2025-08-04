@@ -184,7 +184,7 @@ class FacesRegistration:
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
-                2.0,  # 거리 임계값
+                5.0,  # 거리 임계값
                 current_transform,
                 o3d.pipelines.registration.TransformationEstimationPointToPoint(),
                 o3d.pipelines.registration.ICPConvergenceCriteria(
@@ -225,7 +225,7 @@ class FacesRegistration:
         for iteration in range(1000):
             result = o3d.pipelines.registration.registration_icp(
                 source, target,
-                0.3,  # 거리 임계값
+                0.5,  # 거리 임계값
                 current_transform,
                 o3d.pipelines.registration.TransformationEstimationPointToPoint(),
                 o3d.pipelines.registration.ICPConvergenceCriteria(
@@ -347,12 +347,24 @@ class FacesRegistration:
 
 
 if __name__ == "__main__":
-    smile_mesh = Mesh.from_file("../../example/data/FaceScan/Smile/Smile.obj")
+    
+    smile_path = "../../example/data/ahn/Smile/Smile_Scan.ply"
+    rest_path = "../../example/data/ahn/Rest/Resting.ply"
+    retraction_path = "../../example/data/ahn/Retraction/Retraction.ply"
+    
+    smile_path = "../../example/data/FaceScan/Smile/Smile.obj"
+    rest_path = "../../example/data/FaceScan/Rest/Smile.obj"
+    retraction_path = "../../example/data/FaceScan/Retraction/Smile.obj"
+    
+    
+    
+    
+    smile_mesh = Mesh.from_file(smile_path)
     transform_matrix = np.array([[1, 0, 0, 0],
                            [0, 1, 0, 0],
                            [0, 0, 1, 0],
                            [0, 0, 0, 1]])
-    faces_registration = FacesRegistration(smile_mesh, transform_matrix, "../../example/data/FaceScan/Rest/Smile.obj", "../../example/data/FaceScan/Retraction/Smile.obj", visualization=True)
+    faces_registration = FacesRegistration(smile_mesh, transform_matrix, rest_path, retraction_path, visualization=True)
     faces_registration.run_registration()
 
     print(faces_registration.transform_matrix_for_rest)

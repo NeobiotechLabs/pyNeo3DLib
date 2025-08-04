@@ -19,15 +19,15 @@
     "facescan": [
         {
             "subType": "faceSmile",
-            "path": "D:/Git/PyNeo3DLib/example/data/ahn/Smile_Scan.ply"
+            "path": "D:/Git/PyNeo3DLib/example/data/ahn/Smile/Smile_Scan.ply"
         },
         {
             "subType": "faceRest",
-            "path": "D:/Git/PyNeo3DLib/example/data/ahn/Smile_Scan.ply"
+            "path": "D:/Git/PyNeo3DLib/example/data/ahn/Rest/Resting.ply"
         },
         {
             "subType": "faceRetraction",
-            "path": "D:/Git/PyNeo3DLib/example/data/ahn/Smile_Scan.ply"
+            "path": "D:/Git/PyNeo3DLib/example/data/ahn/Retraction/Retraction.ply"
         }
     ],
     "cbct": {
