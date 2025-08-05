@@ -321,12 +321,13 @@ class FaceLaminateRegistration:
         
         return inner_vertices.tolist()
 
-    def find_lip_via_convex_hull(self, inner_uv_points):
+    def find_lip_via_convex_hull(self, inner_uv_points, shrink_factor=0.8):
         """
         Select mesh inside lips using inner lip UV coordinates.
         
         Args:
             inner_uv_points: List of inner lip UV coordinates [[u1, v1], [u2, v2], ...]
+            shrink_factor: Factor to shrink the lip region (default 0.8 for 80%)
             
         Returns:
             Partial mesh composed of selected vertices
@@ -337,6 +338,16 @@ class FaceLaminateRegistration:
         # Convert UV coordinates to numpy array
         uv_start = time.time()
         inner_uv_points = np.array(inner_uv_points)
+        
+        # Apply shrinking to reduce outer lip area and noise
+        if shrink_factor < 1.0:
+            # Calculate centroid of lip region
+            center = np.mean(inner_uv_points, axis=0)
+            
+            # Shrink each point towards the center
+            inner_uv_points = center + (inner_uv_points - center) * shrink_factor
+            print(f"Lip region shrunk to {shrink_factor*100:.1f}% of original size to reduce noise")
+        
         print(f"[Time Measurement] UV coordinate conversion: {time.time() - uv_start:.4f} seconds")
         
         # Find lip region vertices
@@ -641,8 +652,8 @@ class FaceLaminateRegistration:
         print("Inner:", inner_uv_points)
         print("Outer:", outer_uv_points)
         
-        # Create inner lip partial mesh
-        lip_mesh = self.find_lip_via_convex_hull(inner_uv_points)
+        # Create inner lip partial mesh with 80% shrinkage to reduce noise
+        lip_mesh = self.find_lip_via_convex_hull(inner_uv_points, shrink_factor=0.8)
         if lip_mesh is None:
             print("Lip mesh generation failed")
             return None, None
@@ -744,6 +755,6 @@ class FaceLaminateRegistration:
 if __name__ == "__main__":
     # face_laminate_registration = FaceLaminateRegistration("../../example/data/FaceScan/Smile/Smile.obj", "../../example/data/smile_arch_half.stl", visualization=True)
     # face_laminate_registration = FaceLaminateRegistration("../../example/data/park1/Smile.obj", "../../example/data/smile_arch_half.stl", visualization=True)
-    face_laminate_registration = FaceLaminateRegistration("../../example/data/ahn/Smile_Scan.ply", "../../example/data/smile_arch_half.stl", visualization=True)
+    face_laminate_registration = FaceLaminateRegistration("../../example/data/ahn/Smile/Smile_Scan.ply", "../../example/data/smile_arch_half.stl", visualization=True)
     final_transform = face_laminate_registration.run_registration()
     print(final_transform)
