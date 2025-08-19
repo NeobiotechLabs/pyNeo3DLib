@@ -101,6 +101,33 @@ def show_result(result):
     condyle_mesh.paint_uniform_color([1.0, 1.0, 0.0])  # 노란색으로 설정
     models.append(condyle_mesh)
     
+    # golden proportion ball 생성
+    # golden proportion 점들에 빨간 구 생성
+    if 'golden_proportion' in result and result['golden_proportion'] is not None:
+        golden_data = result['golden_proportion']['points']
+        sphere_radius = 2.0  # 구의 반지름 (적당한 크기로 설정)
+        
+        # a, b, c, d 키 값을 가진 딕셔너리 형태로 처리
+        point_labels = ['a', 'b', 'c', 'd']
+        point_names = ['Eye Center', 'Nose Tip', 'Mouth Center', 'Chin']
+        
+        # 각 점에 대해 구 생성
+        for i, (label, name) in enumerate(zip(point_labels, point_names)):
+            if label in golden_data:
+                point_coords = golden_data[label]
+                
+                # 구 메시 생성
+                sphere = o3d.geometry.TriangleMesh.create_sphere(radius=sphere_radius)
+                # 빨간색으로 설정
+                sphere.paint_uniform_color([1.0, 0.0, 0.0])
+                # 구를 해당 좌표로 이동
+                sphere.translate(np.array(point_coords))
+                # 법선 벡터 계산
+                sphere.compute_vertex_normals()
+                
+                models.append(sphere)
+                print(f"Golden Proportion Point {label} ({name}): {point_coords}")
+    
     # 모델이 로드되지 않았다면 중단
     if not models:
         print("오류: 표시할 모델이 없습니다. 파일 경로를 확인하세요.")
