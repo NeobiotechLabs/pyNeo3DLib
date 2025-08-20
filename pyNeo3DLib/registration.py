@@ -14,6 +14,7 @@ from pyNeo3DLib.bowRegistration.iosBowRegistration import IOSBowRegistration
 from pyNeo3DLib.condyleFinder.condyleFinder import CondyleFinder
 from pyNeo3DLib.smileArchOuterline.landmark.landmark_detector import SmileArchOuterlineDetector
 from pyNeo3DLib.faceRegisration.faceAlign import FaceAlignment3D
+from pyNeo3DLib.goldenProportion.goldenProportionFinder import GoldenProportionFinder
 
 
 LAMINATE_PATH = os.path.join(os.path.dirname(__file__), "smile_arch_half.stl")
@@ -59,7 +60,7 @@ class Neo3DRegistration:
     async def run_registration(self, visualize=False):       
         self.__verify_file_info()
         
-        total_progress = 9
+        total_progress = 10
 
         data = {
             "type": "progress",
@@ -126,12 +127,18 @@ class Neo3DRegistration:
         print(f'__condyle_detection result: {condyle_result}')
         
         if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 8, message="smilearch_outerline_registration").get_json())
+            await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 8, message="golden_proportion_registration").get_json())
+            await asyncio.sleep(0.1)
+        golden_proportion_result = self.__golden_proportion_detection(facescan_laminate_result, visualize)
+        print(f'__golden_proportion_detection result: {golden_proportion_result}')
+        
+        if(self.websocket is not None):
+            await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 9, message="smilearch_outerline_registration").get_json())
             await asyncio.sleep(0.1)
         smilearch_outerline_result = self.__smilearch_outerline_detect(ios_laminate_result)
 
         result = self.__make_result_json(
-            ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facephoto_meshes, facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist(), condyle_result, smilearch_outerline_result
+            ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facephoto_meshes, facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist(), condyle_result, golden_proportion_result, smilearch_outerline_result
         )
         
         if(self.websocket is not None):
@@ -150,6 +157,7 @@ class Neo3DRegistration:
                             cbct_result, 
                             ios_bow_result,
                             condyle_result,
+                            golden_proportion_result,
                             smilearch_outerline_result):
         
         print("=====================================")
@@ -166,6 +174,7 @@ class Neo3DRegistration:
 
         print(f'ios_bow_result: {ios_bow_result}')
         print(f'condyle_result: {condyle_result}')
+        print(f'golden_proportion_result: {golden_proportion_result}')
         print(f'smilearch_outerline_result: {smilearch_outerline_result}')
         print("=====================================")
 
@@ -197,6 +206,12 @@ class Neo3DRegistration:
                 "points": condyle_result.tolist()
             }
             self.parsed_json["condyle"] = {"mesh": condyle_json}
+            
+        if golden_proportion_result is not None:
+            golden_proportion_json = {
+                "points": golden_proportion_result  # 이미 딕셔너리 형태이므로 그대로 사용
+            }
+            self.parsed_json["golden_proportion"] = golden_proportion_json
             
         if smilearch_outerline_result is not None:
             arch_depth, molar_width, landmark_points = smilearch_outerline_result
@@ -417,6 +432,44 @@ class Neo3DRegistration:
                         
                         # 3D 좌표만 추출 (동차 좌표에서 w=1로 나누기)
                         result = transformed_points[:, :3] / transformed_points[:, 3:4]
+                    
+                    return result
+                else:
+                    return None
+                
+    def __golden_proportion_detection(self, face_registration_result, visualize=False):
+        print("golden_proportion_detection")
+        facescan_data = self.parsed_json["facescan"]
+        for facescan in facescan_data:
+            if facescan["subType"] == "faceSmile":
+                print(f'facescan["path"]: {facescan["path"]}')
+                if facescan["path"].endswith(".obj") or facescan["path"].endswith(".ply"):
+                    golden_proportion_finder = GoldenProportionFinder(facescan["path"], visualize)
+                    result = golden_proportion_finder.run_analysis()
+                    
+                    print(f'golden_proportion_finder result: {result}')
+                    
+                    if result is not None and len(result) > 0:
+                        # result를 numpy 배열로 변환
+                        golden_proportion_points = np.array([result['a'], result['b'], result['c'], result['d']])
+                        
+                        # 동차 좌표로 변환 (4x4 행렬 적용을 위해)
+                        ones = np.ones((golden_proportion_points.shape[0], 1))
+                        homogeneous_points = np.hstack([golden_proportion_points, ones])
+                        
+                        # 변환 행렬 적용
+                        transformed_points = np.dot(homogeneous_points, face_registration_result.T)
+                        
+                        # 3D 좌표만 추출 (동차 좌표에서 w=1로 나누기)
+                        transformed_coords = transformed_points[:, :3] / transformed_points[:, 3:4]
+                        
+                        # a, b, c, d 키 값을 유지하여 딕셔너리로 반환
+                        result = {
+                            'a': transformed_coords[0].tolist(),
+                            'b': transformed_coords[1].tolist(),
+                            'c': transformed_coords[2].tolist(),
+                            'd': transformed_coords[3].tolist()
+                        }
                     
                     return result
                 else:
