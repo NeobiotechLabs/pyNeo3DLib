@@ -23,6 +23,7 @@ from . import iosRegistration
 from . import fileLoader
 from . import visualization
 from . import teethTemplateFinder
+from . import goldenProportion
 
 __all__ = [
     "fastserver", 
@@ -32,5 +33,6 @@ __all__ = [
     "iosRegistration",
     "fileLoader",
     "visualization",
-    "teethTemplateFinder"
+    "teethTemplateFinder",
+    "goldenProportion"
 ]
