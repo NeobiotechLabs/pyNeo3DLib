@@ -135,7 +135,7 @@ class Neo3DRegistration:
         if(self.websocket is not None):
             await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 9, message="smilearch_outerline_registration").get_json())
             await asyncio.sleep(0.1)
-        smilearch_outerline_result = self.__smilearch_outerline_detect(ios_laminate_result, visualize)
+        smilearch_outerline_result = self.__smilearch_outerline_detect(visualize)
 
         result = self.__make_result_json(
             ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facephoto_meshes, facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist(), condyle_result, golden_proportion_result, smilearch_outerline_result
@@ -475,7 +475,7 @@ class Neo3DRegistration:
                 else:
                     return None
                 
-    def __smilearch_outerline_detect(self, ios_laminate_result, visualize=False):
+    def __smilearch_outerline_detect(self, visualize=False):
         print("smilearch_outerline_detect")
         ios_data = self.parsed_json["ios"]
         print(f'ios_data: {ios_data}')

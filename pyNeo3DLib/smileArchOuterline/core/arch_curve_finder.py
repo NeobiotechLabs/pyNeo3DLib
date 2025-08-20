@@ -78,12 +78,10 @@ def calculate_landmarks(half_curve):
     악궁 곡선에 기반하여 랜드마크 포인트를 계산합니다.
     
     Args:
-        aligned_half_left_curve: 정렬된 악궁 곡선 배열
-        arch_depth: 아치 깊이 값
-        molar_width: 구치 폭 값
+        half_curve (np.ndarray): 분석할 악궁 곡선의 절반에 해당하는 포인트 배열.
         
     Returns:
-        landmark_points: 계산된 랜드마크 포인트 딕셔너리
+        list: 계산되어 정규화된 랜드마크 포인트의 리스트.
     """
 
     landmark_points = []
@@ -116,11 +114,7 @@ def calculate_landmarks(half_curve):
 
 
     # NumPy 배열을 리스트로 변환하고, 내부의 모든 요소를 Python 네이티브 타입으로 변환
-    landmark_points_list = []
-    for point in landmark_points:
-        # NumPy float32/float64를 Python float으로 변환
-        point_list = np.round([float(coord) for coord in point], 2).tolist()
-        landmark_points_list.append(point_list)
+    landmark_points_list = np.round(landmark_points, 2).tolist()
 
     return landmark_points_list
 
@@ -134,7 +128,7 @@ def analyze_upper_IOS_scandata(
     target_point_count: int = 7, # 스플라인을 위한 타겟 포인트 개수
     spline_num_points: int = 200, # 생성할 스플라인 곡선의 포인트 개수
     visualize_result: bool = True # 결과를 시각화할지 여부
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[float, float, list]:
     """
     치아 아치 곡선을 추출하고 시각화하는 메인 처리 함수
     
@@ -148,13 +142,10 @@ def analyze_upper_IOS_scandata(
         visualize_result (bool): 결과를 시각화할지 여부. 기본값 True
         
     Returns:
-        Tuple containing:
-            - rotated_vertices: 회전된 메쉬 버텍스
-            - polar_center: 극좌표 중심점
-            - average_sampled_points: 평균 샘플링된 포인트들
-            - total_sampled_points_for_spline: 스플라인용 샘플링된 포인트들
-            - spline_curve: 생성된 스플라인 곡선
-            - mesh_center_origin: 원점 좌표
+        Tuple[float, float, list]: 다음을 포함하는 튜플:
+            - arch_depth (float): 계산된 치아 아치의 깊이.
+            - molar_width (float): 계산된 구치부 폭.
+            - landmarks (list): 계산된 랜드마크 포인트 리스트.
     """
     
     # 메쉬 전처리 (중심 정렬, 회전, 극좌표 중심점 계산)
