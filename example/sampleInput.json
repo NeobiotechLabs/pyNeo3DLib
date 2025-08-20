@@ -9,11 +9,11 @@
         },
         {
             "subType": "upper",
-            "path": "D:/Git/PyNeo3DLib/example/data/smile_arch_origin.stl"
+            "path": "D:/Git/PyNeo3DLib/example/data/upper_ahn.stl"
         },
         {
             "subType": "lower",
-            "path": "D:/Git/PyNeo3DLib/example/data/smile_arch_origin.stl"
+            "path": "D:/Git/PyNeo3DLib/example/data/upper_ahn.stl"
         }
     ],
     "facescan": [
