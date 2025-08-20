@@ -34,16 +34,17 @@ class TeethTemplateFinder:
         teeth_shape_type: Optional[str] = None,
         teeth_height_type: Optional[str] = None,
         teeth_size_type: Optional[str] = None,
+        removed_teeth_index: Optional[int] = None,
         top_k: int = DEFAULT_TOP_K
     ) -> List[Dict]:
         """템플릿 검색"""
         try:
-            print(f"Searching templates with arch_depth: {arch_depth}, molar_width: {molar_width}, landmarks count: {len(landmarks)}")
+            print(f"Searching templates with arch_depth: {arch_depth}, molar_width: {molar_width}, removed_teeth_index: {removed_teeth_index}, landmarks count: {len(landmarks)}")
             
             query_vector = self._create_query_vector(arch_depth, molar_width, landmarks)
             
             # 필터 조건 생성
-            query_filter = self._create_filter(teeth_shape_type, teeth_height_type, teeth_size_type)
+            query_filter = self._create_filter(teeth_shape_type, teeth_height_type, teeth_size_type, removed_teeth_index)
             
             results = self.client.search(
                 collection_name=self.collection_name,
@@ -60,7 +61,7 @@ class TeethTemplateFinder:
             print(f"Error finding template: {e}")
             raise e
 
-    def _create_filter(self, teeth_shape_type: Optional[str], teeth_height_type: Optional[str], teeth_size_type: Optional[str]):
+    def _create_filter(self, teeth_shape_type: Optional[str], teeth_height_type: Optional[str], teeth_size_type: Optional[str], removed_teeth_index: Optional[int]):
         """검색 필터 생성"""
         conditions = []
         
@@ -72,6 +73,9 @@ class TeethTemplateFinder:
             
         if teeth_size_type:
             conditions.append(FieldCondition(key="teeth_size_type", match=MatchValue(value=teeth_size_type)))
+        
+        if removed_teeth_index:
+            conditions.append(FieldCondition(key="removed_teeth_index", match=MatchValue(value=removed_teeth_index)))
         
         if conditions:
             return Filter(must=conditions)
@@ -113,15 +117,18 @@ class TeethTemplateFinder:
             "template_id": result.id,
             "score": result.score,
             "payload": {
-                "maxilla_madibular_type": result.payload.get("maxilla_madibular_type"),
                 "arch_type": result.payload.get("arch_type"),
                 "teeth_shape_type": result.payload.get("teeth_shape_type"),
                 "teeth_height_type": result.payload.get("teeth_height_type"),
                 "teeth_size_type": result.payload.get("teeth_size_type"),
+                "removed_teeth_index": result.payload.get("removed_teeth_index"),
                 "arch_depth": result.payload.get("arch_depth"),
                 "molar_width": result.payload.get("molar_width"),
                 "landmarks": result.payload.get("landmarks"),
-                "filename": result.payload.get("filename")
+                "files": {
+                    "maxilla": result.payload.get("maxilla_filename"),
+                    "mandibular": result.payload.get("mandibular_filename")
+                }
             }
         }
 
