@@ -180,6 +180,7 @@ async def find_template(search_request: Dict[str, Any] = Body(...)):
         teeth_shape_type = search_request.get("teeth_shape_type")
         teeth_height_type = search_request.get("teeth_height_type")
         teeth_size_type = search_request.get("teeth_size_type")
+        removed_teeth_index = search_request.get("removed_teeth_index")
         top_k = search_request.get("top_k", 5)
         
         # 템플릿 검색 실행
@@ -190,6 +191,7 @@ async def find_template(search_request: Dict[str, Any] = Body(...)):
             teeth_shape_type=teeth_shape_type,
             teeth_height_type=teeth_height_type,
             teeth_size_type=teeth_size_type,
+            removed_teeth_index=removed_teeth_index,
             top_k=top_k
         )
         
@@ -204,6 +206,7 @@ async def find_template(search_request: Dict[str, Any] = Body(...)):
                 "teeth_shape_type": teeth_shape_type,
                 "teeth_height_type": teeth_height_type,
                 "teeth_size_type": teeth_size_type,
+                "removed_teeth_index": removed_teeth_index,
                 "top_k": top_k
             },
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")

@@ -12,7 +12,7 @@ from pyNeo3DLib.faceRegisration.facePhotoRegistration import FacePhotoRegistrati
 from pyNeo3DLib.faceRegisration.facesRegistration import FacesRegistration
 from pyNeo3DLib.bowRegistration.iosBowRegistration import IOSBowRegistration
 from pyNeo3DLib.condyleFinder.condyleFinder import CondyleFinder
-from pyNeo3DLib.smileArchOuterline.landmark.landmark_detector import SmileArchOuterlineDetector
+from pyNeo3DLib.smileArchOuterline.core import analyze_upper_IOS_scandata
 from pyNeo3DLib.faceRegisration.faceAlign import FaceAlignment3D
 from pyNeo3DLib.goldenProportion.goldenProportionFinder import GoldenProportionFinder
 
@@ -135,7 +135,7 @@ class Neo3DRegistration:
         if(self.websocket is not None):
             await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 9, message="smilearch_outerline_registration").get_json())
             await asyncio.sleep(0.1)
-        smilearch_outerline_result = self.__smilearch_outerline_detect(ios_laminate_result)
+        smilearch_outerline_result = self.__smilearch_outerline_detect(visualize)
 
         result = self.__make_result_json(
             ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facephoto_meshes, facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist(), condyle_result, golden_proportion_result, smilearch_outerline_result
@@ -475,21 +475,21 @@ class Neo3DRegistration:
                 else:
                     return None
                 
-    def __smilearch_outerline_detect(self, ios_laminate_result):
+    def __smilearch_outerline_detect(self, visualize=False):
         print("smilearch_outerline_detect")
-        smilearch_data = self.parsed_json["ios"]
-        for smilearch in smilearch_data:
-            if smilearch["subType"] == "smileArch":
-                print(f'smilearch["path"]: {smilearch["path"]}')
-                detector = SmileArchOuterlineDetector()
-                mesh = detector.load_mesh(smilearch["path"])
-                mesh.transform(ios_laminate_result, inplace=True)
-                arch_depth, molar_width, landmark_points = detector.analyze_smile_arch(mesh)
-                return arch_depth, molar_width, landmark_points
-            
+        ios_data = self.parsed_json["ios"]
+        print(f'ios_data: {ios_data}')
+        
+        for data in ios_data:
+            if data["subType"] == "upper":
+                print(f'data["path"]: {data["path"]}')
+                arch_depth, molar_width, landmarks = analyze_upper_IOS_scandata(
+                    mesh_path=data["path"],
+                    visualize_result=visualize
+                )
+                return arch_depth, molar_width, landmarks
         return None
-
-        return matrix
+    
             
     def __make_condyle_plane(self, condyle_points):
         print("make_condyle_plane")
