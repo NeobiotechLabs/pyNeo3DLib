@@ -177,6 +177,7 @@ async def find_template(search_request: Dict[str, Any] = Body(...)):
             }
         
         # 선택적 파라미터 추출
+        arch_type = search_request.get("arch_type")
         teeth_shape_type = search_request.get("teeth_shape_type")
         teeth_height_type = search_request.get("teeth_height_type")
         teeth_size_type = search_request.get("teeth_size_type")
@@ -188,6 +189,7 @@ async def find_template(search_request: Dict[str, Any] = Body(...)):
             arch_depth=arch_depth,
             molar_width=molar_width,
             landmarks=landmarks,
+            arch_type=arch_type,
             teeth_shape_type=teeth_shape_type,
             teeth_height_type=teeth_height_type,
             teeth_size_type=teeth_size_type,
@@ -203,6 +205,7 @@ async def find_template(search_request: Dict[str, Any] = Body(...)):
                 "arch_depth": arch_depth,
                 "molar_width": molar_width,
                 "landmarks_count": len(landmarks),
+                "arch_type": arch_type,
                 "teeth_shape_type": teeth_shape_type,
                 "teeth_height_type": teeth_height_type,
                 "teeth_size_type": teeth_size_type,

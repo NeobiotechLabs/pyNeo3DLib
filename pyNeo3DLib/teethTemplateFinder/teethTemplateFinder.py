@@ -31,6 +31,7 @@ class TeethTemplateFinder:
         arch_depth: float,
         molar_width: float,
         landmarks: List[List[float]],
+        arch_type: Optional[str] = None,
         teeth_shape_type: Optional[str] = None,
         teeth_height_type: Optional[str] = None,
         teeth_size_type: Optional[str] = None,
@@ -39,12 +40,12 @@ class TeethTemplateFinder:
     ) -> List[Dict]:
         """템플릿 검색"""
         try:
-            print(f"Searching templates with arch_depth: {arch_depth}, molar_width: {molar_width}, removed_teeth_index: {removed_teeth_index}, landmarks count: {len(landmarks)}")
+            print(f"Searching templates with arch_depth: {arch_depth}, molar_width: {molar_width}, arch_type: {arch_type}, removed_teeth_index: {removed_teeth_index}, landmarks count: {len(landmarks)}")
             
             query_vector = self._create_query_vector(arch_depth, molar_width, landmarks)
             
             # 필터 조건 생성
-            query_filter = self._create_filter(teeth_shape_type, teeth_height_type, teeth_size_type, removed_teeth_index)
+            query_filter = self._create_filter(arch_type, teeth_shape_type, teeth_height_type, teeth_size_type, removed_teeth_index)
             
             results = self.client.search(
                 collection_name=self.collection_name,
@@ -61,7 +62,7 @@ class TeethTemplateFinder:
             print(f"Error finding template: {e}")
             raise e
 
-    def _create_filter(self, teeth_shape_type: Optional[str], teeth_height_type: Optional[str], teeth_size_type: Optional[str], removed_teeth_index: Optional[int]):
+    def _create_filter(self, arch_type: Optional[str], teeth_shape_type: Optional[str], teeth_height_type: Optional[str], teeth_size_type: Optional[str], removed_teeth_index: Optional[int]):
         """검색 필터 생성"""
         conditions = []
         
@@ -76,6 +77,9 @@ class TeethTemplateFinder:
         
         if removed_teeth_index:
             conditions.append(FieldCondition(key="removed_teeth_index", match=MatchValue(value=removed_teeth_index)))
+            
+        if arch_type:
+            conditions.append(FieldCondition(key="arch_type", match=MatchValue(value=arch_type)))
         
         if conditions:
             return Filter(must=conditions)
