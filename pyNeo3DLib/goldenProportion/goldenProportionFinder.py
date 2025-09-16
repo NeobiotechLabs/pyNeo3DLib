@@ -42,10 +42,10 @@ class GoldenProportionFinder:
         self.landmark_indices = {
             'left_eye_inner': 33,   # 왼쪽 눈 안쪽 모서리
             'right_eye_inner': 263, # 오른쪽 눈 안쪽 모서리  
-            'nose_tip': 19,          # 코 끝
+            'nose_tip': 2,          # 코 끝
             'left_mouth_corner': 61,  # 왼쪽 입꼴리
             'right_mouth_corner': 291, # 오른쪽 입꼴리
-            'chin': 199              # 턱 아래
+            'chin': 152              # 턱 아래
         }
         
         self.__load_model()
@@ -100,34 +100,35 @@ class GoldenProportionFinder:
         if not results.multi_face_landmarks:
             raise ValueError("Cannot detect face in the image.")
         
-        # 첫 번째 얼굴의 랜드마크 가져오기
-        face_landmarks = results.multi_face_landmarks[0]
+        # 결과를 인스턴스 변수에 캐싱 (성능 개선)
+        self._cached_face_landmarks = results.multi_face_landmarks[0]
+        self._cached_image_size = (w, h)
         
         # 4개의 특정 점 추출
         landmark_points = []
         
         # A: 두 눈의 중심점 (33번, 263번의 중심)
-        left_eye = face_landmarks.landmark[self.landmark_indices['left_eye_inner']]
-        right_eye = face_landmarks.landmark[self.landmark_indices['right_eye_inner']]
+        left_eye = self._cached_face_landmarks.landmark[self.landmark_indices['left_eye_inner']]
+        right_eye = self._cached_face_landmarks.landmark[self.landmark_indices['right_eye_inner']]
         eye_center_x = int((left_eye.x + right_eye.x) * w / 2)
         eye_center_y = int((left_eye.y + right_eye.y) * h / 2)
         landmark_points.append([eye_center_x, eye_center_y])
         
         # B: 코 높은점 (4번)
-        nose_tip = face_landmarks.landmark[self.landmark_indices['nose_tip']]
+        nose_tip = self._cached_face_landmarks.landmark[self.landmark_indices['nose_tip']]
         nose_x = int(nose_tip.x * w)
         nose_y = int(nose_tip.y * h)
         landmark_points.append([nose_x, nose_y])
         
         # C: 입꼬리 중점 (61번, 291번의 중심)
-        left_mouth = face_landmarks.landmark[self.landmark_indices['left_mouth_corner']]
-        right_mouth = face_landmarks.landmark[self.landmark_indices['right_mouth_corner']]
+        left_mouth = self._cached_face_landmarks.landmark[self.landmark_indices['left_mouth_corner']]
+        right_mouth = self._cached_face_landmarks.landmark[self.landmark_indices['right_mouth_corner']]
         mouth_center_x = int((left_mouth.x + right_mouth.x) * w / 2)
         mouth_center_y = int((left_mouth.y + right_mouth.y) * h / 2)
         landmark_points.append([mouth_center_x, mouth_center_y])
         
         # D: 턱 (18번)
-        chin = face_landmarks.landmark[self.landmark_indices['chin']]
+        chin = self._cached_face_landmarks.landmark[self.landmark_indices['chin']]
         chin_x = int(chin.x * w)
         chin_y = int(chin.y * h)
         landmark_points.append([chin_x, chin_y])
@@ -160,16 +161,8 @@ class GoldenProportionFinder:
         faces = self.face_mesh.faces
         uvs = self.face_mesh.uvs
         
-        # UV 공간에서 KDTree 구축 (삼각형 중심점 기준)
-        triangle_centers = []
-        for i, face in enumerate(faces):
-            face_uvs = uvs[face]
-            center_uv = np.mean(face_uvs, axis=0)
-            triangle_centers.append((center_uv, i))
-        
-        # KDTree 생성 (UV 좌표계 기준)
-        tree_data = np.array([center[0] for center in triangle_centers])
-        tree = KDTree(tree_data)
+        # 캐싱된 KDTree 사용 (성능 개선)
+        tree, triangle_centers = self._get_or_create_kdtree()
         
         # 결과 저장용 리스트
         landmark_vertices_3d = []
@@ -234,19 +227,44 @@ class GoldenProportionFinder:
         
         return [u, v, w]
     
+    def _get_or_create_kdtree(self):
+        """KDTree를 생성하고 캐싱하는 함수 (성능 최적화)"""
+        if hasattr(self, '_cached_kdtree'):
+            return self._cached_kdtree, self._cached_triangle_centers
+        
+        # 메시 데이터 가져오기
+        vertices = self.face_mesh.vertices
+        faces = self.face_mesh.faces
+        uvs = self.face_mesh.uvs
+        
+        # UV 공간에서 KDTree 구축 (삼각형 중심점 기준)
+        triangle_centers = []
+        for i, face in enumerate(faces):
+            face_uvs = uvs[face]
+            center_uv = np.mean(face_uvs, axis=0)
+            triangle_centers.append((center_uv, i))
+        
+        # KDTree 생성 (UV 좌표계 기준)
+        tree_data = np.array([center[0] for center in triangle_centers])
+        tree = KDTree(tree_data)
+        
+        # 캐싱
+        self._cached_kdtree = tree
+        self._cached_triangle_centers = triangle_centers
+        
+        return tree, triangle_centers
+    
     
     def get_single_landmark_3d(self, landmark_key):
-        """개별 랜드마크의 3D 좌표를 추출하는 함수"""
-        # 이미지에서 해당 랜드마크의 2D 좌표 추출
-        image = cv2.imread(self.face_image_path)
-        h, w = image.shape[:2]
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        results = self.face_mesh_detector.process(image_rgb)
+        """개별 랜드마크의 3D 좌표를 추출하는 함수 (최적화됨)"""
+        # 캐싱된 데이터 사용 (성능 개선)
+        if not hasattr(self, '_cached_face_landmarks'):
+            raise ValueError("얼굴 랜드마크가 먼저 감지되어야 합니다. find_golden_proportion_landmarks()를 먼저 호출하세요.")
         
-        if not results.multi_face_landmarks:
-            raise ValueError("Cannot detect face in the image.")
+        face_landmarks = self._cached_face_landmarks
+        w, h = self._cached_image_size
         
-        face_landmarks = results.multi_face_landmarks[0]
+        # 해당 랜드마크 추출
         landmark = face_landmarks.landmark[self.landmark_indices[landmark_key]]
         
         # 2D 이미지 좌표
@@ -256,21 +274,15 @@ class GoldenProportionFinder:
         # UV 좌표로 변환
         uv = self._normalize_and_flip_coordinates([[x, y]], (w, h))[0]
         
-        # 3D 좌표 계산 (기존 로직 재사용)
+        # 캐싱된 KDTree 사용
+        tree, triangle_centers = self._get_or_create_kdtree()
+        
+        # 메시 데이터
         vertices = self.face_mesh.vertices
         faces = self.face_mesh.faces
         uvs = self.face_mesh.uvs
         
-        # UV 공간에서 KDTree로 가장 가까운 삼각형 찾기
-        triangle_centers = []
-        for i, face in enumerate(faces):
-            face_uvs = uvs[face]
-            center_uv = np.mean(face_uvs, axis=0)
-            triangle_centers.append((center_uv, i))
-        
-        tree_data = np.array([center[0] for center in triangle_centers])
-        tree = KDTree(tree_data)
-        
+        # 3D 좌표 계산
         dist, idx = tree.query(uv, k=1)
         triangle_idx = triangle_centers[idx][1]
         triangle_vertices = faces[triangle_idx]
@@ -532,12 +544,12 @@ class GoldenProportionFinder:
 
 if __name__ == "__main__":
     # 테스트 실행
-    g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/FaceScan/Smile/Smile.obj", visualization=True)
+    # g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/FaceScan/Smile/Smile.obj", visualization=True)
     # g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/ahn/Smile/Smile_Scan.ply", visualization=True)
     # g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/choi/Smile.obj", visualization=True)
     # g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/sim/Smile.obj", visualization=True)
     # g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/park1/Smile.obj", visualization=True)
-    # g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/park2/Smile.obj", visualization=True)
+    g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/park2/Smile.obj", visualization=True)
     # g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/oh/Smile.obj", visualization=True)
     # g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/kim/Smile.obj", visualization=True)
     result = g_finder.run_analysis()
