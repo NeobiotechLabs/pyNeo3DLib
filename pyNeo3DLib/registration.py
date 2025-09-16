@@ -331,7 +331,7 @@ class Neo3DRegistration:
                     facescan_laminate_registration = FaceLaminateRegistration(facescan["path"], LAMINATE_PATH, visualize)
                     final_transform, moved_smile_mesh = facescan_laminate_registration.run_registration()
                     return final_transform, moved_smile_mesh, "FaceScan"
-                elif facescan["path"].endswith(".jpg"):
+                elif facescan["path"].endswith(".jpg") or facescan["path"].endswith(".png"):
                     # facephoto_registration = FacePhotoRegistration(facescan["path"], visualize)
                     # M_total_homogeneous, image_plane = facephoto_registration.run_registration()
                     
