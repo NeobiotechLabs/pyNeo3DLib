@@ -26,13 +26,14 @@ class GoldenProportionFinder:
         self.face_mesh_detector = self.mp_face_mesh.FaceMesh(
             static_image_mode=True,
             max_num_faces=1,
-            min_detection_confidence=0.5
+            min_detection_confidence=0.5,
+            refine_landmarks=True
         )
         
         # 찾을 4개의 랜드마크 인덱스 정의 (MediaPipe 얼굴 메시는 0~467 인덱스)
         self.landmark_indices = {
-            'left_eye_inner': 33,   # 왼쪽 눈 안쪽 모서리
-            'right_eye_inner': 263, # 오른쪽 눈 안쪽 모서리  
+            'left_eye_inner': 468,   # 왼쪽 눈 안쪽 모서리
+            'right_eye_inner': 473, # 오른쪽 눈 안쪽 모서리  
             'nose_tip': 2,          # 코 끝
             'left_mouth_corner': 61,  # 왼쪽 입꼴리
             'right_mouth_corner': 291, # 오른쪽 입꼴리
@@ -581,7 +582,7 @@ class GoldenProportionFinder:
             
             # 평면에서 5mm 떨어진 위치로 모든 점 이동
             # Y축 방향으로 -5.0mm 오프셋 추가 (기존 Y좌표 + 오프셋)
-            transformed_local[:, 1] -= 5.0  # Y축 방향으로 5mm 아래로 추가
+            transformed_local[:, 1] -= 0.0  # Y축 방향으로 5mm 아래로 추가
             print(f"평면 메시: Y축 방향으로 -5.0mm 오프셋 추가 적용")
             
         else:
