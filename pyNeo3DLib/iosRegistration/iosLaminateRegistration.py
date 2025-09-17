@@ -1077,7 +1077,8 @@ class IOSLaminateRegistration:
         return matrix
 
 if __name__ == "__main__":
-    ios_path = "../../example/data/ios_with_smilearch.stl"
+    # ios_path = "../../example/data/ios_with_smilearch.stl"
+    ios_path = "../../example/data/ios_with_smilearch_4.stl"
     laminate_path = "../../example/data/smile_arch_half.stl"
     
     ios_laminate_registration = IOSLaminateRegistration(ios_path, laminate_path, visualization=True)

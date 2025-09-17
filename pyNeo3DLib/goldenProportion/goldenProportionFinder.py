@@ -581,7 +581,7 @@ class GoldenProportionFinder:
             
             # 평면에서 5mm 떨어진 위치로 모든 점 이동
             # Y축 방향으로 -5.0mm 오프셋 추가 (기존 Y좌표 + 오프셋)
-            transformed_local[:, 1] += 5.0  # Y축 방향으로 5mm 아래로 추가
+            transformed_local[:, 1] -= 5.0  # Y축 방향으로 5mm 아래로 추가
             print(f"평면 메시: Y축 방향으로 -5.0mm 오프셋 추가 적용")
             
         else:
@@ -609,7 +609,7 @@ class GoldenProportionFinder:
             
             # 평면인 경우 법선 방향으로 추가 오프셋 적용
             if is_plane:
-                offset_distance = -5.0  # 5mm 아래로
+                offset_distance = 5.0  # 5mm 아래로
                 global_point += offset_distance * plane_normal
                 print(f"  점 {i}: 평면 법선 방향으로 {offset_distance}mm 오프셋 적용")
             
