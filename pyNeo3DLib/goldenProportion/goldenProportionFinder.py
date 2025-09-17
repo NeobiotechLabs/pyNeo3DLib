@@ -8,23 +8,18 @@ import numpy as np
 from scipy.spatial import KDTree
 import time
 import copy
+from retinaface import RetinaFace
 
 class GoldenProportionFinder:
-    def __init__(self, face_mesh_path, visualization=False):
-        self.face_mesh_path = face_mesh_path
+    def __init__(self, face_mesh_path=None, face_mesh=None, face_image_path=None, visualization=False):
+        """
+        Args:
+            face_mesh_path: 3D 메시 파일 경로 (기존 방식 - 호환성 유지)
+            face_mesh: Mesh 객체 (FaceAlignment3D 결과 또는 기존 3D 메시)
+            face_image_path: 이미지 파일 경로 (face_mesh가 None일 때 사용)
+            visualization: 시각화 여부
+        """
         self.visualization = visualization
-        
-        # 파일 확장자에 따라 이미지 파일 경로 생성
-        base_path = self.face_mesh_path.rsplit('.', 1)[0]  # 확장자 제거
-        
-        # PNG 파일 먼저 확인
-        image_path = base_path + '.png'
-        if not os.path.exists(image_path):
-            # JPG 파일 확인
-            image_path = base_path + '.jpg'
-            if not os.path.exists(image_path):
-                raise FileNotFoundError(f"Image file not found: image version of {self.face_mesh_path}")
-        self.face_image_path = image_path
         
         # MediaPipe 초기화
         self.mp_face_mesh = mp.solutions.face_mesh
@@ -35,10 +30,6 @@ class GoldenProportionFinder:
         )
         
         # 찾을 4개의 랜드마크 인덱스 정의 (MediaPipe 얼굴 메시는 0~467 인덱스)
-        # A: 두 눈의 중심 (33번, 263번의 중심점 - 눈 안쪽 모서리)
-        # B: 코 높은점 (4번)
-        # C: 입꼴리 중점 (61번, 291번의 중심점 - 입꼴리)
-        # D: 턱 (18번 - 턱 아래)
         self.landmark_indices = {
             'left_eye_inner': 33,   # 왼쪽 눈 안쪽 모서리
             'right_eye_inner': 263, # 오른쪽 눈 안쪽 모서리  
@@ -48,11 +39,131 @@ class GoldenProportionFinder:
             'chin': 152              # 턱 아래
         }
         
-        self.__load_model()
+        # 기존 방식 호환성 유지: face_mesh_path가 제공된 경우
+        if face_mesh_path is not None:
+            # 파일 확장자에 따라 이미지 파일 경로 생성 (기존 방식)
+            base_path = face_mesh_path.rsplit('.', 1)[0]  # 확장자 제거
+            
+            # PNG 파일 먼저 확인
+            image_path = base_path + '.png'
+            if not os.path.exists(image_path):
+                # JPG 파일 확인
+                image_path = base_path + '.jpg'
+                if not os.path.exists(image_path):
+                    print(f"경고: 이미지 파일을 찾을 수 없습니다: {base_path}")
+                    image_path = None
+            
+            self.face_image_path = image_path
+            self.face_mesh = Mesh.from_file(face_mesh_path)
+            
+        elif face_mesh is not None:
+            # Mesh 객체가 직접 전달된 경우 (새로운 방식)
+            self.face_mesh = face_mesh
+            self.face_image_path = face_image_path  # 이미지 경로가 별도로 제공될 수 있음
+            
+        elif face_image_path is not None:
+            # 이미지 경로만 제공된 경우 - plane mesh 생성
+            self.face_image_path = face_image_path
+            self.face_mesh = self._create_plane_mesh_from_image(face_image_path)
+            
+        else:
+            raise ValueError("face_mesh_path, face_mesh 또는 face_image_path 중 하나는 반드시 제공되어야 합니다.")
+    
+    def _create_plane_mesh_from_image(self, image_path):
+        """
+        이미지에서 FaceAlignment3D 결과와 유사한 plane mesh를 생성
+        """
+        print(f"이미지에서 plane mesh 생성: {image_path}")
         
-    def __load_model(self):
-        self.face_mesh = Mesh.from_file(self.face_mesh_path)
+        # 이미지 로드
+        image = cv2.imread(image_path)
+        if image is None:
+            raise ValueError(f"이미지를 로드할 수 없습니다: {image_path}")
         
+        h, w = image.shape[:2]
+        
+        # 얼굴 랜드마크 감지하여 스케일 계산
+        landmarks = self._detect_face_landmarks_for_scale(image_path)
+        
+        if landmarks:
+            # 입 너비 기반 스케일 계산 (FaceAlignment3D와 동일한 방식)
+            mouth_left = np.array(landmarks['mouth_left'])
+            mouth_right = np.array(landmarks['mouth_right'])
+            mouth_width_pixels = np.linalg.norm(mouth_right - mouth_left)
+            target_mouth_width = 50.0  # FaceAlignment3D의 기본값
+            
+            if mouth_width_pixels > 0:
+                scale_factor = target_mouth_width / mouth_width_pixels
+            else:
+                scale_factor = 1.0
+        else:
+            # 랜드마크를 찾을 수 없으면 기본 스케일 사용
+            scale_factor = 0.1  # 기본 스케일
+        
+        plane_width = w * scale_factor
+        plane_height = h * scale_factor
+        
+        half_width = plane_width / 2
+        half_height = plane_height / 2
+        
+        # XZ 평면에 정점 생성 (Y=0)
+        vertices = np.array([
+            [-half_width, 0, -half_height],  # 0: bottom-left
+            [half_width, 0, -half_height],   # 1: bottom-right  
+            [half_width, 0, half_height],    # 2: top-right
+            [-half_width, 0, half_height]    # 3: top-left
+        ])
+        
+        # 삼각형 면 생성
+        faces = np.array([[0, 2, 1], [0, 3, 2]])
+        
+        # UV 좌표 생성 (이미지와 매핑)
+        uvs = np.array([
+            [0, 0],  # bottom-left
+            [1, 0],  # bottom-right
+            [1, 1],  # top-right
+            [0, 1]   # top-left
+        ])
+        
+        # Mesh 객체 생성
+        mesh = Mesh()
+        mesh.vertices = vertices
+        mesh.faces = faces
+        mesh.uvs = uvs
+        mesh.face_uvs = faces  # UV 인덱스는 정점 인덱스와 동일
+        
+        print(f"Plane mesh 생성 완료:")
+        print(f"  - 크기: {plane_width:.1f} x {plane_height:.1f}")
+        print(f"  - 정점 수: {len(vertices)}")
+        print(f"  - 면 수: {len(faces)}")
+        
+        return mesh
+    
+    def _detect_face_landmarks_for_scale(self, image_path):
+        """
+        스케일 계산을 위한 얼굴 랜드마크 감지 (RetinaFace 사용)
+        """
+        try:
+            faces = RetinaFace.detect_faces(image_path)
+            if not faces:
+                print("얼굴을 감지할 수 없습니다.")
+                return None
+            
+            # 첫 번째 얼굴의 랜드마크 사용
+            face_key = list(faces.keys())[0]
+            landmarks = faces[face_key]['landmarks']
+            
+            # RetinaFace 랜드마크를 적절한 형식으로 변환
+            return {
+                'left_eye': landmarks['left_eye'],
+                'right_eye': landmarks['right_eye'],
+                'mouth_left': landmarks['mouth_left'],
+                'mouth_right': landmarks['mouth_right']
+            }
+        except Exception as e:
+            print(f"랜드마크 감지 실패: {e}")
+            return None
+
     def _normalize_and_flip_coordinates(self, points, image_size):
         """
         이미지 좌표를 UV 좌표로 변환.
@@ -83,22 +194,45 @@ class GoldenProportionFinder:
         """
         얼굴 랜드마크를 분석하여 4개의 황금비율 점을 찾는 함수
         """
-        # 이미지 로드
-        image = cv2.imread(self.face_image_path)
+        # 이미지 소스 확인 (파일 경로 또는 메모리 배열)
+        image = None
+        image_source = None
+        
+        if self.face_image_path is not None:
+            # 파일에서 이미지 로드
+            image = cv2.imread(self.face_image_path)
+            image_source = "파일"
+        elif hasattr(self, '_has_image_array') and self._has_image_array:
+            # 메모리 배열에서 이미지 사용
+            image = self._face_image_array.copy()
+            image_source = "메모리"
+        
         if image is None:
-            raise ValueError(f"Cannot load image: {self.face_image_path}")
+            # 이미지가 없는 경우 기본 UV 좌표 사용
+            print("이미지 소스가 없습니다. 기본 UV 좌표를 사용합니다.")
+            return self._create_default_golden_proportion_uv()
+        
+        print(f"이미지 소스: {image_source}, 크기: {image.shape}")
         
         # 이미지 크기 가져오기
         h, w = image.shape[:2]
         
         # RGB로 변환 (MediaPipe는 RGB 형식 필요)
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        if len(image.shape) == 3 and image.shape[2] == 3:
+            # BGR 이미지인 경우 RGB로 변환
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        else:
+            # 이미 RGB이거나 다른 형식인 경우 그대로 사용
+            image_rgb = image
         
         # 얼굴 랜드마크 감지
         results = self.face_mesh_detector.process(image_rgb)
         
         if not results.multi_face_landmarks:
-            raise ValueError("Cannot detect face in the image.")
+            print("얼굴을 감지할 수 없습니다. 기본 UV 좌표를 사용합니다.")
+            # 이미지 크기 정보는 저장해둠
+            self._cached_image_size = (w, h)
+            return self._create_default_golden_proportion_uv()
         
         # 결과를 인스턴스 변수에 캐싱 (성능 개선)
         self._cached_face_landmarks = results.multi_face_landmarks[0]
@@ -144,6 +278,47 @@ class GoldenProportionFinder:
         print(f"  B (Nose Tip): {landmark_points[1]} -> UV: {self.landmark_uv[1]}")
         print(f"  C (Mouth Center): {landmark_points[2]} -> UV: {self.landmark_uv[2]}")
         print(f"  D (Chin): {landmark_points[3]} -> UV: {self.landmark_uv[3]}")
+        
+        return self.landmark_uv
+    
+    def _create_default_golden_proportion_uv(self):
+        """
+        이미지가 없을 때 사용할 기본 황금비율 UV 좌표 생성
+        평면의 중앙 부분에 황금비율에 따라 점들을 배치
+        """
+        # 황금비율 (1.618)을 기반으로 얼굴 비율 계산
+        golden_ratio = 1.618
+        
+        # 평면의 중앙을 기준으로 황금비율 점들 배치
+        # A: 두 눈의 중심 (상단 1/3 지점)
+        eye_center_uv = [0.5, 0.7]
+        
+        # B: 코 높은점 (중앙 약간 위)
+        nose_uv = [0.5, 0.55]
+        
+        # C: 입꼬리 중점 (중앙 약간 아래)
+        mouth_uv = [0.5, 0.4]
+        
+        # D: 턱 (하단 1/4 지점)
+        chin_uv = [0.5, 0.2]
+        
+        self.landmark_uv = [eye_center_uv, nose_uv, mouth_uv, chin_uv]
+        
+        # 더미 이미지 좌표도 생성 (1000x1000 가상 이미지 기준)
+        virtual_size = 1000
+        self.landmark_image_points = [
+            [int(uv[0] * virtual_size), int((1.0 - uv[1]) * virtual_size)]
+            for uv in self.landmark_uv
+        ]
+        
+        # 캐시 정보도 설정
+        self._cached_image_size = (virtual_size, virtual_size)
+        
+        print(f"기본 황금비율 UV 좌표 생성:")
+        print(f"  A (Eye Center): UV: {self.landmark_uv[0]}")
+        print(f"  B (Nose Tip): UV: {self.landmark_uv[1]}")
+        print(f"  C (Mouth Center): UV: {self.landmark_uv[2]}")
+        print(f"  D (Chin): UV: {self.landmark_uv[3]}")
         
         return self.landmark_uv
         
@@ -257,22 +432,36 @@ class GoldenProportionFinder:
     
     def get_single_landmark_3d(self, landmark_key):
         """개별 랜드마크의 3D 좌표를 추출하는 함수 (최적화됨)"""
-        # 캐싱된 데이터 사용 (성능 개선)
-        if not hasattr(self, '_cached_face_landmarks'):
-            raise ValueError("얼굴 랜드마크가 먼저 감지되어야 합니다. find_golden_proportion_landmarks()를 먼저 호출하세요.")
+        # 캐싱된 데이터가 있는지 확인
+        if not hasattr(self, '_cached_image_size'):
+            raise ValueError("랜드마크가 먼저 감지되어야 합니다. find_golden_proportion_landmarks()를 먼저 호출하세요.")
         
-        face_landmarks = self._cached_face_landmarks
         w, h = self._cached_image_size
         
-        # 해당 랜드마크 추출
-        landmark = face_landmarks.landmark[self.landmark_indices[landmark_key]]
-        
-        # 2D 이미지 좌표
-        x = int(landmark.x * w)
-        y = int(landmark.y * h)
-        
-        # UV 좌표로 변환
-        uv = self._normalize_and_flip_coordinates([[x, y]], (w, h))[0]
+        # 이미지 기반 랜드마크가 있는 경우
+        if hasattr(self, '_cached_face_landmarks') and self._cached_face_landmarks is not None:
+            face_landmarks = self._cached_face_landmarks
+            
+            # 해당 랜드마크 추출
+            landmark = face_landmarks.landmark[self.landmark_indices[landmark_key]]
+            
+            # 2D 이미지 좌표
+            x = int(landmark.x * w)
+            y = int(landmark.y * h)
+            
+            # UV 좌표로 변환
+            uv = self._normalize_and_flip_coordinates([[x, y]], (w, h))[0]
+        else:
+            # 기본 UV 좌표 사용 (이미지가 없는 경우)
+            landmark_map = {
+                'left_eye_inner': [0.45, 0.7],   # 왼쪽 눈
+                'right_eye_inner': [0.55, 0.7],  # 오른쪽 눈
+                'nose_tip': [0.5, 0.55],         # 코
+                'left_mouth_corner': [0.45, 0.4], # 왼쪽 입꼴리
+                'right_mouth_corner': [0.55, 0.4], # 오른쪽 입꼴리
+                'chin': [0.5, 0.2]               # 턱
+            }
+            uv = landmark_map.get(landmark_key, [0.5, 0.5])
         
         # 캐싱된 KDTree 사용
         tree, triangle_centers = self._get_or_create_kdtree()
@@ -380,9 +569,23 @@ class GoldenProportionFinder:
         avg_right = np.mean(transformed_local[:, 0])
         transformed_local[:, 0] = avg_right  # 또는 0으로 중앙 정렬
         
-        # 모든 점을 같은 앞뒤 위치로 정렬 (최상단 점 기준)
-        max_forward = np.min(transformed_local[:, 2])
-        transformed_local[:, 2] = max_forward - 5.0  # 5mm 아래로
+        # 평면에 수직인 방향으로 5mm 띄우기
+        # 평면 메시인지 확인
+        is_plane = self._is_plane_mesh(self.face_mesh)
+        
+        if is_plane:
+            # 평면의 경우: 평면의 법선 방향으로 5mm 띄움
+            plane_normal = self._calculate_plane_normal(self.face_mesh)
+            print(f"평면 법선 벡터: {plane_normal}")
+            
+            # 평면에서 5mm 떨어진 위치로 모든 점 이동
+            # (로컬 좌표계에서 처리하지 않고 전역 좌표계에서 직접 처리)
+            offset_distance = 5.0
+            
+        else:
+            # 3D 메시의 경우: 기존 방식 (forward 방향으로 5mm)
+            max_forward = np.min(transformed_local[:, 2])
+            transformed_local[:, 2] = max_forward - 5.0  # 5mm 아래로
         
         # 앞뒤 방향은 원본 그대로 유지 (정렬하지 않음)
         
@@ -400,6 +603,12 @@ class GoldenProportionFinder:
                         local_point[0] * right_axis + \
                         local_point[1] * up_axis + \
                         local_point[2] * forward_axis
+            
+            # 평면인 경우 법선 방향으로 추가 오프셋 적용
+            if is_plane:
+                global_point += offset_distance * plane_normal
+                print(f"  점 {i}: 평면 법선 방향으로 {offset_distance}mm 오프셋 적용")
+            
             final_landmarks.append(global_point)
             print(f"  점 {i}: 최종좌표 [{global_point[0]:.3f}, {global_point[1]:.3f}, {global_point[2]:.3f}]")
         
@@ -484,15 +693,41 @@ class GoldenProportionFinder:
         # 5. 시각화 (옵션)
         if self.visualization:
             print("\n5. 결과 시각화 중...")
-            # 색상 고정 시각화
             import pyvista as pv
             
             # 플롯터 생성
             plotter = pv.Plotter()
             
-            # 얼굴 메시 (회색, 반투명)
-            face_pv = self._mesh_to_pyvista(self.face_mesh)
-            plotter.add_mesh(face_pv, color='lightgray', opacity=0.3, label="Face")
+            # 얼굴 메시 처리 - 텍스처 소스 확인
+            has_texture_source = False
+            texture_source_type = None
+            
+            # 1. 파일 경로 확인
+            if self.face_image_path and os.path.exists(self.face_image_path):
+                has_texture_source = True
+                texture_source_type = "파일"
+            # 2. 메모리 배열 확인
+            elif hasattr(self, '_has_image_array') and self._has_image_array:
+                has_texture_source = True
+                texture_source_type = "메모리"
+            
+            if has_texture_source:
+                # 텍스처 소스가 있는 경우
+                face_pv = self._mesh_to_pyvista_with_texture(self.face_mesh, self.face_image_path)
+                if hasattr(face_pv, '_has_texture') and face_pv._has_texture:
+                    # 텍스처가 성공적으로 적용된 경우
+                    plotter.add_mesh(face_pv, texture=face_pv._texture, opacity=0.8, 
+                                   label=f"Face with Texture ({texture_source_type})")
+                    print(f"시각화: {texture_source_type} 텍스처 적용됨")
+                else:
+                    # 텍스처 적용 실패 시 기본 색상
+                    plotter.add_mesh(face_pv, color='lightgray', opacity=0.5, label="Face")
+                    print(f"시각화: {texture_source_type} 텍스처 적용 실패, 기본 색상 사용")
+            else:
+                # 텍스처 소스가 없는 경우 기본 색상으로 시각화
+                face_pv = self._mesh_to_pyvista(self.face_mesh)
+                plotter.add_mesh(face_pv, color='lightgray', opacity=0.3, label="Face")
+                print("시각화: 텍스처 소스 없음, 기본 색상 사용")
             
             # 원본 랜드마크 (빨간색)
             original_pv = self._mesh_to_pyvista(self.original_landmarks_mesh)
@@ -523,8 +758,133 @@ class GoldenProportionFinder:
         # 결과 반환
         return golden_proportion_points
 
+    def _mesh_to_pyvista_with_texture(self, mesh, texture_path=None):
+        """Mesh 객체를 PyVista 메쉬로 변환하고 텍스처 적용"""
+        import pyvista as pv
+        
+        vertices = mesh.vertices
+        faces = mesh.faces
+        
+        pv_mesh = pv.PolyData()
+        pv_mesh.points = vertices
+        
+        face_list = []
+        for face in faces:
+            face_list.append(len(face))
+            face_list.extend(face)
+        
+        pv_mesh.faces = face_list
+        
+        # 텍스처 적용 시도
+        texture_applied = False
+        texture_source = None
+        
+        # 1. 이미지 배열이 있는 경우 (메모리에서 직접)
+        if hasattr(self, '_has_image_array') and self._has_image_array:
+            texture_source = self._face_image_array
+            print(f"메모리의 이미지 배열 사용 (형태: {self._face_image_array.shape})")
+        # 2. 이미지 파일 경로가 있는 경우
+        elif texture_path is not None and os.path.exists(texture_path):
+            texture_source = texture_path
+            print(f"파일에서 텍스처 로드: {texture_path}")
+        
+        if (hasattr(mesh, 'uvs') and mesh.uvs is not None and texture_source is not None):
+            try:
+                # UV 좌표를 텍스처 좌표로 설정 (PyVista는 2D만 지원)
+                tex_coords = mesh.uvs.copy()
+                # 2D 형태로 유지 (u, v만 사용)
+                if tex_coords.shape[1] > 2:
+                    tex_coords = tex_coords[:, :2]
+                
+                # UV 좌표 개수와 정점 개수가 일치하는지 확인
+                num_points = len(pv_mesh.points)
+                num_uvs = len(tex_coords)
+                
+                print(f"디버그: 정점 수={num_points}, UV 수={num_uvs}")
+                print(f"UV 좌표: {tex_coords}")
+                
+                if num_points != num_uvs:
+                    print(f"경고: UV 좌표 개수({num_uvs})와 정점 개수({num_points})가 일치하지 않습니다. 텍스처 적용을 건너뜁니다.")
+                    texture_applied = False
+                else:
+                    # UV 좌표 적용
+                    pv_mesh.active_t_coords = tex_coords
+                    
+                    # 텍스처 로드 (배열 또는 파일)
+                    if isinstance(texture_source, str):
+                        # 파일에서 로드
+                        texture = pv.read_texture(texture_source)
+                        print("파일에서 텍스처 로드 완료")
+                    else:
+                        # 메모리 배열에서 직접 생성 (색상 변환 없이)
+                        texture = pv.numpy_to_texture(texture_source)
+                        print("메모리 배열에서 텍스처 생성 완료 (원본 색상 순서 유지)")
+                    
+                    # 텍스처를 mesh에 저장 (사용자 정의 속성으로)
+                    pv_mesh._texture = texture
+                    texture_applied = True
+                    print("텍스처 적용 완료")
+                
+            except Exception as e:
+                print(f"텍스처 로드 실패: {e}")
+                import traceback
+                traceback.print_exc()
+                texture_applied = False
+        else:
+            print(f"텍스처 적용 조건 확인:")
+            print(f"  - mesh.uvs 존재: {hasattr(mesh, 'uvs') and mesh.uvs is not None}")
+            print(f"  - texture_source 존재: {texture_source is not None}")
+        
+        # 텍스처 적용 여부를 mesh에 저장
+        pv_mesh._has_texture = texture_applied
+        
+        return pv_mesh
+    
+    def _is_plane_mesh(self, mesh):
+        """메시가 평면 메시인지 확인 (Z축 변화가 거의 없으면 평면으로 간주)"""
+        if mesh.vertices is None or len(mesh.vertices) < 3:
+            return False
+        
+        # Z축 좌표의 변화량 확인
+        z_coords = mesh.vertices[:, 2]
+        z_range = np.max(z_coords) - np.min(z_coords)
+        
+        # Z축 변화가 매우 작으면 평면으로 간주 (임계값: 1.0)
+        is_plane = z_range < 1.0
+        print(f"메시 Z축 범위: {z_range:.3f}, 평면 여부: {is_plane}")
+        
+        return is_plane
+    
+    def _calculate_plane_normal(self, mesh):
+        """평면의 법선 벡터 계산"""
+        if mesh.vertices is None or len(mesh.vertices) < 3:
+            return np.array([0, 1, 0])  # 기본값: Y축 방향
+        
+        # 첫 번째 삼각형의 법선 벡터 계산
+        if mesh.faces is not None and len(mesh.faces) > 0:
+            face = mesh.faces[0]
+            v1 = mesh.vertices[face[0]]
+            v2 = mesh.vertices[face[1]]
+            v3 = mesh.vertices[face[2]]
+            
+            # 두 벡터의 외적으로 법선 벡터 계산
+            edge1 = v2 - v1
+            edge2 = v3 - v1
+            normal = np.cross(edge1, edge2)
+            
+            # 정규화
+            if np.linalg.norm(normal) > 0:
+                normal = normal / np.linalg.norm(normal)
+            else:
+                normal = np.array([0, 1, 0])  # 기본값
+            
+            return normal
+        else:
+            # 면 정보가 없으면 기본값 반환
+            return np.array([0, 1, 0])
+
     def _mesh_to_pyvista(self, mesh):
-        """Mesh 객체를 PyVista 메쉬로 변환"""
+        """Mesh 객체를 PyVista 메쉬로 변환 (기존 메서드 유지)"""
         import pyvista as pv
         
         vertices = mesh.vertices
@@ -541,17 +901,168 @@ class GoldenProportionFinder:
         pv_mesh.faces = face_list
         return pv_mesh
 
+    @classmethod
+    def from_image(cls, image_path, visualization=False):
+        """
+        이미지 경로에서 GoldenProportionFinder 인스턴스를 생성하는 클래스 메서드
+        """
+        return cls(face_mesh=None, face_image_path=image_path, visualization=visualization)
+    
+    @classmethod  
+    def from_mesh(cls, face_mesh, face_image_path=None, visualization=False):
+        """
+        Mesh 객체에서 GoldenProportionFinder 인스턴스를 생성하는 클래스 메서드
+        """
+        return cls(face_mesh=face_mesh, face_image_path=face_image_path, visualization=visualization)
+    
+    @classmethod
+    def from_face_alignment_result(cls, face_alignment_result, visualization=False):
+        """
+        FaceAlignment3D 결과에서 GoldenProportionFinder 인스턴스를 생성하는 클래스 메서드
+        
+        Args:
+            face_alignment_result: FaceAlignmentResult 객체 (front_plane, front_texture 등 포함)
+            visualization: 시각화 여부
+        """
+        # FaceAlignmentResult에서 front_plane을 Mesh 객체로 변환
+        face_mesh = cls._convert_o3d_to_mesh(face_alignment_result.front_plane)
+        
+        # 텍스처 이미지가 있으면 numpy 배열로 직접 전달
+        face_image_array = None
+        
+        # FaceAlignment3D 결과에서 텍스처 추출 시도
+        texture_source = None
+        
+        # 1. front_texture 속성 확인
+        if hasattr(face_alignment_result, 'front_texture') and face_alignment_result.front_texture is not None:
+            texture_source = face_alignment_result.front_texture
+            print("front_texture에서 텍스처 발견")
+        
+        # 2. front_plane의 textures 확인
+        elif (hasattr(face_alignment_result, 'front_plane') and 
+              hasattr(face_alignment_result.front_plane, 'textures') and 
+              len(face_alignment_result.front_plane.textures) > 0):
+            texture_source = face_alignment_result.front_plane.textures[0]
+            print("front_plane.textures에서 텍스처 발견")
+        
+        if texture_source is not None:
+            import numpy as np
+            
+            try:
+                # Open3D Image를 numpy 배열로 변환
+                face_image_array = np.asarray(texture_source)
+                print(f"Open3D 텍스처 변환 성공: {face_image_array.shape}")
+            except Exception as e:
+                print(f"Open3D 텍스처 변환 실패: {e}")
+                face_image_array = None
+        else:
+            print("FaceAlignment3D 결과에서 텍스처를 찾을 수 없습니다.")
+        
+        instance = cls(face_mesh=face_mesh, face_image_path=None, visualization=visualization)
+        
+        # 이미지 배열을 직접 저장
+        if face_image_array is not None:
+            instance._face_image_array = face_image_array
+            instance._has_image_array = True
+            print(f"FaceAlignment3D 이미지 배열 저장 완료: {face_image_array.shape}")
+        else:
+            instance._has_image_array = False
+            print("FaceAlignment3D에서 텍스처 이미지가 없습니다.")
+            # 텍스처가 없어도 기본 UV 좌표로 동작하도록 함
+        
+        return instance
+    
+    @staticmethod
+    def _convert_o3d_to_mesh(o3d_mesh):
+        """
+        Open3D TriangleMesh를 pyNeo3DLib Mesh 객체로 변환
+        """
+        mesh = Mesh()
+        
+        # 정점 변환
+        mesh.vertices = np.asarray(o3d_mesh.vertices)
+        
+        # 면 변환
+        mesh.faces = np.asarray(o3d_mesh.triangles)
+        
+        # UV 좌표 생성 (정점 수에 맞춰서)
+        num_vertices = len(mesh.vertices)
+        
+        if num_vertices == 4:  # 사각형 평면
+            mesh.uvs = np.array([
+                [0, 0],  # bottom-left
+                [1, 0],  # bottom-right
+                [1, 1],  # top-right
+                [0, 1]   # top-left
+            ])
+            mesh.face_uvs = mesh.faces
+        else:
+            # 일반적인 경우 기본 UV 좌표 생성
+            mesh._try_create_default_uvs()
+        
+        return mesh
+
 
 if __name__ == "__main__":
     # 테스트 실행
-    # g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/FaceScan/Smile/Smile.obj", visualization=True)
-    # g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/ahn/Smile/Smile_Scan.ply", visualization=True)
-    # g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/choi/Smile.obj", visualization=True)
-    # g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/sim/Smile.obj", visualization=True)
-    # g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/park1/Smile.obj", visualization=True)
-    g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/park2/Smile.obj", visualization=True)
-    # g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/oh/Smile.obj", visualization=True)
-    # g_finder = GoldenProportionFinder(face_mesh_path="../../example/data/kim/Smile.obj", visualization=True)
-    result = g_finder.run_analysis()
-    print(f"\n최종 결과: {result}")
+    print("=== 황금비율 분석 테스트 ===\n")
+    
+    # 1. 기존 방식 - 3D 메시 파일 경로 테스트 (호환성 유지)
+    print("1. 기존 방식 - 3D 메시 파일 경로 테스트:")
+    mesh_path = "../../example/data/ahn/Smile/Smile_Scan.ply"
+    g_finder_legacy = GoldenProportionFinder(face_mesh_path=mesh_path, visualization=True)
+    result_legacy = g_finder_legacy.run_analysis()
+    print(f"기존 방식 결과: {result_legacy}\n")
+    
+    # 2. 새로운 방식 - Mesh 객체 직접 전달 테스트
+    print("2. 새로운 방식 - Mesh 객체 직접 전달 테스트:")
+    import os
+    base_path = os.path.splitext(mesh_path)[0]
+    image_path = base_path + '.png' if os.path.exists(base_path + '.png') else base_path + '.jpg'
+    if not os.path.exists(image_path):
+        image_path = None
+    
+    face_mesh = Mesh.from_file(mesh_path)
+    g_finder_mesh = GoldenProportionFinder.from_mesh(face_mesh, face_image_path=image_path, visualization=True)
+    result_mesh = g_finder_mesh.run_analysis()
+    print(f"Mesh 객체 결과: {result_mesh}\n")
+    
+    # 3. FaceAlignment3D 시뮬레이션 테스트 (이미지에서 3D plane 생성)
+    print("3. FaceAlignment3D 시뮬레이션 테스트:")
+    from pyNeo3DLib.faceRegisration.faceAlign import FaceAlignment3D
+    
+    # 테스트용 이미지 경로들
+    test_images = [
+        "../../example/data/photo/hk1.jpg",
+        "../../example/data/photo/su1.png"
+    ]
+    
+    for test_image in test_images:
+        if os.path.exists(test_image):
+            print(f"\n테스트 이미지: {test_image}")
+            
+            try:
+                # FaceAlignment3D로 3D plane 생성
+                face_alignment = FaceAlignment3D(front_image_path=test_image)
+                rotation_matrix, alignment_result = face_alignment.run_registration(visualize=False)
+                
+                if alignment_result is not None:
+                    # FaceAlignment3D 결과로 GoldenProportionFinder 생성
+                    g_finder_alignment = GoldenProportionFinder.from_face_alignment_result(
+                        alignment_result, visualization=True)
+                    result_alignment = g_finder_alignment.run_analysis()
+                    print(f"FaceAlignment3D 결과: {result_alignment}")
+                else:
+                    print("FaceAlignment3D 처리 실패")
+                    
+            except Exception as e:
+                print(f"FaceAlignment3D 테스트 실패: {e}")
+                
+                # 대체 방법: 직접 plane mesh 생성
+                print("대체 방법: 직접 plane mesh 생성")
+                g_finder_image = GoldenProportionFinder.from_image(test_image, visualization=True)
+                result_image = g_finder_image.run_analysis()
+                print(f"직접 plane 생성 결과: {result_image}")
+            
+            # break  # 첫 번째 유효한 이미지만 테스트
         
