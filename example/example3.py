@@ -24,7 +24,7 @@ print("\nPress Enter to stop server...")
 input()
 
 def show_result(result):
-    print(result)
+    # print(result)
     
     # 시각화를 위해 필요한 라이브러리 가져오기
     import open3d as o3d
@@ -150,14 +150,41 @@ def show_result(result):
             print(f"-> Error processing '{name}' plane data: {e}")
             return None
         
-    print("Result Photo =================================")
-    print(result['photo'])
+    # print("Result Photo =================================")
+    # print(result['photo'])
     
     if 'photo' in result and result['photo'] is not None:
         for plane_name in ['front', 'left', 'right']:
             plane_data = result['photo'][plane_name]
             photo_mesh = create_textured_mesh_from_data(plane_data, plane_name)
             models.append(photo_mesh)
+    
+    # golden proportion ball 생성
+    # golden proportion 점들에 빨간 구 생성
+    if 'golden_proportion' in result and result['golden_proportion'] is not None:
+        golden_data = result['golden_proportion']['points']
+        sphere_radius = 2.0  # 구의 반지름 (적당한 크기로 설정)
+        
+        # a, b, c, d 키 값을 가진 딕셔너리 형태로 처리
+        point_labels = ['a', 'b', 'c', 'd']
+        point_names = ['Eye Center', 'Nose Tip', 'Mouth Center', 'Chin']
+        
+        # 각 점에 대해 구 생성
+        for i, (label, name) in enumerate(zip(point_labels, point_names)):
+            if label in golden_data:
+                point_coords = golden_data[label]
+                
+                # 구 메시 생성
+                sphere = o3d.geometry.TriangleMesh.create_sphere(radius=sphere_radius)
+                # 빨간색으로 설정
+                sphere.paint_uniform_color([1.0, 0.0, 0.0])
+                # 구를 해당 좌표로 이동
+                sphere.translate(np.array(point_coords))
+                # 법선 벡터 계산
+                sphere.compute_vertex_normals()
+                
+                models.append(sphere)
+                print(f"Golden Proportion Point {label} ({name}): {point_coords}")
             
     # 모델이 로드되지 않았다면 중단
     if not models:
