@@ -23,11 +23,11 @@
         },
         {
             "subType": "faceRest",
-            "path": "D:/Git/PyNeo3DLib/example/data/photo/su2.png"
+            "path": "D:/Git/PyNeo3DLib/example/data/photo/su3.png"
         },
         {
             "subType": "faceRetraction",
-            "path": "D:/Git/PyNeo3DLib/example/data/photo/su3.png"
+            "path": "D:/Git/PyNeo3DLib/example/data/photo/su2.png"
         }
     ],
     "cbct": {

@@ -565,9 +565,10 @@ class GoldenProportionFinder:
         # 3. 로컬 좌표계에서 황금비율 적용
         transformed_local = local_coords.copy()
         
-        # 모든 점을 좌우 중앙으로 정렬
+        # 좌우 중앙 정렬은 건너뛰고 원본 X좌표 유지
+        # (각 점의 고유한 위치를 보존하기 위해)
         avg_right = np.mean(transformed_local[:, 0])
-        transformed_local[:, 0] = avg_right  # 또는 0으로 중앙 정렬
+        print(f"좌우 평균값: {avg_right:.3f} (정렬하지 않고 원본 유지)")
         
         # 평면에 수직인 방향으로 5mm 띄우기
         # 평면 메시인지 확인
@@ -579,13 +580,15 @@ class GoldenProportionFinder:
             print(f"평면 법선 벡터: {plane_normal}")
             
             # 평면에서 5mm 떨어진 위치로 모든 점 이동
-            # (로컬 좌표계에서 처리하지 않고 전역 좌표계에서 직접 처리)
-            offset_distance = 5.0
+            # Y축 방향으로 -5.0mm 오프셋 추가 (기존 Y좌표 + 오프셋)
+            transformed_local[:, 1] += 5.0  # Y축 방향으로 5mm 아래로 추가
+            print(f"평면 메시: Y축 방향으로 -5.0mm 오프셋 추가 적용")
             
         else:
             # 3D 메시의 경우: 기존 방식 (forward 방향으로 5mm)
             max_forward = np.min(transformed_local[:, 2])
             transformed_local[:, 2] = max_forward - 5.0  # 5mm 아래로
+            print(f"3D 메시: Z축 방향으로 -5.0mm 오프셋 적용")
         
         # 앞뒤 방향은 원본 그대로 유지 (정렬하지 않음)
         
@@ -606,6 +609,7 @@ class GoldenProportionFinder:
             
             # 평면인 경우 법선 방향으로 추가 오프셋 적용
             if is_plane:
+                offset_distance = -5.0  # 5mm 아래로
                 global_point += offset_distance * plane_normal
                 print(f"  점 {i}: 평면 법선 방향으로 {offset_distance}mm 오프셋 적용")
             
@@ -841,17 +845,27 @@ class GoldenProportionFinder:
         return pv_mesh
     
     def _is_plane_mesh(self, mesh):
-        """메시가 평면 메시인지 확인 (Z축 변화가 거의 없으면 평면으로 간주)"""
+        """메시가 평면 메시인지 확인 (X, Y, Z축 중 가장 작은 변화량으로 평면 판단)"""
         if mesh.vertices is None or len(mesh.vertices) < 3:
             return False
         
-        # Z축 좌표의 변화량 확인
+        # 각 축의 좌표 변화량 확인
+        x_coords = mesh.vertices[:, 0]
+        y_coords = mesh.vertices[:, 1]
         z_coords = mesh.vertices[:, 2]
+        
+        x_range = np.max(x_coords) - np.min(x_coords)
+        y_range = np.max(y_coords) - np.min(y_coords)
         z_range = np.max(z_coords) - np.min(z_coords)
         
-        # Z축 변화가 매우 작으면 평면으로 간주 (임계값: 1.0)
-        is_plane = z_range < 1.0
-        print(f"메시 Z축 범위: {z_range:.3f}, 평면 여부: {is_plane}")
+        # 가장 작은 변화량 찾기
+        min_range = min(x_range, y_range, z_range)
+        
+        # 가장 작은 축의 변화가 매우 작으면 평면으로 간주 (임계값: 1.0)
+        is_plane = min_range < 1.0
+        
+        print(f"메시 좌표 범위 - X: {x_range:.3f}, Y: {y_range:.3f}, Z: {z_range:.3f}")
+        print(f"최소 범위: {min_range:.3f}, 평면 여부: {is_plane}")
         
         return is_plane
     
