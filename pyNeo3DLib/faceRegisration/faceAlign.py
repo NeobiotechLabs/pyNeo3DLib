@@ -206,8 +206,8 @@ class Face3DVisualizer:
         mouth_width_3d = front_plane_params['mouth_width_3d']
 
         scale_factor = front_face_height / h
-        plane_width = w * scale_factor  # This is depth in Y direction
-        plane_height = h * scale_factor # This is height in Z direction
+        plane_width = w * scale_factor * 1.5  # This is depth in Y direction
+        plane_height = h * scale_factor * 1.5  # This is height in Z direction
         
         half_width = plane_width / 2
         half_height = plane_height / 2
@@ -517,9 +517,13 @@ class FaceAlignment3D:
 if __name__ == "__main__":
     # Test with all three images
     face_aligner = FaceAlignment3D(
-        front_image_path="../../example/data/photo/hk1.jpg",
-        right_image_path="../../example/data/photo/hk2.jpg",
-        left_image_path="../../example/data/photo/hk3.jpg"
+        # front_image_path="../../example/data/photo/hk1.jpg",
+        # right_image_path="../../example/data/photo/hk2.jpg",
+        # left_image_path="../../example/data/photo/hk3.jpg"
+        
+        front_image_path="../../example/data/photo/su1.png",
+        right_image_path="../../example/data/photo/su2.png",
+        left_image_path="../../example/data/photo/su3.png"
     )
     
     # Perform face alignment
