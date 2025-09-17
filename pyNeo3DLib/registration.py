@@ -129,7 +129,12 @@ class Neo3DRegistration:
         if(self.websocket is not None):
             await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 8, message="golden_proportion_registration").get_json())
             await asyncio.sleep(0.1)
-        golden_proportion_result = self.__golden_proportion_detection(facescan_laminate_result, visualize)
+        
+        # FaceAlignment3D 결과가 있는 경우 직접 전달, 아니면 기존 방식 사용
+        if type_of_facedata == "FacePhoto" and facephoto_meshes is not None:
+            golden_proportion_result = self.__golden_proportion_detection(facescan_laminate_result, visualize, face_mesh_or_result=facephoto_meshes)
+        else:
+            golden_proportion_result = self.__golden_proportion_detection(facescan_laminate_result, visualize)
         print(f'__golden_proportion_detection result: {golden_proportion_result}')
         
         if(self.websocket is not None):
@@ -437,43 +442,97 @@ class Neo3DRegistration:
                 else:
                     return None
                 
-    def __golden_proportion_detection(self, face_registration_result, visualize=False):
+    def __golden_proportion_detection(self, face_registration_result, visualize=False, face_mesh_or_result=None):
         print("golden_proportion_detection")
-        facescan_data = self.parsed_json["facescan"]
-        for facescan in facescan_data:
-            if facescan["subType"] == "faceSmile":
-                print(f'facescan["path"]: {facescan["path"]}')
-                if facescan["path"].endswith(".obj") or facescan["path"].endswith(".ply"):
-                    golden_proportion_finder = GoldenProportionFinder(facescan["path"], visualize)
-                    result = golden_proportion_finder.run_analysis()
-                    
-                    print(f'golden_proportion_finder result: {result}')
-                    
-                    if result is not None and len(result) > 0:
-                        # result를 numpy 배열로 변환
-                        golden_proportion_points = np.array([result['a'], result['b'], result['c'], result['d']])
-                        
-                        # 동차 좌표로 변환 (4x4 행렬 적용을 위해)
-                        ones = np.ones((golden_proportion_points.shape[0], 1))
-                        homogeneous_points = np.hstack([golden_proportion_points, ones])
-                        
-                        # 변환 행렬 적용
-                        transformed_points = np.dot(homogeneous_points, face_registration_result.T)
-                        
-                        # 3D 좌표만 추출 (동차 좌표에서 w=1로 나누기)
-                        transformed_coords = transformed_points[:, :3] / transformed_points[:, 3:4]
-                        
-                        # a, b, c, d 키 값을 유지하여 딕셔너리로 반환
-                        result = {
-                            'a': transformed_coords[0].tolist(),
-                            'b': transformed_coords[1].tolist(),
-                            'c': transformed_coords[2].tolist(),
-                            'd': transformed_coords[3].tolist()
-                        }
-                    
-                    return result
+        
+        try:
+            # 메시 객체가 직접 전달된 경우 (FaceAlignment3D 결과 등)
+            if face_mesh_or_result is not None:
+                print("메시 객체에서 직접 황금비율 분석 수행")
+                
+                # 입력 타입에 따라 적절한 방식으로 GoldenProportionFinder 생성
+                if hasattr(face_mesh_or_result, 'front_plane'):
+                    # FaceAlignmentResult 객체인 경우
+                    golden_proportion_finder = GoldenProportionFinder.from_face_alignment_result(
+                        face_mesh_or_result, visualization=visualize)
                 else:
+                    # Mesh 객체인 경우
+                    golden_proportion_finder = GoldenProportionFinder.from_mesh(
+                        face_mesh_or_result, visualization=visualize)
+            
+            # 파일 경로 기반 처리 (기존 방식)
+            else:
+                facescan_data = self.parsed_json["facescan"]
+                for facescan in facescan_data:
+                    if facescan["subType"] == "faceSmile":
+                        print(f'facescan["path"]: {facescan["path"]}')
+                        
+                        # 3D 메시 파일 또는 이미지 파일 지원
+                        file_path = facescan["path"]
+                        if (file_path.endswith(".obj") or file_path.endswith(".ply") or 
+                            file_path.endswith(".stl") or file_path.endswith(".jpg") or 
+                            file_path.endswith(".png")):
+                            
+                            # 파일 확장자에 따라 적절한 방식으로 GoldenProportionFinder 생성
+                            if file_path.endswith((".obj", ".ply", ".stl")):
+                                # 3D 메시 파일의 경우 - 기존 방식 사용 (호환성 유지)
+                                golden_proportion_finder = GoldenProportionFinder(
+                                    face_mesh_path=file_path, visualization=visualize)
+                                
+                            elif file_path.endswith((".jpg", ".png")):
+                                # 이미지 파일의 경우 - plane mesh 생성
+                                golden_proportion_finder = GoldenProportionFinder.from_image(
+                                    file_path, visualization=visualize)
+                        else:
+                            print(f"지원하지 않는 파일 형식: {file_path}")
+                            return None
+                        break
+                else:
+                    print("faceSmile 데이터를 찾을 수 없습니다.")
                     return None
+            
+            # 분석 실행
+            result = golden_proportion_finder.run_analysis()
+            print(f'golden_proportion_finder result: {result}')
+            
+            if result is not None and len(result) > 0:
+                # result를 numpy 배열로 변환
+                golden_proportion_points = np.array([result['a'], result['b'], result['c'], result['d']])
+                print(f"디버그: golden_proportion_points 형태: {golden_proportion_points.shape}")
+                print(f"디버그: face_registration_result 형태: {np.array(face_registration_result).shape}")
+                print(f"디버그: face_registration_result: {face_registration_result}")
+                
+                # 동차 좌표로 변환 (4x4 행렬 적용을 위해)
+                ones = np.ones((golden_proportion_points.shape[0], 1))
+                homogeneous_points = np.hstack([golden_proportion_points, ones])
+                print(f"디버그: homogeneous_points 형태: {homogeneous_points.shape}")
+                
+                # 변환 행렬 적용
+                face_registration_matrix = np.array(face_registration_result)
+                if face_registration_matrix.shape == (4, 4):
+                    transformed_points = np.dot(homogeneous_points, face_registration_matrix.T)
+                else:
+                    print(f"경고: 변환 행렬 형태가 올바르지 않습니다: {face_registration_matrix.shape}")
+                    print("변환 행렬 적용을 건너뛰고 원본 좌표를 사용합니다.")
+                    transformed_points = homogeneous_points
+                
+                # 3D 좌표만 추출 (동차 좌표에서 w=1로 나누기)
+                transformed_coords = transformed_points[:, :3] / transformed_points[:, 3:4]
+                
+                # a, b, c, d 키 값을 유지하여 딕셔너리로 반환
+                result = {
+                    'a': transformed_coords[0].tolist(),
+                    'b': transformed_coords[1].tolist(),
+                    'c': transformed_coords[2].tolist(),
+                    'd': transformed_coords[3].tolist()
+                }
+            
+            return result
+            
+        except Exception as e:
+            print(f"황금비율 분석 실패: {e}")
+            return None
+    
                 
     def __smilearch_outerline_detect(self, visualize=False):
         print("smilearch_outerline_detect")
