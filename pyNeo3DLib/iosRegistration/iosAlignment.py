@@ -361,8 +361,8 @@ class IosAlignment:
         z_range = z_max - z_min
         
         # 하단부와 상단부 정의 (z값 기준으로 상위/하위 15%)
-        lower_threshold = z_min + 0.15 * z_range
-        upper_threshold = z_max - 0.15 * z_range
+        lower_threshold = z_min + 0.25 * z_range
+        upper_threshold = z_max - 0.25 * z_range
         
         lower_mask = z_values <= lower_threshold
         upper_mask = z_values >= upper_threshold
@@ -410,16 +410,16 @@ class IosAlignment:
         
         # 바닥을 식별하는 점수 (값이 높을수록 바닥일 가능성이 높음)
         lower_base_score = (
-            (1.0 - (lower_z_std / (upper_z_std + lower_z_std + 1e-6))) * 0.35 +
-            (1.0 - (lower_normal_diversity / (upper_normal_diversity + lower_normal_diversity + 1e-6))) * 0.25 +
-            (lower_vertical_ratio / (lower_vertical_ratio + upper_vertical_ratio + 1e-6)) * 0.20 +
+            (1.0 - (lower_z_std / (upper_z_std + lower_z_std + 1e-6))) * 0.55 +
+            (1.0 - (lower_normal_diversity / (upper_normal_diversity + lower_normal_diversity + 1e-6))) * 0.15 +
+            (lower_vertical_ratio / (lower_vertical_ratio + upper_vertical_ratio + 1e-6)) * 0.10 +
             (lower_height_distribution / (lower_height_distribution + upper_height_distribution + 1e-6)) * 0.20
         )
         
         upper_base_score = (
-            (1.0 - (upper_z_std / (upper_z_std + lower_z_std + 1e-6))) * 0.35 +
-            (1.0 - (upper_normal_diversity / (upper_normal_diversity + lower_normal_diversity + 1e-6))) * 0.25 +
-            (upper_vertical_ratio / (lower_vertical_ratio + upper_vertical_ratio + 1e-6)) * 0.20 +
+            (1.0 - (upper_z_std / (upper_z_std + lower_z_std + 1e-6))) * 0.55 +
+            (1.0 - (upper_normal_diversity / (upper_normal_diversity + lower_normal_diversity + 1e-6))) * 0.15 +
+            (upper_vertical_ratio / (lower_vertical_ratio + upper_vertical_ratio + 1e-6)) * 0.10 +
             (upper_height_distribution / (lower_height_distribution + upper_height_distribution + 1e-6)) * 0.20
         )
         
