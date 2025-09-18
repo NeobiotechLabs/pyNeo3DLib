@@ -174,13 +174,27 @@ class Face3DVisualizer:
         
         plane_mesh.translate((-mouth_center_3d_x, 0, -mouth_center_3d_z), relative=True)
         
+        # 눈~입 거리 계산 (정면 얼굴 기준)
+        left_eye = np.array(landmarks['left_eye'])
+        right_eye = np.array(landmarks['right_eye'])
+        eye_center = (left_eye + right_eye) / 2
+        eye_to_mouth_distance_pixels = np.linalg.norm(mouth_center - eye_center)
+        eye_to_mouth_distance_3d = eye_to_mouth_distance_pixels * scale_factor
+        
+        print(f"[DEBUG] Front face - Eye center: ({eye_center[0]:.2f}, {eye_center[1]:.2f})")
+        print(f"[DEBUG] Front face - Mouth center: ({mouth_center[0]:.2f}, {mouth_center[1]:.2f})")
+        print(f"[DEBUG] Front face - Eye to mouth distance (pixels): {eye_to_mouth_distance_pixels:.2f}")
+        print(f"[DEBUG] Front face - Eye to mouth distance (3D): {eye_to_mouth_distance_3d:.2f}")
+        
         plane_params = {
             'width': plane_width,
             'height': plane_height,
             'scale_factor': scale_factor,
             'mouth_center_3d': (0, 0, 0),
             'mouth_width_3d': self.target_mouth_width,
-            'face_height': plane_height
+            'face_height': plane_height,
+            'eye_to_mouth_distance_pixels': eye_to_mouth_distance_pixels,
+            'eye_to_mouth_distance_3d': eye_to_mouth_distance_3d
         }
         
         return plane_mesh, o3d_texture, plane_params
@@ -204,10 +218,31 @@ class Face3DVisualizer:
         
         front_face_height = front_plane_params['face_height']
         mouth_width_3d = front_plane_params['mouth_width_3d']
+        front_eye_to_mouth_distance_3d = front_plane_params['eye_to_mouth_distance_3d']
 
-        scale_factor = front_face_height / h
-        plane_width = w * scale_factor * 1.5  # This is depth in Y direction
-        plane_height = h * scale_factor * 1.5  # This is height in Z direction
+        # 측면 얼굴에서 눈~입 거리 계산
+        left_eye = np.array(landmarks['left_eye'])
+        right_eye = np.array(landmarks['right_eye'])
+        eye_center = (left_eye + right_eye) / 2
+        side_eye_to_mouth_distance_pixels = np.linalg.norm(mouth_center - eye_center)
+        
+        print(f"[DEBUG] {side_name} face - Eye center: ({eye_center[0]:.2f}, {eye_center[1]:.2f})")
+        print(f"[DEBUG] {side_name} face - Mouth center: ({mouth_center[0]:.2f}, {mouth_center[1]:.2f})")
+        print(f"[DEBUG] {side_name} face - Eye to mouth distance (pixels): {side_eye_to_mouth_distance_pixels:.2f}")
+        print(f"[DEBUG] Front face - Eye to mouth distance (3D): {front_eye_to_mouth_distance_3d:.2f}")
+
+        # 개선된 스케일 계산: 측면 얼굴의 눈~입 거리를 정면 얼굴의 눈~입 거리에 맞춤
+        if side_eye_to_mouth_distance_pixels > 0:
+            scale_factor = front_eye_to_mouth_distance_3d / side_eye_to_mouth_distance_pixels
+        else:
+            # fallback: 기존 방식 사용
+            scale_factor = front_face_height / h
+            print(f"[WARNING] {side_name} face - Eye to mouth distance is 0, using fallback scale")
+        
+        print(f"[DEBUG] {side_name} face - Calculated scale factor: {scale_factor:.4f}")
+        
+        plane_width = w * scale_factor  # This is depth in Y direction
+        plane_height = h * scale_factor  # This is height in Z direction
         
         half_width = plane_width / 2
         half_height = plane_height / 2
@@ -385,6 +420,12 @@ class FaceAlignment3D:
             
         print("Front face landmarks detected")
         
+        # Landmark 내용물 출력
+        print("=== Front Face Landmarks ===")
+        for key, (x, y) in landmarks.items():
+            print(f"  {key}: ({x:.2f}, {y:.2f})")
+        print("============================")
+        
         # Align face horizontally based on eyes
         aligned_image, rotation_angle, rotation_matrix = self.image_aligner.align_face_horizontal(
             image, landmarks['left_eye'], landmarks['right_eye']
@@ -396,6 +437,12 @@ class FaceAlignment3D:
         aligned_landmarks = self.image_aligner.transform_landmarks(landmarks, rotation_matrix)
         
         print("Front face transformed landmarks calculated")
+        
+        # 정렬된 Landmark 내용물 출력
+        print("=== Front Face Landmarks (Aligned) ===")
+        for key, (x, y) in aligned_landmarks.items():
+            print(f"  {key}: ({x:.2f}, {y:.2f})")
+        print("=====================================")
         
         # Create 3D plane
         front_plane, front_texture, plane_params = self.visualizer.create_front_face_plane(
@@ -426,6 +473,13 @@ class FaceAlignment3D:
             return None
             
         print("Right face landmarks detected")
+        
+        # Landmark 내용물 출력
+        print("=== Right Face Landmarks ===")
+        for key, (x, y) in landmarks.items():
+            print(f"  {key}: ({x:.2f}, {y:.2f})")
+        print("============================")
+        
         
         # For side faces, we don't need horizontal alignment based on eyes
         aligned_image = image
@@ -469,6 +523,18 @@ class FaceAlignment3D:
             flipped_landmarks[key] = (w - x, y)
         
         print("Left face landmarks detected and flipped")
+        
+        # Landmark 내용물 출력 (원본)
+        print("=== Left Face Landmarks (Original) ===")
+        for key, (x, y) in landmarks.items():
+            print(f"  {key}: ({x:.2f}, {y:.2f})")
+        print("=====================================")
+        
+        # Landmark 내용물 출력 (플립된 후)
+        print("=== Left Face Landmarks (Flipped) ===")
+        for key, (x, y) in flipped_landmarks.items():
+            print(f"  {key}: ({x:.2f}, {y:.2f})")
+        print("====================================")
         
         # For side faces, we don't need horizontal alignment based on eyes
         aligned_image = image
