@@ -148,12 +148,17 @@ class Face3DVisualizer:
         if len(image.shape) == 3:
             if image.shape[2] == 4:
                 texture_image_rgba = cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
+                print(f"[DEBUG] Front texture has alpha channel. Alpha range: {texture_image_rgba[:,:,3].min()}-{texture_image_rgba[:,:,3].max()}")
+                transparent_pixels = np.sum(texture_image_rgba[:,:,3] < 255)
+                print(f"[DEBUG] Number of transparent pixels: {transparent_pixels}/{texture_image_rgba.shape[0]*texture_image_rgba.shape[1]}")
             else:
                 texture_image_rgba = cv2.cvtColor(image, cv2.COLOR_BGR2RGBA)
+                print(f"[DEBUG] Front texture converted to RGBA (no original alpha)")
         else:
             texture_image_rgba = cv2.cvtColor(image, cv2.COLOR_GRAY2RGBA)
+            print(f"[DEBUG] Front texture converted from grayscale to RGBA")
             
-        o3d_texture = o3d.geometry.Image(texture_image_rgba)        
+        o3d_texture = o3d.geometry.Image(texture_image_rgba)    
         plane_mesh.textures = [o3d_texture]
         
         # Define UV coordinates for the 4 vertices of the quad.
@@ -409,7 +414,7 @@ class FaceAlignment3D:
     def process_front_face(self) -> Optional[FaceAlignmentResult]:
         """Process the front face"""
         # Load image
-        image = cv2.imread(self.front_image_path)
+        image = cv2.imread(self.front_image_path, cv2.IMREAD_UNCHANGED)
         if image is None:
             print(f"Cannot load front image: {self.front_image_path}")
             return None
@@ -556,6 +561,19 @@ class FaceAlignment3D:
     
     def visualize_result(self, result: FaceAlignmentResult):
         """Visualize result in 3D using Open3D"""
+        
+        # Check texture alpha values
+        if result.front_texture:
+            texture_array = np.asarray(result.front_texture)
+            print(f"[DEBUG] Front texture shape: {texture_array.shape}")
+            if len(texture_array.shape) == 3 and texture_array.shape[2] == 4:
+                alpha_channel = texture_array[:,:,3]
+                print(f"[DEBUG] Alpha channel range: {alpha_channel.min()}-{alpha_channel.max()}")
+                transparent_count = np.sum(alpha_channel < 255)
+                total_pixels = alpha_channel.shape[0] * alpha_channel.shape[1]
+                print(f"[DEBUG] Transparent pixels: {transparent_count}/{total_pixels} ({transparent_count/total_pixels*100:.1f}%)")
+            else:
+                print(f"[DEBUG] No alpha channel in front texture")
         
         geometries = []
         if result.front_plane:
