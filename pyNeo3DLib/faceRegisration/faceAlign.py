@@ -146,11 +146,14 @@ class Face3DVisualizer:
         plane_mesh.compute_vertex_normals()
         
         if len(image.shape) == 3:
-            texture_image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            if image.shape[2] == 4:
+                texture_image_rgba = cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
+            else:
+                texture_image_rgba = cv2.cvtColor(image, cv2.COLOR_BGR2RGBA)
         else:
-            texture_image_rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+            texture_image_rgba = cv2.cvtColor(image, cv2.COLOR_GRAY2RGBA)
             
-        o3d_texture = o3d.geometry.Image(texture_image_rgb)
+        o3d_texture = o3d.geometry.Image(texture_image_rgba)        
         plane_mesh.textures = [o3d_texture]
         
         # Define UV coordinates for the 4 vertices of the quad.
@@ -334,11 +337,11 @@ class FaceAlignment3D:
         containing separate Open3D meshes for front, left, and right planes.
         """
         # 1. Process front face to get the initial rotation matrix
-        front_image = cv2.imread(self.front_image_path)
+        front_image = cv2.imread(self.front_image_path, cv2.IMREAD_UNCHANGED)
         if front_image is None:
             print(f"Cannot load front image: {self.front_image_path}")
             return None
-            
+        
         landmarks = self.face_detector.detect_face_landmarks(self.front_image_path)
         if landmarks is None:
             print("Front face landmarks not detected")
@@ -587,7 +590,7 @@ if __name__ == "__main__":
         # right_image_path="../../example/data/photo/hk2.jpg",
         # left_image_path="../../example/data/photo/hk3.jpg"
         
-        front_image_path="../../example/data/photo/su1.png",
+        front_image_path="../../example/data/photo/su11.png",
         right_image_path="../../example/data/photo/su2.png",
         left_image_path="../../example/data/photo/su3.png"
     )
