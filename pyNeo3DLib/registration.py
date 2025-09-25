@@ -15,6 +15,7 @@ from pyNeo3DLib.condyleFinder.condyleFinder import CondyleFinder
 from pyNeo3DLib.smileArchOuterline.core import analyze_upper_IOS_scandata
 from pyNeo3DLib.faceRegisration.faceAlign import FaceAlignment3D
 from pyNeo3DLib.goldenProportion.goldenProportionFinder import GoldenProportionFinder
+from pyNeo3DLib.mouthEraser.mouthEraser import MouthEraser
 
 
 LAMINATE_PATH = os.path.join(os.path.dirname(__file__), "smile_arch_half.stl")
@@ -91,6 +92,10 @@ class Neo3DRegistration:
         if(self.websocket is not None):
             await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 3, message="facescan_laminate_registration").get_json())
             await asyncio.sleep(0.1)
+            
+        # FaceScan 인 경우 텍스처 파일을 찾아서 입술 지움, FacePhoto 인 경우 이미지에서 입술 지움
+        self.__erase_mouth()
+            
         facescan_laminate_result, transformed_face_smile_mesh, type_of_facedata = self.__facescan_laminate_registration(visualize=visualize)
 
         if(type_of_facedata == "FaceScan"):
@@ -135,7 +140,9 @@ class Neo3DRegistration:
             golden_proportion_result = self.__golden_proportion_detection(facescan_laminate_result, visualize, face_mesh_or_result=facephoto_meshes)
         else:
             golden_proportion_result = self.__golden_proportion_detection(facescan_laminate_result, visualize)
-        print(f'__golden_proportion_detection result: {golden_proportion_result}')
+        print(f'__golden_proportion_detection result: {golden_proportion_result}')       
+               
+        
         
         if(self.websocket is not None):
             await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 9, message="smilearch_outerline_registration").get_json())
@@ -324,6 +331,110 @@ class Neo3DRegistration:
                            [0, 0, 1, 0],
                            [0, 0, 0, 1]])
         return matrix
+    
+    def __erase_mouth(self):
+        """
+        FaceScan인 경우 텍스처 파일에서 입술을 지우고, FacePhoto인 경우 이미지에서 입술을 지웁니다.
+        """
+        try:
+            mouth_eraser = MouthEraser()
+            facescan_data = self.parsed_json.get("facescan", [])
+            
+            for facescan in facescan_data:
+                if facescan.get("subType") == "faceSmile":
+                    file_path = facescan.get("path", "")
+                    
+                    if not file_path or not os.path.exists(file_path):
+                        print(f"파일을 찾을 수 없습니다: {file_path}")
+                        continue
+                    
+                    # 파일 확장자에 따라 처리 방식 결정
+                    if file_path.lower().endswith(('.obj', '.ply')):
+                        # FaceScan: 3D 모델의 텍스처 파일 처리
+                        self.__erase_mouth_from_texture(file_path, mouth_eraser)
+                        
+                    elif file_path.lower().endswith(('.jpg', '.jpeg', '.png')):
+                        # FacePhoto: 이미지 파일 직접 처리
+                        self.__erase_mouth_from_image(file_path, mouth_eraser)
+                        
+                    else:
+                        print(f"지원하지 않는 파일 형식입니다: {file_path}")
+                        
+        except Exception as e:
+            print(f"입술 지우기 중 오류 발생: {str(e)}")
+    
+    def __erase_mouth_from_texture(self, model_path, mouth_eraser):
+        """
+        3D 모델의 텍스처 파일에서 입술을 지웁니다.
+        
+        Args:
+            model_path (str): 3D 모델 파일 경로 (.obj 또는 .ply)
+            mouth_eraser (MouthEraser): MouthEraser 인스턴스
+        """
+        try:
+            # 모델 파일과 같은 디렉토리에서 텍스처 파일 찾기
+            model_dir = os.path.dirname(model_path)
+            model_name = os.path.splitext(os.path.basename(model_path))[0]
+            
+            # 일반적인 텍스처 파일 이름 패턴들
+            texture_patterns = [
+                f"{model_name}.jpg",
+                f"{model_name}.png", 
+                f"{model_name}_texture.jpg",
+                f"{model_name}_texture.png",
+                "texture.jpg",
+                "texture.png"
+            ]
+            
+            texture_file = None
+            for pattern in texture_patterns:
+                potential_path = os.path.join(model_dir, pattern)
+                if os.path.exists(potential_path):
+                    texture_file = potential_path
+                    break
+            
+            if texture_file:
+                print(f"텍스처 파일을 찾았습니다: {texture_file}")
+                # 텍스처 파일에서 입술 지우기 (원본 파일 덮어쓰기)
+                success = mouth_eraser.erase_mouth(texture_file, texture_file)
+                if success:
+                    print(f"텍스처 파일의 입술이 성공적으로 지워졌습니다: {texture_file}")
+                else:
+                    print(f"텍스처 파일의 입술 지우기에 실패했습니다: {texture_file}")
+            else:
+                print(f"텍스처 파일을 찾을 수 없습니다. 모델 경로: {model_path}")
+                
+        except Exception as e:
+            print(f"텍스처 파일 처리 중 오류: {str(e)}")
+    
+    def __erase_mouth_from_image(self, image_path, mouth_eraser):
+        """
+        이미지 파일에서 직접 입술을 지웁니다.
+        
+        Args:
+            image_path (str): 이미지 파일 경로
+            mouth_eraser (MouthEraser): MouthEraser 인스턴스
+        """
+        try:
+            print(f"이미지에서 입술을 지웁니다: {image_path}")
+            
+            # 백업 파일 생성 (선택사항)
+            backup_path = image_path.replace(os.path.splitext(image_path)[1], "_backup" + os.path.splitext(image_path)[1])
+            if not os.path.exists(backup_path):
+                import shutil
+                shutil.copy2(image_path, backup_path)
+                print(f"백업 파일 생성: {backup_path}")
+            
+            # 입술 지우기 (원본 파일 덮어쓰기)
+            success = mouth_eraser.erase_mouth(image_path, image_path)
+            
+            if success:
+                print(f"이미지의 입술이 성공적으로 지워졌습니다: {image_path}")
+            else:
+                print(f"이미지의 입술 지우기에 실패했습니다: {image_path}")
+                
+        except Exception as e:
+            print(f"이미지 파일 처리 중 오류: {str(e)}")
 
     def __facescan_laminate_registration(self, visualize=False):
         print("facescan_laminate_registration")
