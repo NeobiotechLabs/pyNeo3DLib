@@ -76,10 +76,16 @@ class GoldenProportionFinder:
         """
         print(f"이미지에서 plane mesh 생성: {image_path}")
         
-        # 이미지 로드
-        image = cv2.imread(image_path)
+        # 이미지 로드 - RGBA 이미지 지원
+        image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)  # 알파 채널도 읽기
         if image is None:
             raise ValueError(f"이미지를 로드할 수 없습니다: {image_path}")
+        
+        # RGBA를 RGB로 변환 (알파 채널이 있는 경우)
+        if len(image.shape) == 3 and image.shape[2] == 4:
+            # RGBA 이미지인 경우 RGB로 변환
+            image = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+            print("RGBA 이미지를 RGB로 변환했습니다.")
         
         h, w = image.shape[:2]
         
@@ -200,13 +206,24 @@ class GoldenProportionFinder:
         image_source = None
         
         if self.face_image_path is not None:
-            # 파일에서 이미지 로드
-            image = cv2.imread(self.face_image_path)
+            # 파일에서 이미지 로드 - RGBA 지원
+            image = cv2.imread(self.face_image_path, cv2.IMREAD_UNCHANGED)
             image_source = "파일"
+            
+            # RGBA를 BGR로 먼저 변환 (알파 채널 제거)
+            if image is not None and len(image.shape) == 3 and image.shape[2] == 4:
+                image = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+                print("파일에서 RGBA 이미지를 BGR로 변환했습니다.")
+                
         elif hasattr(self, '_has_image_array') and self._has_image_array:
             # 메모리 배열에서 이미지 사용
             image = self._face_image_array.copy()
             image_source = "메모리"
+            
+            # RGBA를 RGB로 변환 (메모리 배열은 보통 RGB 순서)
+            if len(image.shape) == 3 and image.shape[2] == 4:
+                image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
+                print("메모리에서 RGBA 이미지를 RGB로 변환했습니다.")
         
         if image is None:
             # 이미지가 없는 경우 기본 UV 좌표 사용
@@ -219,11 +236,23 @@ class GoldenProportionFinder:
         h, w = image.shape[:2]
         
         # RGB로 변환 (MediaPipe는 RGB 형식 필요)
-        if len(image.shape) == 3 and image.shape[2] == 3:
-            # BGR 이미지인 경우 RGB로 변환
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        if len(image.shape) == 3:
+            if image.shape[2] == 4:
+                # RGBA 이미지인 경우 RGB로 변환
+                image_rgb = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
+                print("RGBA 이미지를 RGB로 변환했습니다.")
+            elif image.shape[2] == 3:
+                # BGR 이미지인 경우 RGB로 변환
+                image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            else:
+                # 예상치 못한 채널 수
+                print(f"예상치 못한 이미지 채널 수: {image.shape[2]}")
+                image_rgb = image
+        elif len(image.shape) == 2:
+            # 그레이스케일 이미지인 경우 RGB로 변환
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
         else:
-            # 이미 RGB이거나 다른 형식인 경우 그대로 사용
+            # 기타 경우 그대로 사용
             image_rgb = image
         
         # 얼굴 랜드마크 감지
