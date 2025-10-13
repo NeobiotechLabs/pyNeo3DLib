@@ -82,12 +82,12 @@ class Neo3DRegistration:
         if(self.websocket is not None):
             await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 1, message="ios_upper_registration").get_json())            
             await asyncio.sleep(0.1)
-        ios_upper_result = self.__ios_upper_registration()
+        ios_upper_result = ios_laminate_result #self.__ios_upper_registration()
 
         if(self.websocket is not None):
             await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 2, message="ios_lower_registration").get_json())
             await asyncio.sleep(0.1)
-        ios_lower_result = self.__ios_lower_registration()
+        ios_lower_result = ios_laminate_result #self.__ios_lower_registration()
 
         if(self.websocket is not None):
             await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 3, message="facescan_laminate_registration").get_json())
