@@ -22,11 +22,19 @@ class FacesRegistration:
         self.__load_models()
         
     def __load_models(self):
-        self.face_rest_mesh = Mesh.from_file(self.face_rest_path)
-        self.face_retraction_mesh = Mesh.from_file(self.face_retraction_path)
-
-        self.face_rest_mesh.vertices = np.dot(self.face_rest_mesh.vertices, self.transform_matrix_for_rest[:3, :3].T) + self.transform_matrix_for_rest[:3, 3]
-        self.face_retraction_mesh.vertices = np.dot(self.face_retraction_mesh.vertices, self.transform_matrix_for_retraction[:3, :3].T) + self.transform_matrix_for_retraction[:3, 3]
+        # face_rest_path가 빈 스트링이거나 None인 경우 처리
+        if self.face_rest_path and self.face_rest_path.strip():
+            self.face_rest_mesh = Mesh.from_file(self.face_rest_path)
+            self.face_rest_mesh.vertices = np.dot(self.face_rest_mesh.vertices, self.transform_matrix_for_rest[:3, :3].T) + self.transform_matrix_for_rest[:3, 3]
+        else:
+            self.face_rest_mesh = None
+            
+        # face_retraction_path가 빈 스트링이거나 None인 경우 처리
+        if self.face_retraction_path and self.face_retraction_path.strip():
+            self.face_retraction_mesh = Mesh.from_file(self.face_retraction_path)
+            self.face_retraction_mesh.vertices = np.dot(self.face_retraction_mesh.vertices, self.transform_matrix_for_retraction[:3, :3].T) + self.transform_matrix_for_retraction[:3, 3]
+        else:
+            self.face_retraction_mesh = None
 
         return self.face_smile_mesh, self.face_rest_mesh, self.face_retraction_mesh
             
@@ -48,32 +56,38 @@ class FacesRegistration:
             smile_vertices = self.face_smile_mesh.vertices
         smile_center = np.mean(smile_vertices, axis=0)
         
-        # Calculate centroid of face_rest_mesh and transform
-        rest_center = np.mean(self.face_rest_mesh.vertices, axis=0)
-        rest_translation = smile_center - rest_center
-        self.face_rest_mesh.vertices = self.face_rest_mesh.vertices + rest_translation
+        # Calculate centroid of face_rest_mesh and transform (if exists)
+        if self.face_rest_mesh is not None:
+            rest_center = np.mean(self.face_rest_mesh.vertices, axis=0)
+            rest_translation = smile_center - rest_center
+            self.face_rest_mesh.vertices = self.face_rest_mesh.vertices + rest_translation
+            
+            # Update transformation matrix for face_rest_mesh
+            rest_transform = np.eye(4)
+            rest_transform[:3, 3] = rest_translation
+            self.transform_matrix_for_rest = np.dot(rest_transform, self.transform_matrix_for_rest)
+            
+            print(f"Rest mesh centroid: {rest_center} -> {np.mean(self.face_rest_mesh.vertices, axis=0)}")
+        else:
+            print("Rest mesh is None - skipping centroid alignment")
         
-        # Update transformation matrix for face_rest_mesh
-        rest_transform = np.eye(4)
-        rest_transform[:3, 3] = rest_translation
-        self.transform_matrix_for_rest = np.dot(rest_transform, self.transform_matrix_for_rest)
-        
-        # Calculate centroid of face_retraction_mesh and transform
-        retraction_center = np.mean(self.face_retraction_mesh.vertices, axis=0)
-        retraction_translation = smile_center - retraction_center
-        self.face_retraction_mesh.vertices = self.face_retraction_mesh.vertices + retraction_translation
-        
-        # Update transformation matrix for face_retraction_mesh
-        retraction_transform = np.eye(4)
-        retraction_transform[:3, 3] = retraction_translation
-        self.transform_matrix_for_retraction = np.dot(retraction_transform, self.transform_matrix_for_retraction)
+        # Calculate centroid of face_retraction_mesh and transform (if exists)
+        if self.face_retraction_mesh is not None:
+            retraction_center = np.mean(self.face_retraction_mesh.vertices, axis=0)
+            retraction_translation = smile_center - retraction_center
+            self.face_retraction_mesh.vertices = self.face_retraction_mesh.vertices + retraction_translation
+            
+            # Update transformation matrix for face_retraction_mesh
+            retraction_transform = np.eye(4)
+            retraction_transform[:3, 3] = retraction_translation
+            self.transform_matrix_for_retraction = np.dot(retraction_transform, self.transform_matrix_for_retraction)
+            
+            print(f"Retraction mesh centroid: {retraction_center} -> {np.mean(self.face_retraction_mesh.vertices, axis=0)}")
+        else:
+            print("Retraction mesh is None - skipping centroid alignment")
         
         print(f"Centroid alignment completed:")
         print(f"  - Smile mesh centroid: {smile_center}")
-        print(f"  - Rest mesh centroid: {rest_center} -> {np.mean(self.face_rest_mesh.vertices, axis=0)}")
-        print(f"  - Retraction mesh centroid: {retraction_center} -> {np.mean(self.face_retraction_mesh.vertices, axis=0)}")
-        print(f"  - Rest mesh transformation matrix updated")
-        print(f"  - Retraction mesh transformation matrix updated")
         
         return self.face_rest_mesh, self.face_retraction_mesh
 
@@ -326,22 +340,55 @@ class FacesRegistration:
 
     def run_registration(self):
         if self.visualization:
-            visualize_meshes([self.face_smile_mesh, self.face_rest_mesh, self.face_retraction_mesh], ["Smile", "Rest", "Retraction"], title="Initial Meshes")
+            meshes_to_vis = [self.face_smile_mesh]
+            labels = ["Smile"]
+            if self.face_rest_mesh is not None:
+                meshes_to_vis.append(self.face_rest_mesh)
+                labels.append("Rest")
+            if self.face_retraction_mesh is not None:
+                meshes_to_vis.append(self.face_retraction_mesh)
+                labels.append("Retraction")
+            visualize_meshes(meshes_to_vis, labels, title="Initial Meshes")
 
         self.match_weight_centers()
 
         if self.visualization:
-            visualize_meshes([self.face_smile_mesh, self.face_rest_mesh, self.face_retraction_mesh], ["Smile", "Rest", "Retraction"], title="Initial Meshes")
+            meshes_to_vis = [self.face_smile_mesh]
+            labels = ["Smile"]
+            if self.face_rest_mesh is not None:
+                meshes_to_vis.append(self.face_rest_mesh)
+                labels.append("Rest")
+            if self.face_retraction_mesh is not None:
+                meshes_to_vis.append(self.face_retraction_mesh)
+                labels.append("Retraction")
+            visualize_meshes(meshes_to_vis, labels, title="Initial Meshes")
 
-        moved_rest_mesh, rest_transform_matrix = self.fast_registration_with_vis(self.face_rest_mesh, self.face_smile_mesh)
+        # rest mesh가 있는 경우에만 registration 수행
+        if self.face_rest_mesh is not None:
+            moved_rest_mesh, rest_transform_matrix = self.fast_registration_with_vis(self.face_rest_mesh, self.face_smile_mesh)
+            self.transform_matrix_for_rest = np.dot(rest_transform_matrix, self.transform_matrix_for_rest)
+        else:
+            # rest mesh가 없으면 단위행렬 유지
+            moved_rest_mesh = None
 
-        moved_retraction_mesh, retraction_transform_matrix = self.fast_registration_with_vis(self.face_retraction_mesh, self.face_smile_mesh)
-
-        self.transform_matrix_for_rest = np.dot(rest_transform_matrix, self.transform_matrix_for_rest)
-        self.transform_matrix_for_retraction = np.dot(retraction_transform_matrix, self.transform_matrix_for_retraction)
+        # retraction mesh가 있는 경우에만 registration 수행
+        if self.face_retraction_mesh is not None:
+            moved_retraction_mesh, retraction_transform_matrix = self.fast_registration_with_vis(self.face_retraction_mesh, self.face_smile_mesh)
+            self.transform_matrix_for_retraction = np.dot(retraction_transform_matrix, self.transform_matrix_for_retraction)
+        else:
+            # retraction mesh가 없으면 단위행렬 유지
+            moved_retraction_mesh = None
 
         if self.visualization:
-            visualize_meshes([moved_rest_mesh, moved_retraction_mesh, self.face_smile_mesh], ["Rest", "Retraction", "Smile"], title="Final Meshes")
+            meshes_to_vis = [self.face_smile_mesh]
+            labels = ["Smile"]
+            if moved_rest_mesh is not None:
+                meshes_to_vis.append(moved_rest_mesh)
+                labels.append("Rest")
+            if moved_retraction_mesh is not None:
+                meshes_to_vis.append(moved_retraction_mesh)
+                labels.append("Retraction")
+            visualize_meshes(meshes_to_vis, labels, title="Final Meshes")
 
         return self.transform_matrix_for_rest, self.transform_matrix_for_retraction
 
@@ -354,7 +401,8 @@ if __name__ == "__main__":
     
     smile_path = "../../example/data/FaceScan/Smile/Smile.obj"
     rest_path = "../../example/data/FaceScan/Rest/Smile.obj"
-    retraction_path = "../../example/data/FaceScan/Retraction/Smile.obj"
+    # retraction_path = "../../example/data/FaceScan/Retraction/Smile.obj"
+    retraction_path = ""
     
     
     
