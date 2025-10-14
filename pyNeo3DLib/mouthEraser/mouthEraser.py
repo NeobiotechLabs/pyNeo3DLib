@@ -128,7 +128,7 @@ class MouthEraser:
         cv2.fillPoly(mask, [mouth_points], 255)
         
         # 마스크가 적용된 영역의 알파 채널을 0으로 설정 (완전 투명)
-        result_image[mask == 255, 3] = 0
+        result_image[mask == 255, 3] = 50
         
         return result_image
     
@@ -234,5 +234,5 @@ class MouthEraser:
 if __name__ == "__main__":
     mouth_eraser = MouthEraser()
     # 디버그 모드로 실행하여 입술 랜드마크 확인
-    # mouth_eraser.erase_mouth("../../example/data/photo/su1.png", "../../example/data/photo/su1_erased.png", debug=True)
-    mouth_eraser.erase_mouth("../../example/data/photo/Smile.png", "../../example/data/photo/Smile.png", debug=True)
+    mouth_eraser.erase_mouth("../../example/data/photo/su1.png", "../../example/data/photo/su1_erased.png", debug=True)
+    # mouth_eraser.erase_mouth("../../example/data/photo/Smile.png", "../../example/data/photo/Smile.png", debug=True)
