@@ -6,6 +6,8 @@ from PIL import Image
 import io
 import base64
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
+from pathlib import Path
 from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegistration
 from pyNeo3DLib.faceRegisration.faceLaminateRegistration import FaceLaminateRegistration
 from pyNeo3DLib.faceRegisration.facePhotoRegistration import FacePhotoRegistration
@@ -18,80 +20,298 @@ from pyNeo3DLib.goldenProportion.goldenProportionFinder import GoldenProportionF
 from pyNeo3DLib.mouthEraser.mouthEraser import MouthEraser
 
 
-LAMINATE_PATH = os.path.join(os.path.dirname(__file__), "smile_arch_half.stl")
-CENTERPIN_PATH = os.path.join(os.path.dirname(__file__), "center_pin.stl")
+class RegistrationConstants:
+    """등록 작업에 사용되는 상수들"""
+    LAMINATE_PATH = os.path.join(os.path.dirname(__file__), "smile_arch_half.stl")
+    CENTERPIN_PATH = os.path.join(os.path.dirname(__file__), "center_pin.stl")
+    TOTAL_PROGRESS_STEPS = 10
+    WEBSOCKET_SLEEP_DURATION = 0.1
+    IDENTITY_MATRIX = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
 
 
-class progress_event:
-    def __init__(self, type, progress, message):
-        self.type = type
-        self.progress = progress
-        self.message = message
+@dataclass
+class IOSData:
+    """IOS 데이터 구조"""
+    sub_type: str  # "smileArch", "upper", "lower"
+    path: str
+    
+    def __post_init__(self):
+        """데이터 검증"""
+        valid_subtypes = {"smileArch", "upper", "lower"}
+        if self.sub_type not in valid_subtypes:
+            raise ValueError(f"Invalid IOS subType: {self.sub_type}. Must be one of {valid_subtypes}")
+        
+        if not self.path:
+            raise ValueError("IOS path cannot be empty")
 
-    def __str__(self):
-        return f"progress_event(type={self.type}, progress={self.progress}, message={self.message})"
 
-    def __repr__(self):
+@dataclass  
+class FaceScanData:
+    """FaceScan 데이터 구조"""
+    sub_type: str  # "faceSmile", "faceRest", "faceRetraction"
+    path: str
+    
+    def __post_init__(self):
+        """데이터 검증"""
+        valid_subtypes = {"faceSmile", "faceRest", "faceRetraction"}
+        if self.sub_type not in valid_subtypes:
+            raise ValueError(f"Invalid FaceScan subType: {self.sub_type}. Must be one of {valid_subtypes}")
+        
+        if not self.path:
+            raise ValueError("FaceScan path cannot be empty")
+
+
+@dataclass
+class CBCTData:
+    """CBCT 데이터 구조"""
+    path: str
+    
+    def __post_init__(self):
+        """데이터 검증"""
+        if not self.path:
+            raise ValueError("CBCT path cannot be empty")
+
+
+@dataclass
+class SmileArchBowData:
+    """SmileArch Bow 데이터 구조"""
+    path: str
+    
+    def __post_init__(self):
+        """데이터 검증"""
+        if not self.path:
+            raise ValueError("SmileArch Bow path cannot be empty")
+
+
+@dataclass
+class RegistrationConfig:
+    """등록 작업 설정을 담는 데이터 클래스"""
+    ios_data: List[IOSData]
+    facescan_data: List[FaceScanData] 
+    cbct_data: CBCTData
+    smilearch_bow_data: Optional[SmileArchBowData] = None
+    
+    def __post_init__(self):
+        """설정 검증"""
+        if not self.ios_data:
+            raise ValueError("At least one IOS data is required")
+        
+        if not self.facescan_data:
+            raise ValueError("At least one FaceScan data is required")
+        
+        # 필수 IOS subType 확인
+        ios_subtypes = {ios.sub_type for ios in self.ios_data}
+        required_subtypes = {"smileArch"}
+        missing_subtypes = required_subtypes - ios_subtypes
+        if missing_subtypes:
+            raise ValueError(f"Missing required IOS subTypes: {missing_subtypes}")
+        
+        # 필수 FaceScan subType 확인  
+        facescan_subtypes = {face.sub_type for face in self.facescan_data}
+        required_face_subtypes = {"faceSmile"}
+        missing_face_subtypes = required_face_subtypes - facescan_subtypes
+        if missing_face_subtypes:
+            raise ValueError(f"Missing required FaceScan subTypes: {missing_face_subtypes}")
+    
+    def get_ios_by_subtype(self, sub_type: str) -> Optional[IOSData]:
+        """subType으로 IOS 데이터 찾기"""
+        for ios in self.ios_data:
+            if ios.sub_type == sub_type:
+                return ios
+        return None
+    
+    def get_facescan_by_subtype(self, sub_type: str) -> Optional[FaceScanData]:
+        """subType으로 FaceScan 데이터 찾기"""
+        for face in self.facescan_data:
+            if face.sub_type == sub_type:
+                return face
+        return None
+
+
+@dataclass
+class ProgressEvent:
+    """진행 상황 이벤트를 나타내는 데이터 클래스"""
+    type: str
+    progress: float
+    message: str
+    
+    def __str__(self) -> str:
+        return f"ProgressEvent(type={self.type}, progress={self.progress}, message={self.message})"
+    
+    def __repr__(self) -> str:
         return self.__str__()
     
-    def get_json(self):
+    def get_json(self) -> Dict[str, Any]:
+        """JSON 형태로 변환"""
         return {
             "type": self.type,
             "progress": self.progress,
             "message": self.message
         }
+
+
+class ProgressReporter:
+    """WebSocket을 통한 진행 상황 보고를 담당하는 클래스"""
+    
+    def __init__(self, websocket=None, total_steps: int = RegistrationConstants.TOTAL_PROGRESS_STEPS):
+        self.websocket = websocket
+        self.total_steps = total_steps
+        self.current_step = 0
+    
+    async def report_progress(self, message: str) -> None:
+        """진행 상황을 보고합니다"""
+        if self.websocket is not None:
+            progress = (self.current_step / self.total_steps) * 100
+            event = ProgressEvent("progress", progress, message)
+            await self.websocket.send_json(event.get_json())
+            await asyncio.sleep(RegistrationConstants.WEBSOCKET_SLEEP_DURATION)
+        self.current_step += 1
+    
+    async def report_completion(self, result: Any = None) -> None:
+        """완료 상황을 보고합니다"""
+        if self.websocket is not None:
+            completion_event = ProgressEvent("progress", 100, "All registration completed")
+            await self.websocket.send_json(completion_event.get_json())
+            
+            if result is not None:
+                result_event = ProgressEvent("result", 100, result)
+                await self.websocket.send_json(result_event.get_json())
+            
+            await asyncio.sleep(RegistrationConstants.WEBSOCKET_SLEEP_DURATION)
     
 
-class Neo3DRegistration:
-    def __init__(self, json_string, websocket):
-        self.version = "0.0.1"
-        print(f"json_string: {json_string}")
-        self.parsed_json = self.__parse_json(json_string)        
-        self.websocket = websocket
-
-    def __parse_json(self, json_string):
+class ConfigParser:
+    """설정 파싱 및 검증을 담당하는 클래스"""
+    
+    @staticmethod
+    def parse_json(json_string: str) -> Dict[str, Any]:
+        """JSON 문자열을 파싱합니다"""
         try:
-            parsed_json = json.loads(json_string)
-            print(f"parsed_json: {parsed_json}")
-            return parsed_json
+            return json.loads(json_string)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON format: {e}")
         except Exception as e:
             raise ValueError(f"Failed to parse JSON: {e}")
     
+    @staticmethod
+    def create_config(json_data: Dict[str, Any]) -> RegistrationConfig:
+        """JSON 데이터로부터 RegistrationConfig 객체를 생성합니다"""
+        try:
+            # IOS 데이터 파싱
+            ios_list = json_data.get("ios", [])
+            if not isinstance(ios_list, list):
+                raise ValueError("'ios' must be a list")
+            
+            ios_data = []
+            for ios_item in ios_list:
+                if not isinstance(ios_item, dict):
+                    raise ValueError("Each IOS item must be a dictionary")
+                
+                ios_data.append(IOSData(
+                    sub_type=ios_item.get("subType", ""),
+                    path=ios_item.get("path", "")
+                ))
+            
+            # FaceScan 데이터 파싱
+            facescan_list = json_data.get("facescan", [])
+            if not isinstance(facescan_list, list):
+                raise ValueError("'facescan' must be a list")
+            
+            facescan_data = []
+            for face_item in facescan_list:
+                if not isinstance(face_item, dict):
+                    raise ValueError("Each FaceScan item must be a dictionary")
+                
+                facescan_data.append(FaceScanData(
+                    sub_type=face_item.get("subType", ""),
+                    path=face_item.get("path", "")
+                ))
+            
+            # CBCT 데이터 파싱
+            cbct_dict = json_data.get("cbct", {})
+            if not isinstance(cbct_dict, dict):
+                raise ValueError("'cbct' must be a dictionary")
+            
+            cbct_data = CBCTData(path=cbct_dict.get("path", ""))
+            
+            # SmileArch Bow 데이터 파싱 (선택사항)
+            smilearch_bow_data = None
+            if "smilearch_bow" in json_data:
+                bow_dict = json_data["smilearch_bow"]
+                if not isinstance(bow_dict, dict):
+                    raise ValueError("'smilearch_bow' must be a dictionary")
+                
+                smilearch_bow_data = SmileArchBowData(path=bow_dict.get("path", ""))
+            
+            return RegistrationConfig(
+                ios_data=ios_data,
+                facescan_data=facescan_data,
+                cbct_data=cbct_data,
+                smilearch_bow_data=smilearch_bow_data
+            )
+            
+        except Exception as e:
+            raise ValueError(f"Failed to create configuration: {e}")
+    
+    @staticmethod
+    def validate_file_paths(config: RegistrationConfig, check_existence: bool = True) -> None:
+        """파일 경로들의 유효성을 검증합니다"""
+        if not check_existence:
+            return
+        
+        # IOS 파일들 확인
+        for ios in config.ios_data:
+            if not Path(ios.path).exists():
+                raise FileNotFoundError(f"IOS file not found: {ios.path}")
+        
+        # FaceScan 파일들 확인
+        for face in config.facescan_data:
+            if not Path(face.path).exists():
+                raise FileNotFoundError(f"FaceScan file not found: {face.path}")
+        
+        # CBCT 경로 확인 (디렉토리일 수 있음)
+        cbct_path = Path(config.cbct_data.path)
+        if not (cbct_path.exists() and (cbct_path.is_file() or cbct_path.is_dir())):
+            raise FileNotFoundError(f"CBCT path not found: {config.cbct_data.path}")
+        
+        # SmileArch Bow 파일 확인 (선택사항)
+        if config.smilearch_bow_data and not Path(config.smilearch_bow_data.path).exists():
+            raise FileNotFoundError(f"SmileArch Bow file not found: {config.smilearch_bow_data.path}")
+
+
+class Neo3DRegistration:
+    def __init__(self, json_string: str, websocket=None, validate_files: bool = False):
+        self.version = "0.0.1"
+        print(f"json_string: {json_string}")
+        
+        # JSON 파싱 및 설정 생성
+        json_data = ConfigParser.parse_json(json_string)
+        self.config = ConfigParser.create_config(json_data)
+        
+        # 파일 존재 검증 (선택사항)
+        if validate_files:
+            ConfigParser.validate_file_paths(self.config)
+        
+        # 기존 호환성을 위해 parsed_json도 유지
+        self.parsed_json = json_data
+        
+        self.websocket = websocket
+        self.progress_reporter = ProgressReporter(websocket)
+    
     
     async def run_registration(self, visualize=False):       
-        self.__verify_file_info()
-        
-        total_progress = 10
+        # 설정이 이미 검증되었으므로 별도 검증 불필요
 
-        data = {
-            "type": "progress",
-            "progress": 100 / total_progress * 0,
-            "message": "ios_laminate_registration",
-            "random_text": "random_text",
-            "timestamp": "sdafkljhsdf"
-        }
-
-        print(f"data: {data}")
-        if(self.websocket is not None):
-            print(type(self.websocket))
-            await self.websocket.send_json(data)
-            await asyncio.sleep(0.1)
-
+        await self.progress_reporter.report_progress("ios_laminate_registration")
         ios_laminate_result = self.__ios_laminate_registration(visualize=visualize)
 
-        if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 1, message="ios_upper_registration").get_json())            
-            await asyncio.sleep(0.1)
+        await self.progress_reporter.report_progress("ios_upper_registration")
         ios_upper_result = self.__ios_upper_registration()
 
-        if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 2, message="ios_lower_registration").get_json())
-            await asyncio.sleep(0.1)
+        await self.progress_reporter.report_progress("ios_lower_registration")
         ios_lower_result = self.__ios_lower_registration()
 
-        if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 3, message="facescan_laminate_registration").get_json())
-            await asyncio.sleep(0.1)
+        await self.progress_reporter.report_progress("facescan_laminate_registration")
             
         # FaceScan 인 경우 텍스처 파일을 찾아서 입술 지움, FacePhoto 인 경우 이미지에서 입술 지움
         self.__erase_mouth()
@@ -99,42 +319,25 @@ class Neo3DRegistration:
         facescan_laminate_result, transformed_face_smile_mesh, type_of_facedata = self.__facescan_laminate_registration(visualize=visualize)
 
         if(type_of_facedata == "FaceScan"):
-            if(self.websocket is not None):
-                await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 4, message="facescan_rest_registration").get_json())
-                await asyncio.sleep(0.1)
+            await self.progress_reporter.report_progress("facescan_rest_registration")
             facescan_rest_result, facescan_retraction_result = self.__facescan_rest_registration(transformed_face_smile_mesh, facescan_laminate_result, visualize=visualize)
             facephoto_meshes = None
         else:
             facephoto_meshes = transformed_face_smile_mesh
-            facescan_rest_result = np.array([[1, 0, 0, 0],
-                                              [0, 1, 0, 0],
-                                              [0, 0, 1, 0],
-                                              [0, 0, 0, 1]])
-            facescan_retraction_result = np.array([[1, 0, 0, 0],
-                                                    [0, 1, 0, 0],
-                                                    [0, 0, 1, 0],
-                                                    [0, 0, 0, 1]])
+            facescan_rest_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
+            facescan_retraction_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
 
-        if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 5, message="cbct_registration").get_json())
-            await asyncio.sleep(0.1)
+        await self.progress_reporter.report_progress("cbct_registration")
         cbct_result = self.__cbct_registration()
 
-        if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 6, message="ios_bow_registration").get_json())
-            await asyncio.sleep(0.1)
+        await self.progress_reporter.report_progress("ios_bow_registration")
         ios_bow_result = self.__ios_bow_registration(ios_laminate_result, visualize=visualize)
         
-        if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 7, message="condyle_registration").get_json())
-            await asyncio.sleep(0.1)
+        await self.progress_reporter.report_progress("condyle_registration")
         condyle_result = self.__condyle_detection(facescan_laminate_result, visualize)
         print(f'__condyle_detection result: {condyle_result}')
         
-        if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 8, message="golden_proportion_registration").get_json())
-            await asyncio.sleep(0.1)
-        
+        await self.progress_reporter.report_progress("golden_proportion_registration")
         # FaceAlignment3D 결과가 있는 경우 직접 전달, 아니면 기존 방식 사용
         if type_of_facedata == "FacePhoto" and facephoto_meshes is not None:
             golden_proportion_result = self.__golden_proportion_detection(facescan_laminate_result, visualize, face_mesh_or_result=facephoto_meshes)
@@ -142,21 +345,14 @@ class Neo3DRegistration:
             golden_proportion_result = self.__golden_proportion_detection(facescan_laminate_result, visualize)
         print(f'__golden_proportion_detection result: {golden_proportion_result}')       
                
-        
-        
-        if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=100 / total_progress * 9, message="smilearch_outerline_registration").get_json())
-            await asyncio.sleep(0.1)
+        await self.progress_reporter.report_progress("smilearch_outerline_registration")
         smilearch_outerline_result = self.__smilearch_outerline_detect(visualize)
 
         result = self.__make_result_json(
             ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facephoto_meshes, facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist(), condyle_result, golden_proportion_result, smilearch_outerline_result
         )
         
-        if(self.websocket is not None):
-            await self.websocket.send_json(progress_event(type="progress", progress=100, message="All registration completed").get_json())
-            await self.websocket.send_json(progress_event(type="result", progress=100, message=result).get_json())
-            await asyncio.sleep(0.1)
+        await self.progress_reporter.report_completion(result)
         return result
 
     def __make_result_json(self, ios_laminate_result, 
@@ -307,29 +503,26 @@ class Neo3DRegistration:
 
     def __ios_laminate_registration(self, visualize=False):
         print("ios_laminate_registration")
-        ios_data = self.parsed_json["ios"]
-        for ios in ios_data:
-            if ios["subType"] == "smileArch":
-                print(f'ios["path"]: {ios["path"]}')
-                # Now register this file with the laminate model
-                ios_laminate_registration = IOSLaminateRegistration(ios["path"], LAMINATE_PATH, visualize)
-                result_matrix = ios_laminate_registration.run_registration()
-                return result_matrix
+        
+        # 새로운 설정 객체 사용
+        smile_arch_ios = self.config.get_ios_by_subtype("smileArch")
+        if not smile_arch_ios:
+            raise ValueError("smileArch IOS data not found")
+        
+        print(f'ios path: {smile_arch_ios.path}')
+        # Now register this file with the laminate model
+        ios_laminate_registration = IOSLaminateRegistration(smile_arch_ios.path, RegistrationConstants.LAMINATE_PATH, visualize)
+        result_matrix = ios_laminate_registration.run_registration()
+        return result_matrix
 
     def __ios_upper_registration(self):
         print("ios_upper_registration")
-        matrix = np.array([[1, 0, 0, 0],
-                           [0, 1, 0, 0],
-                           [0, 0, 1, 0],
-                           [0, 0, 0, 1]])
+        matrix = np.array(RegistrationConstants.IDENTITY_MATRIX)
         return matrix
 
     def __ios_lower_registration(self):
         print("ios_lower_registration")
-        matrix = np.array([[1, 0, 0, 0],
-                           [0, 1, 0, 0],
-                           [0, 0, 1, 0],
-                           [0, 0, 0, 1]])
+        matrix = np.array(RegistrationConstants.IDENTITY_MATRIX)
         return matrix
     
     def __erase_mouth(self):
@@ -444,7 +637,7 @@ class Neo3DRegistration:
                 print(f'facescan["path"]: {facescan["path"]}')
                 if facescan["path"].endswith(".obj") or facescan["path"].endswith(".ply"):
                     # Now register this file with the laminate model
-                    facescan_laminate_registration = FaceLaminateRegistration(facescan["path"], LAMINATE_PATH, visualize)
+                    facescan_laminate_registration = FaceLaminateRegistration(facescan["path"], RegistrationConstants.LAMINATE_PATH, visualize)
                     final_transform, moved_smile_mesh = facescan_laminate_registration.run_registration()
                     return final_transform, moved_smile_mesh, "FaceScan"
                 elif facescan["path"].endswith(".jpg") or facescan["path"].endswith(".png"):
@@ -481,24 +674,15 @@ class Neo3DRegistration:
             facescan_rest_registration = FacesRegistration(transformed_face_smile_mesh, facescan_laminate_result, rest_path, retraction_path, visualize)
             result_for_rest, result_for_retraction = facescan_rest_registration.run_registration()
         else:
-            result_for_rest = np.array([[1, 0, 0, 0],
-                                        [0, 1, 0, 0],
-                                        [0, 0, 1, 0],
-                                        [0, 0, 0, 1]])
-            result_for_retraction = np.array([[1, 0, 0, 0],
-                                                [0, 1, 0, 0],
-                                                [0, 0, 1, 0],
-                                                [0, 0, 0, 1]])
+            result_for_rest = np.array(RegistrationConstants.IDENTITY_MATRIX)
+            result_for_retraction = np.array(RegistrationConstants.IDENTITY_MATRIX)
 
         return result_for_rest, result_for_retraction
 
     
     def __cbct_registration(self):
         print("cbct_registration")
-        matrix = np.array([[1, 0, 0, 0],
-                           [0, 1, 0, 0],
-                           [0, 0, 1, 0],
-                           [0, 0, 0, 1]])
+        matrix = np.array(RegistrationConstants.IDENTITY_MATRIX)
         return matrix
     
     def __ios_bow_registration(self, ios_laminate_result, visualize=False):
@@ -506,7 +690,7 @@ class Neo3DRegistration:
         ios_data = self.parsed_json["ios"]
         for ios in ios_data:
             if ios["subType"] == "smileArch":
-                ios_bow_registration = IOSBowRegistration(ios["path"], CENTERPIN_PATH, visualize)
+                ios_bow_registration = IOSBowRegistration(ios["path"], RegistrationConstants.CENTERPIN_PATH, visualize)
                 # result_matrix 는 ios 정렬된 상태에서의 bow 이동 매트릭스
                 result_matrix = ios_bow_registration.run_registration()
 
