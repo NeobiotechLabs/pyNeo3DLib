@@ -41,8 +41,13 @@ class IOSData:
         if self.sub_type not in valid_subtypes:
             raise ValueError(f"Invalid IOS subType: {self.sub_type}. Must be one of {valid_subtypes}")
         
-        if not self.path:
-            raise ValueError("IOS path cannot be empty")
+        # 경로가 비어있을 수 있음 - 실제 사용 시에만 검증
+        # if not self.path:
+        #     raise ValueError("IOS path cannot be empty")
+    
+    def is_valid_for_processing(self) -> bool:
+        """실제 처리에 사용할 수 있는지 확인"""
+        return bool(self.path and self.path.strip())
 
 
 @dataclass  
@@ -57,8 +62,13 @@ class FaceScanData:
         if self.sub_type not in valid_subtypes:
             raise ValueError(f"Invalid FaceScan subType: {self.sub_type}. Must be one of {valid_subtypes}")
         
-        if not self.path:
-            raise ValueError("FaceScan path cannot be empty")
+        # 경로가 비어있을 수 있음 - 실제 사용 시에만 검증
+        # if not self.path:
+        #     raise ValueError("FaceScan path cannot be empty")
+    
+    def is_valid_for_processing(self) -> bool:
+        """실제 처리에 사용할 수 있는지 확인"""
+        return bool(self.path and self.path.strip())
 
 
 @dataclass
@@ -68,8 +78,14 @@ class CBCTData:
     
     def __post_init__(self):
         """데이터 검증"""
-        if not self.path:
-            raise ValueError("CBCT path cannot be empty")
+        # 경로가 비어있을 수 있음 - 실제 사용 시에만 검증
+        # if not self.path:
+        #     raise ValueError("CBCT path cannot be empty")
+        pass
+    
+    def is_valid_for_processing(self) -> bool:
+        """실제 처리에 사용할 수 있는지 확인"""
+        return bool(self.path and self.path.strip())
 
 
 @dataclass
@@ -79,8 +95,14 @@ class SmileArchBowData:
     
     def __post_init__(self):
         """데이터 검증"""
-        if not self.path:
-            raise ValueError("SmileArch Bow path cannot be empty")
+        # 경로가 비어있을 수 있음 - 실제 사용 시에만 검증
+        # if not self.path:
+        #     raise ValueError("SmileArch Bow path cannot be empty")
+        pass
+    
+    def is_valid_for_processing(self) -> bool:
+        """실제 처리에 사용할 수 있는지 확인"""
+        return bool(self.path and self.path.strip())
 
 
 @dataclass
@@ -508,6 +530,12 @@ class Neo3DRegistration:
         smile_arch_ios = self.config.get_ios_by_subtype("smileArch")
         if not smile_arch_ios:
             raise ValueError("smileArch IOS data not found")
+        
+        # 실제 처리 시 경로 유효성 확인
+        if not smile_arch_ios.is_valid_for_processing():
+            print(f"Warning: smileArch IOS path is empty or invalid: '{smile_arch_ios.path}'")
+            # 빈 경로인 경우 단위행렬 반환
+            return np.array(RegistrationConstants.IDENTITY_MATRIX)
         
         print(f'ios path: {smile_arch_ios.path}')
         # Now register this file with the laminate model
