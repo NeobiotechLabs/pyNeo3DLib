@@ -328,10 +328,10 @@ class Neo3DRegistration:
         ios_laminate_result = self.__ios_laminate_registration(visualize=visualize)
 
         await self.progress_reporter.report_progress("ios_upper_registration")
-        ios_upper_result = self.__ios_upper_registration()
+        ios_upper_result = ios_laminate_result #self.__ios_upper_registration()
 
         await self.progress_reporter.report_progress("ios_lower_registration")
-        ios_lower_result = self.__ios_lower_registration()
+        ios_lower_result = ios_laminate_result #self.__ios_lower_registration()
 
         await self.progress_reporter.report_progress("facescan_laminate_registration")
             
