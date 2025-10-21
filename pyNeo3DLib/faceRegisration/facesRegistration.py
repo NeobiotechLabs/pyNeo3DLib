@@ -21,6 +21,7 @@ class FacesRegistration:
 
         self.__load_models()
         
+# FacesRegistration.__load_models 수정
     def __load_models(self):
         # face_rest_path가 빈 스트링이거나 None인 경우 처리
         if self.face_rest_path and self.face_rest_path.strip():
