@@ -23,17 +23,19 @@ class FacesRegistration:
         
 # FacesRegistration.__load_models 수정
     def __load_models(self):
-        if self.face_rest_path:  # None이나 빈 문자열 체크
+        # face_rest_path가 빈 스트링이거나 None인 경우 처리
+        if self.face_rest_path and self.face_rest_path.strip():
             self.face_rest_mesh = Mesh.from_file(self.face_rest_path)
             self.face_rest_mesh.vertices = np.dot(self.face_rest_mesh.vertices, self.transform_matrix_for_rest[:3, :3].T) + self.transform_matrix_for_rest[:3, 3]
         else:
-            self.face_rest_mesh = None  # 또는 더미 메시
+            self.face_rest_mesh = None
             
-        if self.face_retraction_path:  # None이나 빈 문자열 체크
+        # face_retraction_path가 빈 스트링이거나 None인 경우 처리
+        if self.face_retraction_path and self.face_retraction_path.strip():
             self.face_retraction_mesh = Mesh.from_file(self.face_retraction_path)
             self.face_retraction_mesh.vertices = np.dot(self.face_retraction_mesh.vertices, self.transform_matrix_for_retraction[:3, :3].T) + self.transform_matrix_for_retraction[:3, 3]
         else:
-            self.face_retraction_mesh = None  # 또는 더미 메시
+            self.face_retraction_mesh = None
 
         return self.face_smile_mesh, self.face_rest_mesh, self.face_retraction_mesh
             
@@ -55,7 +57,7 @@ class FacesRegistration:
             smile_vertices = self.face_smile_mesh.vertices
         smile_center = np.mean(smile_vertices, axis=0)
         
-        # Calculate centroid of face_rest_mesh and transform (None 체크 추가)
+        # Calculate centroid of face_rest_mesh and transform (if exists)
         if self.face_rest_mesh is not None:
             rest_center = np.mean(self.face_rest_mesh.vertices, axis=0)
             rest_translation = smile_center - rest_center
@@ -65,10 +67,12 @@ class FacesRegistration:
             rest_transform = np.eye(4)
             rest_transform[:3, 3] = rest_translation
             self.transform_matrix_for_rest = np.dot(rest_transform, self.transform_matrix_for_rest)
+            
+            print(f"Rest mesh centroid: {rest_center} -> {np.mean(self.face_rest_mesh.vertices, axis=0)}")
         else:
-            print("Warning: face_rest_mesh is None, skipping rest mesh center alignment")
+            print("Rest mesh is None - skipping centroid alignment")
         
-        # Calculate centroid of face_retraction_mesh and transform (None 체크 추가)
+        # Calculate centroid of face_retraction_mesh and transform (if exists)
         if self.face_retraction_mesh is not None:
             retraction_center = np.mean(self.face_retraction_mesh.vertices, axis=0)
             retraction_translation = smile_center - retraction_center
@@ -78,21 +82,13 @@ class FacesRegistration:
             retraction_transform = np.eye(4)
             retraction_transform[:3, 3] = retraction_translation
             self.transform_matrix_for_retraction = np.dot(retraction_transform, self.transform_matrix_for_retraction)
+            
+            print(f"Retraction mesh centroid: {retraction_center} -> {np.mean(self.face_retraction_mesh.vertices, axis=0)}")
         else:
-            print("Warning: face_retraction_mesh is None, skipping retraction mesh center alignment")
+            print("Retraction mesh is None - skipping centroid alignment")
         
         print(f"Centroid alignment completed:")
         print(f"  - Smile mesh centroid: {smile_center}")
-        if self.face_rest_mesh is not None:
-            print(f"  - Rest mesh centroid: {rest_center} -> {np.mean(self.face_rest_mesh.vertices, axis=0)}")
-        else:
-            print(f"  - Rest mesh: None (skipped)")
-        if self.face_retraction_mesh is not None:
-            print(f"  - Retraction mesh centroid: {retraction_center} -> {np.mean(self.face_retraction_mesh.vertices, axis=0)}")
-        else:
-            print(f"  - Retraction mesh: None (skipped)")
-        print(f"  - Rest mesh transformation matrix updated")
-        print(f"  - Retraction mesh transformation matrix updated")
         
         return self.face_rest_mesh, self.face_retraction_mesh
 
@@ -345,56 +341,55 @@ class FacesRegistration:
 
     def run_registration(self):
         if self.visualization:
-            # None이 아닌 메시들만 시각화
-            meshes_to_show = [self.face_smile_mesh]
+            meshes_to_vis = [self.face_smile_mesh]
             labels = ["Smile"]
             if self.face_rest_mesh is not None:
-                meshes_to_show.append(self.face_rest_mesh)
+                meshes_to_vis.append(self.face_rest_mesh)
                 labels.append("Rest")
             if self.face_retraction_mesh is not None:
-                meshes_to_show.append(self.face_retraction_mesh)
+                meshes_to_vis.append(self.face_retraction_mesh)
                 labels.append("Retraction")
-            visualize_meshes(meshes_to_show, labels, title="Initial Meshes")
+            visualize_meshes(meshes_to_vis, labels, title="Initial Meshes")
 
         self.match_weight_centers()
 
         if self.visualization:
-            # 다시 None이 아닌 메시들만 시각화
-            meshes_to_show = [self.face_smile_mesh]
+            meshes_to_vis = [self.face_smile_mesh]
             labels = ["Smile"]
             if self.face_rest_mesh is not None:
-                meshes_to_show.append(self.face_rest_mesh)
+                meshes_to_vis.append(self.face_rest_mesh)
                 labels.append("Rest")
             if self.face_retraction_mesh is not None:
-                meshes_to_show.append(self.face_retraction_mesh)
+                meshes_to_vis.append(self.face_retraction_mesh)
                 labels.append("Retraction")
-            visualize_meshes(meshes_to_show, labels, title="Initial Meshes")
+            visualize_meshes(meshes_to_vis, labels, title="Initial Meshes")
 
-        # rest 등록 (None 체크)
+        # rest mesh가 있는 경우에만 registration 수행
         if self.face_rest_mesh is not None:
             moved_rest_mesh, rest_transform_matrix = self.fast_registration_with_vis(self.face_rest_mesh, self.face_smile_mesh)
             self.transform_matrix_for_rest = np.dot(rest_transform_matrix, self.transform_matrix_for_rest)
         else:
-            print("Skipping rest registration: face_rest_mesh is None")
+            # rest mesh가 없으면 단위행렬 유지
+            moved_rest_mesh = None
 
-        # retraction 등록 (None 체크)
+        # retraction mesh가 있는 경우에만 registration 수행
         if self.face_retraction_mesh is not None:
             moved_retraction_mesh, retraction_transform_matrix = self.fast_registration_with_vis(self.face_retraction_mesh, self.face_smile_mesh)
             self.transform_matrix_for_retraction = np.dot(retraction_transform_matrix, self.transform_matrix_for_retraction)
         else:
-            print("Skipping retraction registration: face_retraction_mesh is None")
+            # retraction mesh가 없으면 단위행렬 유지
+            moved_retraction_mesh = None
 
         if self.visualization:
-            # 최종 결과 시각화 (None이 아닌 메시들만)
-            final_meshes = [self.face_smile_mesh]
-            final_labels = ["Smile"]
-            if self.face_rest_mesh is not None:
-                final_meshes.append(moved_rest_mesh)
-                final_labels.append("Rest")
-            if self.face_retraction_mesh is not None:
-                final_meshes.append(moved_retraction_mesh)
-                final_labels.append("Retraction")
-            visualize_meshes(final_meshes, final_labels, title="Final Meshes")
+            meshes_to_vis = [self.face_smile_mesh]
+            labels = ["Smile"]
+            if moved_rest_mesh is not None:
+                meshes_to_vis.append(moved_rest_mesh)
+                labels.append("Rest")
+            if moved_retraction_mesh is not None:
+                meshes_to_vis.append(moved_retraction_mesh)
+                labels.append("Retraction")
+            visualize_meshes(meshes_to_vis, labels, title="Final Meshes")
 
         return self.transform_matrix_for_rest, self.transform_matrix_for_retraction
 
@@ -407,7 +402,8 @@ if __name__ == "__main__":
     
     smile_path = "../../example/data/FaceScan/Smile/Smile.obj"
     rest_path = "../../example/data/FaceScan/Rest/Smile.obj"
-    retraction_path = "../../example/data/FaceScan/Retraction/Smile.obj"
+    # retraction_path = "../../example/data/FaceScan/Retraction/Smile.obj"
+    retraction_path = ""
     
     
     
