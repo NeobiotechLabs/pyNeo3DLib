@@ -231,7 +231,7 @@ class ConfigParser:
                 
                 ios_data.append(IOSData(
                     sub_type=ios_item.get("subType", ""),
-                    path=ios_item.get("path", "")
+                    path=ios_item.get("path", None)
                 ))
             
             # FaceScan 데이터 파싱
@@ -246,7 +246,7 @@ class ConfigParser:
                 
                 facescan_data.append(FaceScanData(
                     sub_type=face_item.get("subType", ""),
-                    path=face_item.get("path", "")
+                    path=face_item.get("path", None)
                 ))
             
             # CBCT 데이터 파싱
@@ -254,7 +254,7 @@ class ConfigParser:
             if not isinstance(cbct_dict, dict):
                 raise ValueError("'cbct' must be a dictionary")
             
-            cbct_data = CBCTData(path=cbct_dict.get("path", ""))
+            cbct_data = CBCTData(path=cbct_dict.get("path", None))
             
             # SmileArch Bow 데이터 파싱 (선택사항)
             smilearch_bow_data = None
@@ -263,7 +263,7 @@ class ConfigParser:
                 if not isinstance(bow_dict, dict):
                     raise ValueError("'smilearch_bow' must be a dictionary")
                 
-                smilearch_bow_data = SmileArchBowData(path=bow_dict.get("path", ""))
+                smilearch_bow_data = SmileArchBowData(path=bow_dict.get("path", None))
             
             return RegistrationConfig(
                 ios_data=ios_data,
@@ -353,7 +353,7 @@ class Neo3DRegistration:
         cbct_result = self.__cbct_registration()
 
         await self.progress_reporter.report_progress("ios_bow_registration")
-        ios_bow_result = self.__ios_bow_registration(ios_laminate_result, visualize=visualize)
+        ios_bow_result = np.array(RegistrationConstants.IDENTITY_MATRIX) #self.__ios_bow_registration(ios_laminate_result, visualize=visualize)
         
         await self.progress_reporter.report_progress("condyle_registration")
         condyle_result = self.__condyle_detection(facescan_laminate_result, visualize)

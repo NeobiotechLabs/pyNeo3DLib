@@ -5,6 +5,7 @@ import time
 import json
 import threading
 import asyncio
+import os
 
 print("Server started, http://localhost:8000")
 
@@ -53,16 +54,50 @@ def show_result(result):
         if ios_item['subType'] == 'smileArch':
             ios_path = ios_item['path']
             if check_file(ios_path):
-                ios_mesh = o3d.io.read_triangle_mesh(ios_path)
-                ios_mesh.compute_vertex_normals()  # 빛 효과를 위한 법선 벡터 계산
-                # 초록색으로 설정 (더 밝은 초록색)
-                ios_mesh.paint_uniform_color([0.3, 1.0, 0.3])
-                
-                # 변환 매트릭스 적용
-                transform_matrix = np.array(ios_item['transform_matrix'])
-                ios_mesh.transform(transform_matrix)
-                
-                models.append(ios_mesh)
+                try:
+                    ios_mesh = o3d.io.read_triangle_mesh(ios_path)
+                    
+                    if len(ios_mesh.vertices) == 0:
+                        print(f"Warning: Failed to load mesh from {ios_path}")
+                        break
+                        
+                    ios_mesh.compute_vertex_normals()  # 빛 효과를 위한 법선 벡터 계산
+                    # 초록색으로 설정 (더 밝은 초록색)
+                    ios_mesh.paint_uniform_color([0.3, 1.0, 0.3])
+                    
+                    # 변환 매트릭스 적용
+                    transform_matrix = np.array(ios_item['transform_matrix'])
+                    ios_mesh.transform(transform_matrix)
+                    
+                    models.append(ios_mesh)
+                    print(f"Successfully loaded and transformed smileArch mesh")
+                    
+                except UnicodeDecodeError as e:
+                    print(f"Unicode error loading {ios_path}: {e}")
+                    print("Trying alternative encoding methods...")
+                    
+                    try:
+                        # 경로를 정규화해서 다시 시도
+                        normalized_path = os.path.normpath(ios_path)
+                        ios_mesh = o3d.io.read_triangle_mesh(normalized_path)
+                        
+                        if len(ios_mesh.vertices) > 0:
+                            ios_mesh.compute_vertex_normals()
+                            ios_mesh.paint_uniform_color([0.3, 1.0, 0.3])
+                            transform_matrix = np.array(ios_item['transform_matrix'])
+                            ios_mesh.transform(transform_matrix)
+                            models.append(ios_mesh)
+                            print(f"Successfully loaded mesh with normalized path")
+                        else:
+                            print(f"Warning: Empty mesh loaded from {normalized_path}")
+                            
+                    except Exception as e2:
+                        print(f"Failed to load mesh with alternative method: {e2}")
+                        print("Skipping this mesh...")
+                        
+                except Exception as e:
+                    print(f"Error loading mesh from {ios_path}: {e}")
+                    print("Skipping this mesh...")
             break
     
     # 3. facescan[smile] 모델 로드 및 변환 매트릭스 적용
@@ -70,26 +105,93 @@ def show_result(result):
         if face_item['subType'] == 'faceSmile':
             face_path = face_item['path']
             if check_file(face_path):
-                face_mesh = o3d.io.read_triangle_mesh(face_path)
-                face_mesh.compute_vertex_normals()  # 빛 효과를 위한 법선 벡터 계산
-                # 파란색으로 설정 (매우 옅은 파란색으로 변경)
-                face_mesh.paint_uniform_color([0.6, 0.6, 1.0])
-                
-                # 변환 매트릭스 적용
-                transform_matrix = np.array(face_item['transform_matrix'])
-                face_mesh.transform(transform_matrix)
-                
-                models.append(face_mesh)
+                try:
+                    face_mesh = o3d.io.read_triangle_mesh(face_path)
+                    
+                    if len(face_mesh.vertices) == 0:
+                        print(f"Warning: Failed to load face mesh from {face_path}")
+                        break
+                        
+                    face_mesh.compute_vertex_normals()  # 빛 효과를 위한 법선 벡터 계산
+                    # 파란색으로 설정 (매우 옅은 파란색으로 변경)
+                    face_mesh.paint_uniform_color([0.6, 0.6, 1.0])
+                    
+                    # 변환 매트릭스 적용
+                    transform_matrix = np.array(face_item['transform_matrix'])
+                    face_mesh.transform(transform_matrix)
+                    
+                    models.append(face_mesh)
+                    print(f"Successfully loaded and transformed faceSmile mesh")
+                    
+                except UnicodeDecodeError as e:
+                    print(f"Unicode error loading {face_path}: {e}")
+                    print("Trying alternative encoding methods...")
+                    
+                    try:
+                        # 경로를 정규화해서 다시 시도
+                        normalized_path = os.path.normpath(face_path)
+                        face_mesh = o3d.io.read_triangle_mesh(normalized_path)
+                        
+                        if len(face_mesh.vertices) > 0:
+                            face_mesh.compute_vertex_normals()
+                            face_mesh.paint_uniform_color([0.6, 0.6, 1.0])
+                            transform_matrix = np.array(face_item['transform_matrix'])
+                            face_mesh.transform(transform_matrix)
+                            models.append(face_mesh)
+                            print(f"Successfully loaded face mesh with normalized path")
+                        else:
+                            print(f"Warning: Empty face mesh loaded from {normalized_path}")
+                            
+                    except Exception as e2:
+                        print(f"Failed to load face mesh with alternative method: {e2}")
+                        print("Skipping this mesh...")
+                        
+                except Exception as e:
+                    print(f"Error loading face mesh from {face_path}: {e}")
+                    print("Skipping this mesh...")
             break
 
     bow_path = result['smilearch_bow']['path']
     if check_file(bow_path):
-        bow_mesh = o3d.io.read_triangle_mesh(bow_path)
-        bow_mesh.compute_vertex_normals()  # 빛 효과를 위한 법선 벡터 계산
-        bow_mesh.paint_uniform_color([0.8, 0.5, 0.5])
-        transform_matrix = np.array(result['smilearch_bow']['transform_matrix'])
-        bow_mesh.transform(transform_matrix)
-        models.append(bow_mesh)
+        try:
+            bow_mesh = o3d.io.read_triangle_mesh(bow_path)
+            
+            if len(bow_mesh.vertices) == 0:
+                print(f"Warning: Failed to load bow mesh from {bow_path}")
+            else:
+                bow_mesh.compute_vertex_normals()  # 빛 효과를 위한 법선 벡터 계산
+                bow_mesh.paint_uniform_color([0.8, 0.5, 0.5])
+                transform_matrix = np.array(result['smilearch_bow']['transform_matrix'])
+                bow_mesh.transform(transform_matrix)
+                models.append(bow_mesh)
+                print(f"Successfully loaded and transformed bow mesh")
+                
+        except UnicodeDecodeError as e:
+            print(f"Unicode error loading {bow_path}: {e}")
+            print("Trying alternative encoding methods...")
+            
+            try:
+                # 경로를 정규화해서 다시 시도
+                normalized_path = os.path.normpath(bow_path)
+                bow_mesh = o3d.io.read_triangle_mesh(normalized_path)
+                
+                if len(bow_mesh.vertices) > 0:
+                    bow_mesh.compute_vertex_normals()
+                    bow_mesh.paint_uniform_color([0.8, 0.5, 0.5])
+                    transform_matrix = np.array(result['smilearch_bow']['transform_matrix'])
+                    bow_mesh.transform(transform_matrix)
+                    models.append(bow_mesh)
+                    print(f"Successfully loaded bow mesh with normalized path")
+                else:
+                    print(f"Warning: Empty bow mesh loaded from {normalized_path}")
+                    
+            except Exception as e2:
+                print(f"Failed to load bow mesh with alternative method: {e2}")
+                print("Skipping bow mesh...")
+                
+        except Exception as e:
+            print(f"Error loading bow mesh from {bow_path}: {e}")
+            print("Skipping bow mesh...")
         
     # 콘딜 메시 생성
     condyle_vertices = np.array(result['condyle']['mesh']['vertices'])
@@ -173,7 +275,7 @@ def show_result(result):
     vis.destroy_window()
 
 async def main():
-    with open(f"{__file__}/../sampleInput.json", "r") as f:
+    with open(f"{__file__}/../sampleInput_refact.json", "r") as f:
         json_string = f.read()
         reg = Neo3DRegistration(json_string, fastserver.ws)
         print(reg.version)

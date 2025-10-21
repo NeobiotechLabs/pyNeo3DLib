@@ -1,0 +1,39 @@
+{
+    "laminate": {
+        "path": "D:/Git/PyNeo3DLib/example/data/smile_arch_half.stl"
+    },
+    "ios": [
+        {
+            "subType": "smileArch",
+            "path": "C:\\Users\\right\\AppData\\Roaming\\NeoSmileArch\\patientdata\\2025101310571832\\additional\\\uc774\ud310\uc784 \uc2a4\ub9c8\uc77c\uc544\uce58.stl"
+        },
+        {
+            "subType": "upper",
+            "path": "C:\\Users\\right\\AppData\\Roaming\\NeoSmileArch\\patientdata\\2025101310571832\\additional\\2025-10-10-\uc774\ud310\uc784 \uc0c1\uc545 all on x-maxillary.stl"
+        },
+        {
+            "subType": "lower",
+            "path": "C:\\Users\\right\\AppData\\Roaming\\NeoSmileArch\\patientdata\\2025101310571832\\ios\\2025-10-10-\uc774\ud310\uc784 \uc0c1\uc545 all on x-mandibular.stl"
+        }
+    ],
+    "facescan": [
+        {
+            "subType": "faceSmile",
+            "path": "C:\\Users\\right\\AppData\\Roaming\\NeoSmileArch\\patientdata\\2025101310571832\\facescan\\smile\\Smile.ply"
+        },
+        {
+            "subType": "faceRest",
+            "path": "C:\\Users\\right\\AppData\\Roaming\\NeoSmileArch\\patientdata\\2025101310571832\\facescan\\rest\\Smile.ply"
+        },
+        {
+            "subType": "faceRetraction",
+            "path": ""
+        }
+    ],
+    "cbct": {
+        "path": "C:\\Users\\right\\AppData\\Roaming\\NeoSmileArch\\patientdata\\2025101310571832\\ct\\dicom"
+    },
+    "smilearch_bow": {
+        "path": "D:\\Git\\NeoSmileArch\\resources\\sample_datas\\bow\\smilearch_bow.stl"
+    }
+}
