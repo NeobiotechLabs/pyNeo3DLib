@@ -1,23 +1,19 @@
 {
     "target_mesh": {
-        "path": "D:/Git/pyNeo3DLib/example/data/smile_arch_half.stl"
+        "path": "D:/Git/pyNeo3DLib/example/data/threepoint/smilearch.stl"
     },
     "source_mesh": {
-        "path": "D:/Git/pyNeo3DLib/example/data/ios_with_smilearch.stl"
+        "path": "D:/Git/pyNeo3DLib/example/data/threepoint/maxillary.stl"
     },
     "target_points": [
-        {"x": 10.5, "y": 20.3, "z": 15.7},
-        {"x": 25.1, "y": 18.9, "z": 12.4},
-        {"x": 35.8, "y": 22.1, "z": 18.2}
+        {"x": 24.98, "y": 19.40, "z": -8.24},
+        {"x": 2.13, "y": 25.61, "z": 22.71},
+        {"x": -17.69, "y": 20.04, "z": -10.98}
     ],
     "source_points": [
-        {"x": 12.3, "y": 19.8, "z": 16.1},
-        {"x": 27.4, "y": 17.5, "z": 13.8},
-        {"x": 38.2, "y": 21.7, "z": 19.5}
-    ],
-    "region_growing_radius": 5.0,
-    "icp_max_iterations": 1000,
-    "normal_similarity_threshold": 0.8,
-    "visualization": false
+        {"x": 22.73, "y": 13.12, "z": -13.16},
+        {"x": 2.58, "y": 10.61, "z": 19.80},
+        {"x": -20.25, "y": 15.79, "z": -11.00}
+    ]
 }
 

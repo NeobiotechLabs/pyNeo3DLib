@@ -245,27 +245,21 @@ async def threepoint_registration(request: Dict[str, Any] = Body(...)):
         target_points = request["target_points"]
         source_points = request["source_points"]
         
-        # 선택적 매개변수
-        region_growing_radius = request.get("region_growing_radius", 5.0)
-        icp_max_iterations = request.get("icp_max_iterations", 1000)
-        normal_similarity_threshold = request.get("normal_similarity_threshold", 0.8)
-        visualization = request.get("visualization", False)
+        # 모든 정확도 관련 매개변수는 threePointRegistration.py의 상수 사용
         
         print(f"[{request_id}] 타겟 메시: {target_mesh_path}")
         print(f"[{request_id}] 소스 메시: {source_mesh_path}")
         print(f"[{request_id}] 타겟 점 개수: {len(target_points)}")
         print(f"[{request_id}] 소스 점 개수: {len(source_points)}")
         
-        # 3점 정합 실행
+        # 3점 정합 실행 (모든 매개변수는 기본값/상수 사용)
         three_point_reg = ThreePointRegistration(
             target_mesh_path=target_mesh_path,
             source_mesh_path=source_mesh_path,
             target_points=target_points,
-            source_points=source_points,
-            region_growing_radius=region_growing_radius,
-            icp_max_iterations=icp_max_iterations,
-            normal_similarity_threshold=normal_similarity_threshold,
-            visualization=visualization
+            source_points=source_points
+            # visualization=False (기본값)
+            # 나머지 모든 매개변수는 threePointRegistration.py의 상수 사용
         )
         
         transformation_matrix = await three_point_reg.run_registration()
@@ -279,10 +273,7 @@ async def threepoint_registration(request: Dict[str, Any] = Body(...)):
             "message": "3점 정합이 성공적으로 완료되었습니다.",
             "parameters": {
                 "target_points_count": len(target_points),
-                "source_points_count": len(source_points),
-                "region_growing_radius": region_growing_radius,
-                "icp_max_iterations": icp_max_iterations,
-                "normal_similarity_threshold": normal_similarity_threshold
+                "source_points_count": len(source_points)
             },
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
