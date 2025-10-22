@@ -1,0 +1,23 @@
+{
+    "target_mesh": {
+        "path": "D:/Git/pyNeo3DLib/example/data/smile_arch_half.stl"
+    },
+    "source_mesh": {
+        "path": "D:/Git/pyNeo3DLib/example/data/ios_with_smilearch.stl"
+    },
+    "target_points": [
+        {"x": 10.5, "y": 20.3, "z": 15.7},
+        {"x": 25.1, "y": 18.9, "z": 12.4},
+        {"x": 35.8, "y": 22.1, "z": 18.2}
+    ],
+    "source_points": [
+        {"x": 12.3, "y": 19.8, "z": 16.1},
+        {"x": 27.4, "y": 17.5, "z": 13.8},
+        {"x": 38.2, "y": 21.7, "z": 19.5}
+    ],
+    "region_growing_radius": 5.0,
+    "icp_max_iterations": 1000,
+    "normal_similarity_threshold": 0.8,
+    "visualization": false
+}
+

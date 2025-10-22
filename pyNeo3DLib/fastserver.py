@@ -27,6 +27,7 @@ import json
 
 from .registration import Neo3DRegistration
 from .teethTemplateFinder.teethTemplateFinder import TeethTemplateFinder
+from .threePointRegistration.threePointRegistration import ThreePointRegistration
 
 app = FastAPI()
 app.add_middleware(
@@ -226,6 +227,75 @@ async def find_template(search_request: Dict[str, Any] = Body(...)):
 # async def root():
 #     return {"message": "Hello World"}
 
+@app.post("/threepoint_registration")
+async def threepoint_registration(request: Dict[str, Any] = Body(...)):
+    global ws
+    request_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+    print(f"[{request_id}] Three-point registration API called")
+    
+    try:
+        # 입력 데이터 검증
+        required_fields = ["target_mesh", "source_mesh", "target_points", "source_points"]
+        for field in required_fields:
+            if field not in request:
+                raise ValueError(f"필수 필드가 누락되었습니다: {field}")
+        
+        target_mesh_path = request["target_mesh"]["path"]
+        source_mesh_path = request["source_mesh"]["path"]
+        target_points = request["target_points"]
+        source_points = request["source_points"]
+        
+        # 선택적 매개변수
+        region_growing_radius = request.get("region_growing_radius", 5.0)
+        icp_max_iterations = request.get("icp_max_iterations", 1000)
+        normal_similarity_threshold = request.get("normal_similarity_threshold", 0.8)
+        visualization = request.get("visualization", False)
+        
+        print(f"[{request_id}] 타겟 메시: {target_mesh_path}")
+        print(f"[{request_id}] 소스 메시: {source_mesh_path}")
+        print(f"[{request_id}] 타겟 점 개수: {len(target_points)}")
+        print(f"[{request_id}] 소스 점 개수: {len(source_points)}")
+        
+        # 3점 정합 실행
+        three_point_reg = ThreePointRegistration(
+            target_mesh_path=target_mesh_path,
+            source_mesh_path=source_mesh_path,
+            target_points=target_points,
+            source_points=source_points,
+            region_growing_radius=region_growing_radius,
+            icp_max_iterations=icp_max_iterations,
+            normal_similarity_threshold=normal_similarity_threshold,
+            visualization=visualization
+        )
+        
+        transformation_matrix = await three_point_reg.run_registration()
+        
+        print(f"[{request_id}] 3점 정합 완료")
+        
+        return {
+            "status": "success",
+            "transformation_matrix": transformation_matrix.tolist(),
+            "request_id": request_id,
+            "message": "3점 정합이 성공적으로 완료되었습니다.",
+            "parameters": {
+                "target_points_count": len(target_points),
+                "source_points_count": len(source_points),
+                "region_growing_radius": region_growing_radius,
+                "icp_max_iterations": icp_max_iterations,
+                "normal_similarity_threshold": normal_similarity_threshold
+            },
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+    except Exception as e:
+        print(f"[{request_id}] 오류 발생: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"3점 정합 중 오류가 발생했습니다: {str(e)}",
+            "request_id": request_id,
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
 def stop_server():
     print("stop_server")
     if s_thread:
@@ -246,6 +316,7 @@ def run_server():
     server.run()
 
 def start_server():        
+    print("start_server")
     server_thread = threading.Thread(target=run_server)
     s_thread = server_thread
     server_thread.daemon = True
