@@ -75,7 +75,7 @@ class TeethTemplateFinder:
         if teeth_size_type:
             conditions.append(FieldCondition(key="teeth_size_type", match=MatchValue(value=teeth_size_type)))
         
-        if removed_teeth_index:
+        if removed_teeth_index is not None:
             conditions.append(FieldCondition(key="removed_teeth_index", match=MatchValue(value=removed_teeth_index)))
             
         if arch_type:
@@ -137,21 +137,22 @@ class TeethTemplateFinder:
         }
 
 
+
 if __name__ == "__main__":
     print("Hello, World!")
     teeth_template_finder = TeethTemplateFinder()
     
     # 테스트 예시
-    db_path = os.path.join(os.path.dirname(__file__), "templateDB")
+    db_path = os.path.join(os.path.dirname(__file__), "template_db")
     teeth_template_finder.start_template_finder(db_path)
     
     # 샘플 데이터로 테스트
-    sample_landmarks = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]
+    sample_landmarks =  [[-21.23, -17.38], [-19.77, -8.07], [-16.71, 3.04], [-10.67, 12.55], [-0.78, 17.47], [9.46, 12.85], [16.66, 3.69], [21.01, -6.71], [22.04, -17.45]]
     
     try:
         results = teeth_template_finder.find_template(
-            arch_depth=10.5,
-            molar_width=15.2,
+            arch_depth=34.98,
+            molar_width=43.48,
             landmarks=sample_landmarks,
             top_k=3
         )
