@@ -25,10 +25,11 @@ import datetime
 from typing import Dict, Any
 import json
 
-from .registration import Neo3DRegistration
-from .teethTemplateFinder.teethTemplateFinder import TeethTemplateFinder
-from .threePointRegistration.threePointRegistration import ThreePointRegistration
-from .gingivaGenerator.gingivaGenerator import GingivaGenerator
+# Lazy import: 실제 사용 시점에만 import (mediapipe 의존성 회피)
+# from .registration import Neo3DRegistration  # registration API 사용 시에만 import
+# from .teethTemplateFinder.teethTemplateFinder import TeethTemplateFinder  # 사용 시에만 import
+# from .threePointRegistration.threePointRegistration import ThreePointRegistration  # 사용 시에만 import
+# from .gingivaGenerator.gingivaGenerator import GingivaGenerator  # 사용 시에만 import
 
 app = FastAPI()
 app.add_middleware(
@@ -46,6 +47,9 @@ teeth_template_finder = None
 async def process_registration_async(registration_data, request_id):
     global ws
     try:
+        # Lazy import: registration 기능 사용 시에만 import
+        from .registration import Neo3DRegistration
+        
         reg = Neo3DRegistration(json.dumps(registration_data), ws)
         print(f"[{request_id}] Registration started")
         result = await reg.run_registration(visualize=False)
@@ -103,6 +107,9 @@ async def get_registration(background_tasks: BackgroundTasks, registration: Dict
     request_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
     print(f"[{request_id}] Registration API called")
     
+    # Lazy import: registration 기능 사용 시에만 import
+    from .registration import Neo3DRegistration
+    
     reg = Neo3DRegistration(json.dumps(registration), ws)
     
     print(reg.version)
@@ -135,6 +142,9 @@ async def start_template_finder(db_path: str = Body(..., embed=True)):
     global teeth_template_finder
     
     try:
+        # Lazy import: template finder 기능 사용 시에만 import
+        from .teethTemplateFinder.teethTemplateFinder import TeethTemplateFinder
+        
         teeth_template_finder = TeethTemplateFinder()
         teeth_template_finder.start_template_finder(db_path)
         
@@ -253,6 +263,9 @@ async def threepoint_registration(request: Dict[str, Any] = Body(...)):
         print(f"[{request_id}] 타겟 점 개수: {len(target_points)}")
         print(f"[{request_id}] 소스 점 개수: {len(source_points)}")
         
+        # Lazy import: threepoint registration 기능 사용 시에만 import
+        from .threePointRegistration.threePointRegistration import ThreePointRegistration
+        
         # 3점 정합 실행 (모든 매개변수는 기본값/상수 사용)
         three_point_reg = ThreePointRegistration(
             target_mesh_path=target_mesh_path,
@@ -325,6 +338,9 @@ async def generate_gingiva(background_tasks: BackgroundTasks, request: Dict[str,
         input_path = request["input_path"]
         output_path = request["output_path"]
         arch_types = request.get("arch_types", ["mandibular"])  # 기본값: mandibular
+        
+        # Lazy import: gingiva generation 기능 사용 시에만 import
+        from .gingivaGenerator.gingivaGenerator import GingivaGenerator
         
         # GingivaGenerator 인스턴스 생성
         gingiva_generator = GingivaGenerator(websocket=ws)
