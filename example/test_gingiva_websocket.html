@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>치은 생성 API + WebSocket 테스트</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #555;
+            margin-top: 0;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        textarea {
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.processing {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+        #messages {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+        .message {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border-left: 4px solid #4CAF50;
+            background-color: white;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .message.started {
+            border-left-color: #2196F3;
+        }
+        .message.completed {
+            border-left-color: #4CAF50;
+        }
+        .message.failed {
+            border-left-color: #f44336;
+        }
+        .message-type {
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 5px;
+        }
+        .timestamp {
+            color: #888;
+            font-size: 11px;
+            margin-top: 5px;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 5px 0;
+        }
+        .checkbox-group {
+            margin-bottom: 15px;
+        }
+        .checkbox-group label {
+            display: inline;
+            font-weight: normal;
+            margin-right: 20px;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🦷 치은 생성 API + WebSocket 테스트</h1>
+    
+    <div class="container">
+        <h2>1. WebSocket 연결</h2>
+        <div id="wsStatus" class="status disconnected">
+            ❌ 연결 끊김
+        </div>
+        <button id="connectBtn" onclick="connectWebSocket()">WebSocket 연결</button>
+        <button id="disconnectBtn" onclick="disconnectWebSocket()" disabled>연결 끊기</button>
+    </div>
+    
+    <div class="container">
+        <h2>2. 치은 생성 요청</h2>
+        <div class="form-group">
+            <label for="inputPath">입력 경로 (Input Path):</label>
+            <input type="text" id="inputPath" value="F:\\work\\neo_git\\working_now\\pyNeo3DLib\\example\\data\\input">
+        </div>
+        
+        <div class="form-group">
+            <label for="outputPath">출력 경로 (Output Path):</label>
+            <input type="text" id="outputPath" value="F:\\work\\neo_git\\working_now\\pyNeo3DLib\\example\\output">
+        </div>
+        
+        <div class="checkbox-group">
+            <label>생성할 타입 (Arch Types):</label><br>
+            <input type="checkbox" id="maxillary" value="maxillary">
+            <label for="maxillary">Maxillary (상악)</label>
+            <input type="checkbox" id="mandibular" value="mandibular" checked>
+            <label for="mandibular">Mandibular (하악)</label>
+        </div>
+        
+        <button onclick="generateGingiva()">치은 생성 시작</button>
+        <button onclick="clearMessages()">메시지 지우기</button>
+    </div>
+    
+    <div class="container">
+        <h2>3. WebSocket 메시지</h2>
+        <div id="messages"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let requestId = null;
+
+        function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                addMessage('이미 WebSocket에 연결되어 있습니다.', 'info');
+                return;
+            }
+
+            ws = new WebSocket('ws://127.0.0.1:8000/ws');
+
+            ws.onopen = function() {
+                document.getElementById('wsStatus').className = 'status connected';
+                document.getElementById('wsStatus').innerHTML = '✅ WebSocket 연결됨';
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+                addMessage('WebSocket 연결 성공', 'info');
+            };
+
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                handleWebSocketMessage(data);
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket 오류:', error);
+                addMessage('WebSocket 오류 발생', 'error');
+            };
+
+            ws.onclose = function() {
+                document.getElementById('wsStatus').className = 'status disconnected';
+                document.getElementById('wsStatus').innerHTML = '❌ 연결 끊김';
+                document.getElementById('connectBtn').disabled = false;
+                document.getElementById('disconnectBtn').disabled = true;
+                addMessage('WebSocket 연결 종료', 'info');
+                ws = null;
+            };
+        }
+
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+            }
+        }
+
+        function handleWebSocketMessage(data) {
+            const messageType = data.type;
+            let cssClass = '';
+            let icon = '';
+
+            switch(messageType) {
+                case 'gingiva_generation_started':
+                    cssClass = 'started';
+                    icon = '🚀';
+                    break;
+                case 'gingiva_generation_completed':
+                    cssClass = 'completed';
+                    icon = '✅';
+                    break;
+                case 'gingiva_generation_failed':
+                    cssClass = 'failed';
+                    icon = '❌';
+                    break;
+                default:
+                    cssClass = '';
+                    icon = '📨';
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${cssClass}`;
+            
+            let content = `<div class="message-type">${icon} ${messageType}</div>`;
+            content += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            if (data.timestamp) {
+                content += `<div class="timestamp">${data.timestamp}</div>`;
+            }
+            
+            messageDiv.innerHTML = content;
+            document.getElementById('messages').appendChild(messageDiv);
+            
+            // 자동 스크롤
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        async function generateGingiva() {
+            const inputPath = document.getElementById('inputPath').value;
+            const outputPath = document.getElementById('outputPath').value;
+            
+            const archTypes = [];
+            if (document.getElementById('maxillary').checked) {
+                archTypes.push('maxillary');
+            }
+            if (document.getElementById('mandibular').checked) {
+                archTypes.push('mandibular');
+            }
+
+            if (archTypes.length === 0) {
+                alert('최소 하나의 arch type을 선택해주세요.');
+                return;
+            }
+
+            const requestData = {
+                input_path: inputPath,
+                output_path: outputPath,
+                arch_types: archTypes
+            };
+
+            try {
+                addMessage(`API 요청 전송 중...\n${JSON.stringify(requestData, null, 2)}`, 'info');
+                
+                const response = await fetch('http://127.0.0.1:8000/generate_gingiva', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    requestId = result.request_id;
+                    addMessage(`API 응답:\n${JSON.stringify(result, null, 2)}`, 'info');
+                    
+                    if (!ws || ws.readyState !== WebSocket.OPEN) {
+                        addMessage('⚠️ WebSocket이 연결되어 있지 않습니다. 진행 상황을 확인하려면 WebSocket을 연결하세요.', 'warning');
+                    }
+                } else {
+                    addMessage(`API 오류:\n${JSON.stringify(result, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                addMessage(`요청 실패: ${error.message}`, 'error');
+            }
+        }
+
+        function addMessage(text, type) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            
+            let icon = '📝';
+            if (type === 'error') icon = '❌';
+            if (type === 'warning') icon = '⚠️';
+            if (type === 'info') icon = 'ℹ️';
+            
+            messageDiv.innerHTML = `<div class="message-type">${icon} ${type.toUpperCase()}</div><pre>${text}</pre><div class="timestamp">${new Date().toLocaleString()}</div>`;
+            document.getElementById('messages').appendChild(messageDiv);
+            
+            // 자동 스크롤
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+
+        // 페이지 로드 시 자동으로 WebSocket 연결 시도
+        window.addEventListener('load', function() {
+            addMessage('페이지가 로드되었습니다. WebSocket 연결 버튼을 클릭하세요.', 'info');
+        });
+    </script>
+</body>
+</html>
+
