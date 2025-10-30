@@ -16,7 +16,7 @@ if __name__ == "__main__":
     import signal
     
     print("=" * 60)
-    print("🚀 FastAPI 서버 시작")
+    print("FastAPI 서버 시작")
     print("=" * 60)
     print("서버 주소: http://127.0.0.1:8000")
     print("API 문서: http://127.0.0.1:8000/docs")

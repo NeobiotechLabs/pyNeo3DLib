@@ -1,3 +1,19 @@
+"""
+pyNeo3DLib - 3D Dental Library
+
+Lazy import를 사용하여 필요한 모듈만 로드됩니다.
+
+사용 예시:
+    # 치은 생성만 사용
+    from pyNeo3DLib.gingivaGenerator import GingivaGenerator
+    
+    # FastAPI 서버 실행
+    from pyNeo3DLib.fastserver import run_server
+    
+    # 전체 registration 기능 사용
+    from pyNeo3DLib.registration import Neo3DRegistration
+"""
+
 import os
 import logging
 import warnings
@@ -13,17 +29,20 @@ warnings.filterwarnings('ignore', category=FutureWarning, module='tensorflow')
 # TensorFlow 로깅 레벨 설정
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
-from .fastserver import *
-from .registration import Neo3DRegistration
+# Lazy import: 실제 사용 시점에만 import
+# from .fastserver import *  # 제거 - 필요시 명시적으로 import
+# from .registration import Neo3DRegistration  # 제거 - 필요시 명시적으로 import
 
-# 서브패키지 가져오기
-from . import alignment
-from . import faceRegisration
-from . import iosRegistration
-from . import fileLoader
-from . import visualization
-from . import teethTemplateFinder
-from . import goldenProportion
+# 서브패키지는 명시적으로 import하도록 변경
+# from . import alignment  # 제거
+# from . import faceRegisration  # 제거
+# from . import iosRegistration  # 제거
+# from . import fileLoader  # 제거
+# from . import visualization  # 제거
+# from . import teethTemplateFinder  # 제거
+# from . import goldenProportion  # 제거
+
+__version__ = "1.0.0"
 
 __all__ = [
     "fastserver", 
@@ -34,5 +53,7 @@ __all__ = [
     "fileLoader",
     "visualization",
     "teethTemplateFinder",
-    "goldenProportion"
+    "goldenProportion",
+    "gingivaGenerator",
+    "threePointRegistration"
 ]
