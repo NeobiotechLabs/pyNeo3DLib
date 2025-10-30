@@ -17,7 +17,7 @@ setup(
         "pydantic",
         "scipy",
         "msvc-runtime;platform_system=='Windows'",
-        "mediapipe>=0.10.9",
+        "mediapipe==0.10.9",
         "open3d",
         "opencv-python",
         "pyvista",
