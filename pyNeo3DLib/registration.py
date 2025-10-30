@@ -8,16 +8,18 @@ import base64
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 from pathlib import Path
-from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegistration
-from pyNeo3DLib.faceRegisration.faceLaminateRegistration import FaceLaminateRegistration
-from pyNeo3DLib.faceRegisration.facePhotoRegistration import FacePhotoRegistration
-from pyNeo3DLib.faceRegisration.facesRegistration import FacesRegistration
-from pyNeo3DLib.bowRegistration.iosBowRegistration import IOSBowRegistration
-from pyNeo3DLib.condyleFinder.condyleFinder import CondyleFinder
-from pyNeo3DLib.smileArchOuterline.core import analyze_upper_IOS_scandata
-from pyNeo3DLib.faceRegisration.faceAlign import FaceAlignment3D
-from pyNeo3DLib.goldenProportion.goldenProportionFinder import GoldenProportionFinder
-from pyNeo3DLib.mouthEraser.mouthEraser import MouthEraser
+
+# Lazy import: 실제 사용 시점에만 import (mediapipe 의존성 회피)
+# from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegistration
+# from pyNeo3DLib.faceRegisration.faceLaminateRegistration import FaceLaminateRegistration  # mediapipe 필요
+# from pyNeo3DLib.faceRegisration.facePhotoRegistration import FacePhotoRegistration  # mediapipe 필요
+# from pyNeo3DLib.faceRegisration.facesRegistration import FacesRegistration  # mediapipe 필요
+# from pyNeo3DLib.bowRegistration.iosBowRegistration import IOSBowRegistration
+# from pyNeo3DLib.condyleFinder.condyleFinder import CondyleFinder
+# from pyNeo3DLib.smileArchOuterline.core import analyze_upper_IOS_scandata
+# from pyNeo3DLib.faceRegisration.faceAlign import FaceAlignment3D  # mediapipe 필요
+# from pyNeo3DLib.goldenProportion.goldenProportionFinder import GoldenProportionFinder
+# from pyNeo3DLib.mouthEraser.mouthEraser import MouthEraser  # mediapipe 필요
 
 
 class RegistrationConstants:
@@ -538,6 +540,9 @@ class Neo3DRegistration:
             return np.array(RegistrationConstants.IDENTITY_MATRIX)
         
         print(f'ios path: {smile_arch_ios.path}')
+        # Lazy import
+        from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegistration
+        
         # Now register this file with the laminate model
         ios_laminate_registration = IOSLaminateRegistration(smile_arch_ios.path, RegistrationConstants.LAMINATE_PATH, visualize)
         result_matrix = ios_laminate_registration.run_registration()
@@ -558,6 +563,9 @@ class Neo3DRegistration:
         FaceScan인 경우 텍스처 파일에서 입술을 지우고, FacePhoto인 경우 이미지에서 입술을 지웁니다.
         """
         try:
+            # Lazy import
+            from pyNeo3DLib.mouthEraser.mouthEraser import MouthEraser
+            
             mouth_eraser = MouthEraser()
             facescan_data = self.parsed_json.get("facescan", [])
             
@@ -664,6 +672,9 @@ class Neo3DRegistration:
             if facescan["subType"] == "faceSmile":
                 print(f'facescan["path"]: {facescan["path"]}')
                 if facescan["path"].endswith(".obj") or facescan["path"].endswith(".ply"):
+                    # Lazy import
+                    from pyNeo3DLib.faceRegisration.faceLaminateRegistration import FaceLaminateRegistration
+                    
                     # Now register this file with the laminate model
                     facescan_laminate_registration = FaceLaminateRegistration(facescan["path"], RegistrationConstants.LAMINATE_PATH, visualize)
                     final_transform, moved_smile_mesh = facescan_laminate_registration.run_registration()
@@ -679,6 +690,10 @@ class Neo3DRegistration:
                         elif face["subType"] == "faceRetraction":
                             print(f'facescan2["path"]: {face["path"]}')
                             retraction_path = face["path"]
+                    
+                    # Lazy import
+                    from pyNeo3DLib.faceRegisration.faceAlign import FaceAlignment3D
+                    
                     face_aligner = FaceAlignment3D(front_image_path=facescan["path"], right_image_path=rest_path, left_image_path=retraction_path)
                     M_total_homogeneous, image_planes = face_aligner.run_registration(visualize=visualize)
                     return M_total_homogeneous, image_planes, "FacePhoto"
@@ -697,7 +712,10 @@ class Neo3DRegistration:
             elif facescan["subType"] == "faceRetraction":
                 print(f'facescan["path"]: {facescan["path"]}')
                 retraction_path = facescan["path"]
-                
+        
+        # Lazy import
+        from pyNeo3DLib.faceRegisration.facesRegistration import FacesRegistration
+        
         if rest_path.endswith(".obj") or rest_path.endswith(".ply"):
             facescan_rest_registration = FacesRegistration(transformed_face_smile_mesh, facescan_laminate_result, rest_path, retraction_path, visualize)
             result_for_rest, result_for_retraction = facescan_rest_registration.run_registration()
@@ -715,6 +733,9 @@ class Neo3DRegistration:
     
     def __ios_bow_registration(self, ios_laminate_result, visualize=False):
         print("ios_bow_registration")
+        # Lazy import
+        from pyNeo3DLib.bowRegistration.iosBowRegistration import IOSBowRegistration
+        
         ios_data = self.parsed_json["ios"]
         for ios in ios_data:
             if ios["subType"] == "smileArch":
@@ -741,7 +762,10 @@ class Neo3DRegistration:
         for facescan in facescan_data:
             if facescan["subType"] == "faceSmile":
                 print(f'facescan["path"]: {facescan["path"]}')
-                if facescan["path"].endswith(".obj") or facescan["path"].endswith(".ply"):                
+                if facescan["path"].endswith(".obj") or facescan["path"].endswith(".ply"):
+                    # Lazy import
+                    from pyNeo3DLib.condyleFinder.condyleFinder import CondyleFinder
+                    
                     # Now register this file with the laminate model
                     condyle_finder = CondyleFinder(facescan["path"], visualize)
                     result = condyle_finder.run_analysis()
@@ -767,6 +791,9 @@ class Neo3DRegistration:
                 
     def __golden_proportion_detection(self, face_registration_result, visualize=False, face_mesh_or_result=None):
         print("golden_proportion_detection")
+        
+        # Lazy import
+        from pyNeo3DLib.goldenProportion.goldenProportionFinder import GoldenProportionFinder
         
         try:
             # 메시 객체가 직접 전달된 경우 (FaceAlignment3D 결과 등)
@@ -859,6 +886,10 @@ class Neo3DRegistration:
                 
     def __smilearch_outerline_detect(self, visualize=False):
         print("smilearch_outerline_detect")
+        
+        # Lazy import
+        from pyNeo3DLib.smileArchOuterline.core import analyze_upper_IOS_scandata
+        
         ios_data = self.parsed_json["ios"]
         print(f'ios_data: {ios_data}')
         
