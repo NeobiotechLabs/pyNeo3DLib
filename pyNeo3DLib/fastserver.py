@@ -28,6 +28,7 @@ import json
 from .registration import Neo3DRegistration
 from .teethTemplateFinder.teethTemplateFinder import TeethTemplateFinder
 from .threePointRegistration.threePointRegistration import ThreePointRegistration
+from .gingivaGenerator.gingivaGenerator import GingivaGenerator
 
 app = FastAPI()
 app.add_middleware(
@@ -283,6 +284,99 @@ async def threepoint_registration(request: Dict[str, Any] = Body(...)):
         return {
             "status": "error",
             "message": f"3점 정합 중 오류가 발생했습니다: {str(e)}",
+            "request_id": request_id,
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+@app.post("/generate_gingiva")
+async def generate_gingiva(background_tasks: BackgroundTasks, request: Dict[str, Any] = Body(...)):
+    """
+    치은(gingiva) 생성 API
+    
+    요청 본문 예시:
+    {
+        "input_path": "/path/to/input/teeth/files",
+        "output_path": "/path/to/output",
+        "arch_types": ["maxillary", "mandibular"]  # "maxillary" 또는 "mandibular" 또는 둘 다
+    }
+    """
+    global ws
+    request_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+    print(f"[{request_id}] 치은 생성 API 호출됨")
+    
+    try:
+        # 필수 파라미터 검증
+        if "input_path" not in request:
+            return {
+                "status": "error",
+                "message": "필수 파라미터가 누락되었습니다: input_path",
+                "request_id": request_id,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+        
+        if "output_path" not in request:
+            return {
+                "status": "error",
+                "message": "필수 파라미터가 누락되었습니다: output_path",
+                "request_id": request_id,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+        
+        input_path = request["input_path"]
+        output_path = request["output_path"]
+        arch_types = request.get("arch_types", ["mandibular"])  # 기본값: mandibular
+        
+        # GingivaGenerator 인스턴스 생성
+        gingiva_generator = GingivaGenerator(websocket=ws)
+        
+        # arch_types 유효성 검증
+        is_valid, error_message = gingiva_generator.validate_arch_types(arch_types)
+        if not is_valid:
+            return {
+                "status": "error",
+                "message": error_message,
+                "request_id": request_id,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+        
+        # 입력 경로 존재 확인
+        is_valid, error_message = GingivaGenerator.validate_input_path(input_path)
+        if not is_valid:
+            return {
+                "status": "error",
+                "message": error_message,
+                "request_id": request_id,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+        
+        print(f"[{request_id}] 입력 경로: {input_path}")
+        print(f"[{request_id}] 출력 경로: {output_path}")
+        print(f"[{request_id}] 생성할 타입: {arch_types}")
+        
+        # 백그라운드에서 치은 생성 실행
+        background_tasks.add_task(
+            gingiva_generator.generate_gingiva,
+            input_path,
+            output_path,
+            arch_types,
+            request_id
+        )
+        
+        return {
+            "status": "processing",
+            "message": "치은 생성이 시작되었습니다. 결과는 WebSocket을 통해 전송됩니다.",
+            "request_id": request_id,
+            "input_path": input_path,
+            "output_path": output_path,
+            "arch_types": arch_types,
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+    except Exception as e:
+        print(f"[{request_id}] 오류 발생: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"치은 생성 요청 처리 중 오류가 발생했습니다: {str(e)}",
             "request_id": request_id,
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }

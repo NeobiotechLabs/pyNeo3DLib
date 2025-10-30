@@ -113,6 +113,10 @@
         .message.failed {
             border-left-color: #f44336;
         }
+        .message.progress {
+            border-left-color: #FF9800;
+            background-color: #fff8e1;
+        }
         .message-type {
             font-weight: bold;
             color: #555;
@@ -241,6 +245,10 @@
                     cssClass = 'started';
                     icon = '🚀';
                     break;
+                case 'gingiva_generation_progress':
+                    cssClass = 'progress';
+                    icon = '⏳';
+                    break;
                 case 'gingiva_generation_completed':
                     cssClass = 'completed';
                     icon = '✅';
@@ -258,7 +266,14 @@
             messageDiv.className = `message ${cssClass}`;
             
             let content = `<div class="message-type">${icon} ${messageType}</div>`;
-            content += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            
+            // 진행 상황 메시지는 간결하게 표시
+            if (messageType === 'gingiva_generation_progress') {
+                content += `<div style="color: #555; margin: 5px 0;">${data.message || ''}</div>`;
+            } else {
+                content += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+            
             if (data.timestamp) {
                 content += `<div class="timestamp">${data.timestamp}</div>`;
             }
@@ -276,8 +291,8 @@
             const outputPath = document.getElementById('outputPath').value;
             
             const archTypes = [];
-            if (document.getElementById('maxillary').checked) {
-                archTypes.push('maxillary');
+            if (document.getElementById('maxillar').checked) {
+                archTypes.push('maxillar');
             }
             if (document.getElementById('mandibular').checked) {
                 archTypes.push('mandibular');
