@@ -50,14 +50,16 @@ class MeshAlignmentManager:
             intersection_points = self.ray_caster.get_bidirectional_ray_points(
                 input_mesh, center, principal_evecs[:, i]
             )
+
+
             count = len(intersection_points)
             intersection_counts.append(count)
 
             # 교차점 개수가 self.y_axis_intersection_count 이면  교차점중 레이원점과 가장 가까운 점 하나를 추출 하고 (교차점-레이원점을 으로 벡터를 구하고 evec_y로 할당)
-            if count == self.y_axis_intersection_count:
+            if count == self.x_axis_intersection_count:
                 closest_point = intersection_points[np.argmin(np.linalg.norm(intersection_points - center, axis=1))]
-                evec_y = closest_point - center
-                evec_y = evec_y / np.linalg.norm(evec_y)
+                evec_x = closest_point - center
+                evec_x = evec_x / np.linalg.norm(evec_x)
 
             # 교차점 개수가 self.z_axis_intersection_count 이면  교차점중 레이원점과 가장 가까운 점 하나를 추출 하고 (교차점-레이원점을 으로 벡터를 구하고 evec_z로 할당)
             if count == self.z_axis_intersection_count:
@@ -67,9 +69,9 @@ class MeshAlignmentManager:
 
 
         # evec_y와 evec_z가 모두 결정된 후에 evec_x 계산
-        if evec_y is not None and evec_z is not None:
-            evec_x = np.cross(evec_y, evec_z)
-            evec_x = evec_x / np.linalg.norm(evec_x)
+        if evec_x is not None and evec_z is not None:
+            evec_y = np.cross(evec_x, evec_z)
+            evec_y = evec_y / np.linalg.norm(evec_y)
 
 
         
