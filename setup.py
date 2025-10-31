@@ -25,6 +25,8 @@ setup(
         "trimesh",
         "retina-face==0.0.14",
         "tensorflow==2.12.0",
+        "jax==0.4.30",
+        "jaxlib==0.4.30",
         "keras==2.12.0",
         "scikit-image==0.22.0",
         "qdrant-client",
