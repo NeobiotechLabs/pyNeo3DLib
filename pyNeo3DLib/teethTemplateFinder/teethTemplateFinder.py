@@ -14,9 +14,11 @@ class TeethTemplateFinder:
         self.client = None
         print(f"Database path: {self.db_path}")
     
-    def start_template_finder(self, db_path: str):
+    def start_template_finder(self, db_path: Optional[str] = None):
         """템플릿 파인더 시작"""
-        self.db_path = db_path
+
+        if db_path is not None:
+            self.db_path = db_path
 
         try:
             # 로컬 파일 시스템 데이터베이스 연결
@@ -141,10 +143,7 @@ class TeethTemplateFinder:
 if __name__ == "__main__":
     print("Hello, World!")
     teeth_template_finder = TeethTemplateFinder()
-    
-    # 테스트 예시
-    db_path = os.path.join(os.path.dirname(__file__), "template_db")
-    teeth_template_finder.start_template_finder(db_path)
+    teeth_template_finder.start_template_finder()
     
     # 샘플 데이터로 테스트
     sample_landmarks =  [[-21.23, -17.38], [-19.77, -8.07], [-16.71, 3.04], [-10.67, 12.55], [-0.78, 17.47], [9.46, 12.85], [16.66, 3.69], [21.01, -6.71], [22.04, -17.45]]
