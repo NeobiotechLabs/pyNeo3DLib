@@ -31,6 +31,13 @@ import json
 # from .threePointRegistration.threePointRegistration import ThreePointRegistration  # 사용 시에만 import
 # from .gingivaGenerator.gingivaGenerator import GingivaGenerator  # 사용 시에만 import
 
+try:
+    from teeth_template_editor import create_editing_session
+    TEMPLATE_EDITOR_AVAILABLE = True
+except ImportError:
+    TEMPLATE_EDITOR_AVAILABLE = False
+    print("Warning: teeth-template-editor not installed. /template_editor/process endpoint will not be available.")
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -43,6 +50,11 @@ app.add_middleware(
 s_thread = None
 ws = None
 teeth_template_finder = None
+template_editor_handler = None
+template_editor_config = {
+    "blend_template_path": None,
+    "stl_export_path": None
+}
 
 async def process_registration_async(registration_data, request_id):
     global ws
@@ -393,6 +405,178 @@ async def generate_gingiva(background_tasks: BackgroundTasks, request: Dict[str,
         return {
             "status": "error",
             "message": f"치은 생성 요청 처리 중 오류가 발생했습니다: {str(e)}",
+            "request_id": request_id,
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+@app.post("/template_editor/process")
+async def process_template_editing(request: Dict[str, Any] = Body(...)):
+    """
+    템플릿 편집을 위한 통합 endpoint
+    전체 편집 워크플로우를 하나의 API로 처리
+    
+    요청 본문 예시:
+    {
+        "blend_template_path": "C:/templates",
+        "stl_export_path": "C:/exports",
+        "blend_template": "template.blend",
+        "start_params": {"arch_degree": 15.5, "y_scale": 1.2},
+        "transform_params": {"arch_degree": 20.0, "y_scale": 0.8},  # 선택적
+        "stop_params": {"arch_degree": 30.0, "y_scale": 1.0}
+    }
+    """
+    global template_editor_handler, template_editor_config
+    request_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+    print(f"[{request_id}] 템플릿 편집 API 호출됨")
+    
+    # 모듈 가용성 확인
+    if not TEMPLATE_EDITOR_AVAILABLE:
+        return {
+            "status": "error",
+            "message": "teeth-template-editor 모듈이 설치되지 않았습니다.",
+            "request_id": request_id,
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+    
+    try:
+        # 필수 파라미터 검증
+        required_fields = ["blend_template_path", "stl_export_path", "blend_template", "start_params", "stop_params"]
+        for field in required_fields:
+            if field not in request:
+                return {
+                    "status": "error",
+                    "message": f"필수 파라미터가 누락되었습니다: {field}",
+                    "request_id": request_id,
+                    "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+        
+        blend_template_path = request["blend_template_path"]
+        stl_export_path = request["stl_export_path"]
+        blend_template = request["blend_template"]
+        start_params = request["start_params"]
+        transform_params = request.get("transform_params")  # 선택적
+        stop_params = request["stop_params"]
+        
+        # start_params와 stop_params 검증
+        for params_name, params in [("start_params", start_params), ("stop_params", stop_params)]:
+            if "arch_degree" not in params or "y_scale" not in params:
+                return {
+                    "status": "error",
+                    "message": f"{params_name}에 arch_degree와 y_scale이 필요합니다.",
+                    "request_id": request_id,
+                    "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+        
+        # transform_params가 제공된 경우 검증
+        if transform_params is not None:
+            if "arch_degree" not in transform_params or "y_scale" not in transform_params:
+                return {
+                    "status": "error",
+                    "message": "transform_params에 arch_degree와 y_scale이 필요합니다.",
+                    "request_id": request_id,
+                    "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+        
+        print(f"[{request_id}] 템플릿 경로: {blend_template_path}")
+        print(f"[{request_id}] 내보내기 경로: {stl_export_path}")
+        print(f"[{request_id}] 템플릿 파일: {blend_template}")
+        
+        # Handler 초기화 (경로가 변경되었거나 없는 경우)
+        if (template_editor_handler is None or 
+            template_editor_config["blend_template_path"] != blend_template_path or
+            template_editor_config["stl_export_path"] != stl_export_path):
+            
+            print(f"[{request_id}] 새 편집 세션 생성 중...")
+            template_editor_handler = create_editing_session(
+                blend_template_path=blend_template_path,
+                stl_export_path=stl_export_path
+            )
+            template_editor_config["blend_template_path"] = blend_template_path
+            template_editor_config["stl_export_path"] = stl_export_path
+            print(f"[{request_id}] 편집 세션 생성 완료")
+        
+        # 1. 편집 시작
+        print(f"[{request_id}] 편집 시작...")
+        start_result = template_editor_handler.start_editing(
+            blend_template=blend_template,
+            arch_degree=start_params["arch_degree"],
+            y_scale=start_params["y_scale"]
+        )
+        
+        if start_result is None:
+            return {
+                "status": "error",
+                "message": "편집 시작 실패",
+                "request_id": request_id,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+        
+        print(f"[{request_id}] 편집 시작 완료")
+        
+        # 2. 변환 적용 (선택적)
+        transform_result = None
+        if transform_params is not None:
+            print(f"[{request_id}] 변환 적용 중...")
+            transform_result = template_editor_handler.transform(
+                arch_degree=transform_params["arch_degree"],
+                y_scale=transform_params["y_scale"]
+            )
+            
+            if transform_result is None:
+                return {
+                    "status": "error",
+                    "message": "변환 적용 실패",
+                    "request_id": request_id,
+                    "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+            
+            print(f"[{request_id}] 변환 적용 완료")
+        
+        # 3. 편집 종료 및 STL 내보내기
+        print(f"[{request_id}] 편집 종료 및 STL 내보내기 중...")
+        stop_result = template_editor_handler.stop_editing(
+            arch_degree=stop_params["arch_degree"],
+            y_scale=stop_params["y_scale"]
+        )
+        
+        if stop_result is None:
+            return {
+                "status": "error",
+                "message": "편집 종료 실패",
+                "request_id": request_id,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+        
+        print(f"[{request_id}] 템플릿 편집 완료")
+        
+        return {
+            "status": "success",
+            "message": "템플릿 편집이 성공적으로 완료되었습니다.",
+            "request_id": request_id,
+            "results": {
+                "start_result": start_result,
+                "transform_result": transform_result,
+                "stop_result": stop_result
+            },
+            "stl_folder_path": stop_result.get("stl_folder_path") if stop_result else None,
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+    except FileNotFoundError as e:
+        print(f"[{request_id}] Blender를 찾을 수 없음: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"Blender를 찾을 수 없습니다: {str(e)}",
+            "request_id": request_id,
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+    except Exception as e:
+        print(f"[{request_id}] 오류 발생: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "status": "error",
+            "message": f"템플릿 편집 중 오류가 발생했습니다: {str(e)}",
             "request_id": request_id,
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
