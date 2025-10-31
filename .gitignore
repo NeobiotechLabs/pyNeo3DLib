@@ -174,3 +174,4 @@ cython_debug/
 .pypirc
 .python-version
 example/output/*
+config.json

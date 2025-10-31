@@ -17,3 +17,4 @@ scikit-image==0.22.0
 qdrant-client
 protobuf
 single_template_maker_lib @ git+https://github.com/NeobiotechLabs/Single_template_maker.git
+teeth-template-editor @ git+https://github.com/NeobiotechLabs/TeethTemplateEditor.git

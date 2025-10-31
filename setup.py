@@ -28,7 +28,8 @@ setup(
         "keras==2.12.0",
         "scikit-image==0.22.0",
         "qdrant-client",
-        "single_template_maker_lib @ git+https://github.com/NeobiotechLabs/Single_template_maker.git"
+        "single_template_maker_lib @ git+https://github.com/NeobiotechLabs/Single_template_maker.git",
+        "teeth-template-editor @ git+https://github.com/NeobiotechLabs/TeethTemplateEditor.git"
     ],
     author="NeoBiotech",
     description="3D 데이터 처리를 위한 파이썬 라이브러리",
