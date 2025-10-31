@@ -126,15 +126,17 @@ class TeethTemplateFinder:
                 "arch_type": result.payload.get("arch_type"),
                 "teeth_shape_type": result.payload.get("teeth_shape_type"),
                 "teeth_height_type": result.payload.get("teeth_height_type"),
-                "teeth_size_type": result.payload.get("teeth_size_type"),
                 "removed_teeth_index": result.payload.get("removed_teeth_index"),
+                "teeth_variance": result.payload.get("teeth_variance"),
+                "teeth_angle": result.payload.get("teeth_angle"),
                 "arch_depth": result.payload.get("arch_depth"),
                 "molar_width": result.payload.get("molar_width"),
                 "landmarks": result.payload.get("landmarks"),
                 "files": {
                     "maxilla": result.payload.get("maxilla_filename"),
                     "mandibular": result.payload.get("mandibular_filename")
-                }
+                },
+                "used_blender_file_name": result.payload.get("used_blender_file_name")
             }
         }
 
