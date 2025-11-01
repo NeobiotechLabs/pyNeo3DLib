@@ -107,18 +107,23 @@ class ImageAligner:
 class Face3DVisualizer:
     """3D visualization class using Open3D"""
     
-    def __init__(self, target_mouth_width: float = 50.0):
-        self.target_mouth_width = target_mouth_width
+    def __init__(self, target_eye_to_mouth_distance: float = 65.0):
+        self.target_eye_to_mouth_distance = target_eye_to_mouth_distance
     
     def create_front_face_plane(self, image: np.ndarray, landmarks: Dict) -> Tuple[o3d.geometry.TriangleMesh, o3d.geometry.Image, Dict]:
         """Create 3D plane for front face in XZ plane using Open3D"""
         mouth_left = np.array(landmarks['mouth_left'])
         mouth_right = np.array(landmarks['mouth_right'])
         mouth_center = (mouth_left + mouth_right) / 2
-        mouth_width_pixels = np.linalg.norm(mouth_right - mouth_left)
         
-        if mouth_width_pixels > 0:
-            scale_factor = self.target_mouth_width / mouth_width_pixels
+        # 눈-입 거리 기반 스케일링으로 변경
+        left_eye = np.array(landmarks['left_eye'])
+        right_eye = np.array(landmarks['right_eye'])
+        eye_center = (left_eye + right_eye) / 2
+        eye_to_mouth_distance_pixels = np.linalg.norm(mouth_center - eye_center)
+        
+        if eye_to_mouth_distance_pixels > 0:
+            scale_factor = self.target_eye_to_mouth_distance / eye_to_mouth_distance_pixels
         else:
             scale_factor = 1.0
         
@@ -182,24 +187,22 @@ class Face3DVisualizer:
         
         plane_mesh.translate((-mouth_center_3d_x, 0, -mouth_center_3d_z), relative=True)
         
-        # 눈~입 거리 계산 (정면 얼굴 기준)
-        left_eye = np.array(landmarks['left_eye'])
-        right_eye = np.array(landmarks['right_eye'])
-        eye_center = (left_eye + right_eye) / 2
-        eye_to_mouth_distance_pixels = np.linalg.norm(mouth_center - eye_center)
+        # 눈-입 거리 3D 계산 (이미 위에서 계산됨)
         eye_to_mouth_distance_3d = eye_to_mouth_distance_pixels * scale_factor
         
         print(f"[DEBUG] Front face - Eye center: ({eye_center[0]:.2f}, {eye_center[1]:.2f})")
         print(f"[DEBUG] Front face - Mouth center: ({mouth_center[0]:.2f}, {mouth_center[1]:.2f})")
         print(f"[DEBUG] Front face - Eye to mouth distance (pixels): {eye_to_mouth_distance_pixels:.2f}")
-        print(f"[DEBUG] Front face - Eye to mouth distance (3D): {eye_to_mouth_distance_3d:.2f}")
+        print(f"[DEBUG] Front face - Target eye-mouth distance: {self.target_eye_to_mouth_distance:.1f}mm")
+        print(f"[DEBUG] Front face - Calculated scale factor: {scale_factor:.4f}")
+        print(f"[DEBUG] Front face - Eye to mouth distance (3D): {eye_to_mouth_distance_3d:.2f}mm")
         
         plane_params = {
             'width': plane_width,
             'height': plane_height,
             'scale_factor': scale_factor,
             'mouth_center_3d': (0, 0, 0),
-            'mouth_width_3d': self.target_mouth_width,
+            'target_eye_to_mouth_distance': self.target_eye_to_mouth_distance,
             'face_height': plane_height,
             'eye_to_mouth_distance_pixels': eye_to_mouth_distance_pixels,
             'eye_to_mouth_distance_3d': eye_to_mouth_distance_3d
@@ -225,7 +228,7 @@ class Face3DVisualizer:
         h, w = image.shape[:2]
         
         front_face_height = front_plane_params['face_height']
-        mouth_width_3d = front_plane_params['mouth_width_3d']
+        target_eye_to_mouth_distance = front_plane_params['target_eye_to_mouth_distance']
         front_eye_to_mouth_distance_3d = front_plane_params['eye_to_mouth_distance_3d']
 
         # 측면 얼굴에서 눈~입 거리 계산
