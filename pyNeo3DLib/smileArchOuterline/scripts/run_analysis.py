@@ -10,8 +10,10 @@ from smileArchOuterline.core import analyze_upper_IOS_scandata
 
 
 if __name__ == "__main__":
-    # example 디렉토리의 데이터 파일 사용
-    mesh_path = os.path.join(project_root, "example", "data", "upper_ahn.stl")
+    # smileArchOuterline 디렉토리의 데이터 파일 사용
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    smile_arch_dir = os.path.dirname(script_dir)
+    mesh_path = os.path.join(smile_arch_dir, "data","04_안지숙_상악.stl")
     
     arch_depth, molar_width, landmarks = analyze_upper_IOS_scandata(
         mesh_path=mesh_path,
