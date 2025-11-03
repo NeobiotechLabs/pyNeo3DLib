@@ -275,7 +275,16 @@ async def main():
         reg = Neo3DRegistration(json_string, fastserver.ws)
         print(reg.version)
         print(reg.parsed_json)
+        
+        # 시간 측정 시작
+        start_time = time.time()
         result = await reg.run_registration(visualize=False)
+        
+        end_time = time.time()
+        
+        # 실행 시간 출력
+        execution_time = end_time - start_time
+        print(f"등록 처리 시간: {execution_time:.2f}초")
 
     show_result(result)
 
