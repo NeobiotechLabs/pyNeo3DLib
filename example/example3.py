@@ -15,7 +15,7 @@ print("Server started, http://localhost:8000")
 fastserver.start_server()
 
 
-from pyNeo3DLib import Neo3DRegistration
+from pyNeo3DLib.registration import Neo3DRegistration
 
 
 
