@@ -8,14 +8,58 @@ import asyncio
 import base64
 import io
 from PIL import Image
+import psutil
+import os
+
+def log_process_info(stage: str):
+    """프로세스 정보 로깅"""
+    try:
+        current_process = psutil.Process()
+        python_processes = []
+        
+        # 모든 Python 프로세스 찾기
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                if proc.info['name'] and 'python' in proc.info['name'].lower():
+                    python_processes.append({
+                        'pid': proc.info['pid'],
+                        'name': proc.info['name'],
+                        'cmdline': ' '.join(proc.info['cmdline'][:3]) if proc.info['cmdline'] else 'N/A'
+                    })
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        
+        print(f"=== 프로세스 정보 ({stage}) ===")
+        print(f"현재 프로세스 PID: {current_process.pid}")
+        print(f"Python 프로세스 총 개수: {len(python_processes)}")
+        
+        if len(python_processes) > 10:  # 10개 이상일 때만 상세 로그
+            print(f"⚠️  Python 프로세스가 {len(python_processes)}개 실행 중!")
+            for i, proc in enumerate(python_processes[:5]):  # 처음 5개만 출력
+                print(f"  {i+1}. PID:{proc['pid']} - {proc['cmdline']}")
+            if len(python_processes) > 5:
+                print(f"  ... 및 {len(python_processes)-5}개 더")
+        
+    except Exception as e:
+        print(f"프로세스 정보 로깅 실패: {e}")
+
+# 시작 시 프로세스 상태 로깅
+log_process_info("example3.py 시작")
 
 print("Server started, http://localhost:8000")
 
+# 서버 시작 전 프로세스 상태 로깅
+log_process_info("서버 시작 전")
 
 fastserver.start_server()
 
+# 서버 시작 후 프로세스 상태 로깅
+log_process_info("서버 시작 후")
 
 from pyNeo3DLib.registration import Neo3DRegistration
+
+# Neo3DRegistration import 후 프로세스 상태 로깅
+log_process_info("Neo3DRegistration import 후")
 
 
 
@@ -272,15 +316,29 @@ def show_result(result):
 async def main():
     with open(f"{__file__}/../sampleInput_photo.json", "r") as f:
         json_string = f.read()
+        
+        # Neo3DRegistration 인스턴스 생성 전 프로세스 상태 로깅
+        log_process_info("Neo3DRegistration 인스턴스 생성 전")
+        
         reg = Neo3DRegistration(json_string, fastserver.ws)
         print(reg.version)
         print(reg.parsed_json)
         
+        # Neo3DRegistration 인스턴스 생성 후 프로세스 상태 로깅
+        log_process_info("Neo3DRegistration 인스턴스 생성 후")
+        
         # 시간 측정 시작
         start_time = time.time()
+        
+        # registration 실행 전 프로세스 상태 로깅
+        log_process_info("registration 실행 전")
+        
         result = await reg.run_registration(visualize=False)
         
         end_time = time.time()
+        
+        # registration 실행 후 프로세스 상태 로깅
+        log_process_info("registration 실행 후")
         
         # 실행 시간 출력
         execution_time = end_time - start_time
