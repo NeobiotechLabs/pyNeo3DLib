@@ -18,7 +18,7 @@ POST /generate_gingiva
 {
   "input_path": "/path/to/teeth/input/files",
   "output_path": "/path/to/output/directory",
-  "arch_types": ["maxillary", "mandibular"]
+  "arch_types": ["maxilla", "mandibular"]
 }
 ```
 
@@ -32,9 +32,9 @@ POST /generate_gingiva
 
 #### arch_types 옵션
 
-- `"maxillary"`: 상악 치은 생성
+- `"maxilla"`: 상악 치은 생성
 - `"mandibular"`: 하악 치은 생성
-- 둘 다 포함 가능: `["maxillary", "mandibular"]`
+- 둘 다 포함 가능: `["maxilla", "mandibular"]`
 
 ### 응답
 
@@ -220,7 +220,7 @@ input/
 ```
 output/
 ├── mandibular.stl  (하악 치은)
-└── maxillary.stl   (상악 치은, 요청 시)
+└── maxilla.stl   (상악 치은, 요청 시)
 ```
 
 ## ⚠️ 주의사항

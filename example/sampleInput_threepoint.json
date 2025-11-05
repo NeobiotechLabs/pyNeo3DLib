@@ -3,7 +3,7 @@
         "path": "D:/Git/pyNeo3DLib/example/data/threepoint/smilearch.stl"
     },
     "source_mesh": {
-        "path": "D:/Git/pyNeo3DLib/example/data/threepoint/maxillary.stl"
+        "path": "D:/Git/pyNeo3DLib/example/data/threepoint/maxilla.stl"
     },
     "target_points": [
         {"x": 24.98, "y": 19.40, "z": -8.24},

@@ -175,3 +175,4 @@ cython_debug/
 .python-version
 example/output/*
 config.json
+example/data/exports/*
