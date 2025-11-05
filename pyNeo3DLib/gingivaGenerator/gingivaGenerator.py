@@ -5,12 +5,9 @@ import subprocess
 import sys
 from typing import List, Dict, Any, Optional
 
-
-print("GingivaGenerator1")
 # Lazy import: TeethTemplateMaker는 실제 사용 시점에 import
 # from single_template_maker_lib import TeethTemplateMaker
 
-print("GingivaGenerator2")
 class GingivaGenerator:
     """
     치은(Gingiva) 생성 클래스
@@ -26,7 +23,7 @@ class GingivaGenerator:
             websocket: WebSocket 연결 객체 (선택적, 진행 상황 알림용)
         """
         self.websocket = websocket
-        print("GingivaGenerator3")
+
     
     async def generate_gingiva(
         self,
@@ -41,7 +38,7 @@ class GingivaGenerator:
         Args:
             input_path: 치아 입력 파일들이 있는 경로
             output_path: 생성된 치은 파일을 저장할 경로
-            arch_types: 생성할 치은 타입 리스트 ["maxillary", "mandibular"]
+            arch_types: 생성할 치은 타입 리스트 ["maxilla", "mandibular"]
             request_id: 요청 추적을 위한 고유 ID
             
         Returns:
@@ -200,14 +197,14 @@ class GingivaGenerator:
         Returns:
             tuple: (유효 여부, 오류 메시지)
         """
-        valid_arch_types = ["maxillary", "mandibular"]
+        valid_arch_types = ["maxilla", "mandibular"]
         
         if not arch_types:
             return False, "arch_types가 비어있습니다."
         
         for arch_type in arch_types:
             if arch_type not in valid_arch_types:
-                return False, f"유효하지 않은 arch_type: {arch_type}. 'maxillary' 또는 'mandibular'만 가능합니다."
+                return False, f"유효하지 않은 arch_type: {arch_type}. 'maxilla' 또는 'mandibular'만 가능합니다."
         
         return True, None
     

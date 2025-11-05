@@ -88,7 +88,7 @@ async def generate_gingiva_example():
     result = await generator.generate_gingiva(
         input_path="path/to/teeth/files",
         output_path="path/to/output",
-        arch_types=["mandibular", "maxillary"],
+        arch_types=["mandibular", "maxilla"],
         request_id="unique_request_id"
     )
     

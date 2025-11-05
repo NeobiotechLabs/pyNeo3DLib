@@ -322,7 +322,7 @@ async def generate_gingiva(background_tasks: BackgroundTasks, request: Dict[str,
     {
         "input_path": "/path/to/input/teeth/files",
         "output_path": "/path/to/output",
-        "arch_types": ["maxillary", "mandibular"]  # "maxillary" 또는 "mandibular" 또는 둘 다
+        "arch_types": ["maxilla", "mandibular"]  # "maxilla" 또는 "mandibular" 또는 둘 다
     }
     """
     global ws

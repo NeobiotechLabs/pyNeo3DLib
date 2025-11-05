@@ -174,8 +174,8 @@
         
         <div class="checkbox-group">
             <label>생성할 타입 (Arch Types):</label><br>
-            <input type="checkbox" id="maxillary" value="maxillary">
-            <label for="maxillary">Maxillary (상악)</label>
+            <input type="checkbox" id="maxilla" value="maxilla">
+            <label for="maxilla">maxilla (상악)</label>
             <input type="checkbox" id="mandibular" value="mandibular" checked>
             <label for="mandibular">Mandibular (하악)</label>
         </div>
@@ -291,8 +291,8 @@
             const outputPath = document.getElementById('outputPath').value;
             
             const archTypes = [];
-            if (document.getElementById('maxillar').checked) {
-                archTypes.push('maxillar');
+            if (document.getElementById('maxilla').checked) {
+                archTypes.push('maxilla');
             }
             if (document.getElementById('mandibular').checked) {
                 archTypes.push('mandibular');

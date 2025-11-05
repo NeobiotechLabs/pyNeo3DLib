@@ -33,7 +33,7 @@ def get_test_config():
     # 통일된 파일 경로 설정
     config = {
         "target_file": os.path.join(data_dir, "smilearch.stl"),
-        "source_file": os.path.join(data_dir, "maxillary.stl"),
+        "source_file": os.path.join(data_dir, "maxilla.stl"),
         
         # 통일된 테스트 점 좌표
         # "target_points": [

@@ -40,7 +40,7 @@ def test_generate_gingiva():
     request_data = {
         "input_path": input_path,
         "output_path": output_path,
-        "arch_types": ["mandibular"]  # 또는 ["maxillary", "mandibular"]
+        "arch_types": ["mandibular"]  # 또는 ["maxilla", "mandibular"]
     }
     
     print(f"\n[요청 데이터]")
