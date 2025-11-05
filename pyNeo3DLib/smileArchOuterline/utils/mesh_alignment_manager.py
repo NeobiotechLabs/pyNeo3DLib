@@ -560,6 +560,7 @@ class MeshAlignmentManager:
         aligned_mesh = input_mesh.copy()
         aligned_mesh.points = aligned_vertices.astype(np.float64)
 
+        
         return aligned_mesh
     
     def filter_mesh_by_z_threshold(

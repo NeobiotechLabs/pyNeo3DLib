@@ -4,6 +4,7 @@
 """
 
 import numpy as np
+from pyNeo3DLib.smileArchOuterline.utils import visualizer
 import pyvista as pv
 from typing import List, Tuple
 from .curve_extractor import CurveExtractor
@@ -14,6 +15,7 @@ from .curve_sampler import CurveSampler
 from .constants import AnalysisConstants
 from .tangent_normal_from_curve import CurveTangentNormalCalculator
 from .polar_sampler import PolarSampling
+from .visualizer import VisualizeForTest
 
 
 class ArchAnalysisCoordinator:
@@ -67,14 +69,14 @@ class ArchAnalysisCoordinator:
         rotated_mesh, smoothed_points, _ = self.mesh_processor.align_mesh_direction(
             aligned_mesh, smoothed_points
         )
-        
+
         # 6단계: 필터링 및 중심 맞추기
-        final_mesh, final_points, new_center = self.mesh_processor.filter_and_center_mesh(
+        final_mesh, centered_filtered_points, new_center = self.mesh_processor.filter_and_center_mesh(
             rotated_mesh, smoothed_points
         )
-        
 
-        return final_points, final_mesh, new_center
+
+        return final_mesh, centered_filtered_points, new_center
     
     def extract_precise_curve_points(self, aligned_mesh: object, y_axis: np.ndarray) -> Tuple[np.ndarray, object, np.ndarray]:
         """
@@ -195,29 +197,28 @@ class ArchAnalysisCoordinator:
         aligned_mesh, _, _, _, _ = self.mesh_processor.perform_initial_alignment(mesh_path)
         
         # 2단계: 정밀정렬 수행
-        smoothed_points, rotated_mesh, _ = self.perform_precise_alignment(
+        rotated_mesh, centered_filtered_points, _ = self.perform_precise_alignment(
             aligned_mesh, y_axis
         )
 
-
         
-        # 3단계: 정밀한 곡선 포인트 추출
-        precise_smoothed_points, precise_rotated_mesh = self.extract_precise_curve_points(
-            rotated_mesh, y_axis
-        )
+        # # 3단계: 정밀한 곡선 포인트 추출
+        # precise_smoothed_points, precise_rotated_mesh = self.extract_precise_curve_points(
+        #     rotated_mesh, y_axis
+        # )
 
         
         # 4단계: 정규화된 랜드마크 계산
-        landmark_points, arch_depth, molar_width = self.curve_sampler.compute_normalized_landmarks_and_arch_depth_molar_width(smoothed_points)
+        landmark_points, arch_depth, molar_width = self.curve_sampler.compute_normalized_landmarks_and_arch_depth_molar_width(centered_filtered_points)
         
         # 6단계: 최종 시각화 (옵션)
         if visualize_result:
             self.visualizer.visualize_analysis_results(
                 np.array([0,0,0]).reshape(1,3), 
-                precise_rotated_mesh.points, 
-                precise_smoothed_points, 
+                rotated_mesh.points, 
+                centered_filtered_points, 
                 self.curve_sampler.sample_points_by_arc_length(
-                    precise_smoothed_points, 
+                    centered_filtered_points, 
                     AnalysisConstants.DEFAULT_NUM_SAMPLES
                 )
             )

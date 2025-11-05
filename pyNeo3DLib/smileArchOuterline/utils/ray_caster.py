@@ -146,7 +146,7 @@ class RayCaster:
 
 
 
-    def ray_casting_by_point_cloud(self, mesh, origin: np.ndarray, direction: np.ndarray) -> np.ndarray:
+    def ray_casting_by_point_cloud(self, vertices: np.ndarray, origin: np.ndarray, direction: np.ndarray) -> np.ndarray:
         """
         포인트 클라우드 버텍스를 이용한 레이 캐스팅 함수
         
@@ -156,7 +156,7 @@ class RayCaster:
         4. 결과적으로 두 개의 점 샘플링
         
         Args:
-            mesh: PyVista PolyData 객체
+            vertices: 메시의 모든 버텍스 (N, 3)
             origin: 레이 시작점 (numpy array, shape: (1,3))
             direction: 레이 방향 벡터 (numpy array, shape: (1,3))
         
@@ -171,8 +171,6 @@ class RayCaster:
         direction_norm = direction_flat / np.linalg.norm(direction_flat)
         
         # 메시의 모든 버텍스 가져오기
-        vertices = mesh.points
-        
         # 첫 번째 점 찾기: 원점에서 레이 방향으로 가장 가까운 점
         first_point = self._find_closest_point_on_ray(
             vertices, origin_flat, direction_norm, forward=True
@@ -274,7 +272,7 @@ class RayCaster:
     
     def perform_360_degree_ray_casting(
         self,
-        input_mesh, 
+        vertices: np.ndarray, 
         ray_origin: np.ndarray, 
         rotation_axis: np.ndarray, 
         initial_direction: np.ndarray, 
@@ -284,7 +282,7 @@ class RayCaster:
         360도 회전 레이캐스팅을 수행하여 각 각도에서 레이 원점과 가장 가까운 점 2개를 선택합니다.
         
         Args:
-            input_mesh: PyVista PolyData 객체
+            vertices: 메시의 모든 버텍스 (N, 3)
             ray_origin: 레이 시작점 (numpy array, shape: (3,))
             rotation_axis: 회전축 벡터 (numpy array, shape: (3,))
             initial_direction: 초기 레이 방향 벡터 (numpy array, shape: (3,))
@@ -294,7 +292,7 @@ class RayCaster:
             selected_points: 각 각도에서 선택된 가장 가까운 2개 포인트들 (numpy array, shape: (N, 3))
         """
         selected_points = []
-        
+
         # 0도부터 360도까지 각도 간격으로 회전
         for angle in np.arange(0, 360, angle_step):
             # 현재 각도에서의 레이 방향 계산
@@ -302,7 +300,7 @@ class RayCaster:
             
             # 레이 캐스팅 수행
             plus_direction = current_direction.reshape(1, 3)
-            plus_points = self.ray_casting_by_point_cloud(input_mesh, ray_origin.reshape(1, 3), plus_direction)
+            plus_points = self.ray_casting_by_point_cloud(vertices, ray_origin.reshape(1, 3), plus_direction)
             
             # 교차점이 2개 이상인 경우, 레이 원점과 가장 가까운 2개 선택
             if len(plus_points) >= 2:
@@ -323,12 +321,12 @@ class RayCaster:
         else:
             return np.array([]).reshape(0, 3)
     
-    def perform_height_based_ray_casting(self, aligned_mesh, rotation_axis, num_slices=5, angle_step=5):
+    def perform_height_based_ray_casting(self, vertices: np.ndarray, rotation_axis, num_slices=5, angle_step=5):
         """
         높이별로 레이캐스팅하여 등고선 포인트 클라우드 추출
         
         Args:
-            aligned_mesh: 정렬된 메쉬
+            vertices: 메시의 모든 버텍스 (N, 3)
             rotation_axis: 회전축
             num_slices: 슬라이스 개수
             angle_step: 각도 간격
@@ -346,8 +344,8 @@ class RayCaster:
         if len(rotation_axis) != 3:
             raise ValueError(f"rotation_axis는 3차원 벡터여야 합니다. 현재 형태: {rotation_axis.shape}")
         
-        start_ray_origin = np.array([0, min(aligned_mesh.points[:, 1]), 0])
-        end_ray_origin = np.array([0, max(aligned_mesh.points[:, 1]), 0])
+        start_ray_origin = np.array([0, min(vertices[:, 1]), 0])
+        end_ray_origin = np.array([0, max(vertices[:, 1]), 0])
         height_step = (end_ray_origin - start_ray_origin) / num_slices  
         direction = np.array([0, 1, 0])
         initial_direction = np.array([0, 0, -1])
@@ -358,7 +356,7 @@ class RayCaster:
             stepped_start_ray_origin = start_ray_origin + height_step * i * direction
             
             ray_casting_results = self.perform_360_degree_ray_casting(
-                aligned_mesh, stepped_start_ray_origin, rotation_axis, initial_direction, angle_step=angle_step
+                vertices, stepped_start_ray_origin, rotation_axis, initial_direction, angle_step=angle_step
             )
             ray_casting_results_array = np.array(ray_casting_results).reshape(-1, 3)
             result_points_array = np.concatenate([result_points_array, ray_casting_results_array], axis=0)

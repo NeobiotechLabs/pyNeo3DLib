@@ -88,11 +88,11 @@ class MeshProcessor:
         Args:
             mesh: 필터링할 메시
             points: 필터링할 포인트들
-            
+
         Returns:
-            Tuple[filtered_mesh, centered_points, new_center]:
+            Tuple[filtered_mesh, centered_filtered_points, new_center]:
                 - filtered_mesh: 필터링된 메시
-                - centered_points: 중심이 맞춰진 포인트들
+                - centered_filtered_points: 중심이 맞춰진 필터링된 악궁 포인트들
                 - new_center: 새로운 중심점
         """
         # Z값 기준 필터링
@@ -104,6 +104,6 @@ class MeshProcessor:
         # 메시와 포인트를 새로운 중심으로 이동
         centered_mesh = mesh.copy()
         centered_mesh.points -= new_center
-        centered_points = filtered_points - new_center
+        centered_filtered_points = filtered_points - new_center
         
-        return centered_mesh, centered_points, new_center
+        return centered_mesh, centered_filtered_points, new_center

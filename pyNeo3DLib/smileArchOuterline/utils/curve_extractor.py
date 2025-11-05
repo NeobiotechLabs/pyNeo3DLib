@@ -11,6 +11,9 @@ from .signal_processor import SignalProcessor
 from .mesh_alignment_manager import MeshAlignmentManager
 from .curve_sampler import CurveSampler
 from .polar_sampler import PolarSampling
+import time
+from .visualizer import VisualizeForTest
+import open3d as o3d
 
 
 class CurveExtractor:
@@ -35,23 +38,35 @@ class CurveExtractor:
                 - filtered_result_points_array: 필터링된 포인트 배열
                 - filtered_aligned_mesh: 필터링된 메쉬
         """
+        vertices = aligned_mesh.points
+
+        time_start = time.time()
+
+        # vertices를 다운샘플링 (Voxel Grid - 메시 형태 유지)
+        vertices = self._voxel_downsample(vertices, voxel_size=1)
         # 레이캐스팅으로 등고선 포인트 클라우드 추출
         result_points_array = self.ray_caster.perform_height_based_ray_casting(
-            aligned_mesh, y_axis, 
+            vertices, y_axis, 
             num_slices=AnalysisConstants.DEFAULT_NUM_SLICES, 
             angle_step=AnalysisConstants.DEFAULT_ANGLE_STEP
         )
-        
+
+
+        time_end = time.time()
+        print(f"다운샘플링 후 레이캐스팅 소요 시간: {time_end - time_start}")
+
         # 대구치 아웃라이어 제거
         filtered_result_points_array = self.signal_processor.remove_molar_outliers(
             result_points_array, 
             percentile_threshold=AnalysisConstants.MOLAR_OUTLIER_PERCENTILE_THRESHOLD
         )
-        
+ 
         # 메쉬 필터링
         filtered_aligned_mesh = self.mesh_aligner.filter_mesh_by_z_threshold(
             aligned_mesh, filtered_result_points_array
         )
+
+        print(f"filtered_aligned_mesh: {filtered_aligned_mesh.points.shape}")
         
         return filtered_result_points_array, filtered_aligned_mesh
     
@@ -129,3 +144,25 @@ class CurveExtractor:
         )
         
         return sampled_curve_points
+    
+    def _voxel_downsample(self, points: np.ndarray, voxel_size: float = 0.5) -> np.ndarray:
+        """
+        Voxel Grid를 사용한 포인트 클라우드 다운샘플링 (Open3D 사용)
+        메시의 형태를 유지하면서 공간적으로 균등하게 샘플링
+        
+        Args:
+            points: (N, 3) 포인트 배열
+            voxel_size: voxel 크기 (작을수록 더 많은 포인트 유지)
+            
+        Returns:
+            다운샘플링된 포인트 배열
+        """
+        # Open3D PointCloud 객체 생성
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points)
+        
+        # Open3D의 최적화된 voxel downsampling 사용 (C++로 구현됨)
+        downsampled_pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
+        
+        # numpy 배열로 변환하여 반환
+        return np.asarray(downsampled_pcd.points)
