@@ -14,6 +14,7 @@ class MeshAlignmentManager:
     
     # 상수 정의
     EPSILON = 1e-10
+    NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD = 0.9
     STANDARD_BASIS = np.array([
         [1.0, 0.0, 0.0],
         [0.0, 1.0, 0.0],
@@ -199,9 +200,9 @@ class MeshAlignmentManager:
         
         # reference의 성분을 기반으로 적절한 표준 기저 벡터 선택
         abs_ref = np.abs(reference)
-        if abs_ref[0] < 0.9:
+        if abs_ref[0] < self.NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD:
             candidate = np.array([1.0, 0.0, 0.0])
-        elif abs_ref[1] < 0.9:
+        elif abs_ref[1] < self.NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD:
             candidate = np.array([0.0, 1.0, 0.0])
         else:
             candidate = np.array([0.0, 0.0, 1.0])
@@ -213,7 +214,7 @@ class MeshAlignmentManager:
         # 완전히 실패한 경우 크로스 곱으로 생성
         # reference가 [1,0,0] 또는 [-1,0,0]에 가까우면 fallback = [0,1,0]
         # 그 외의 경우 fallback = [1,0,0]
-        if abs_ref[0] < 0.9:
+        if abs_ref[0] < self.NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD:
             fallback = np.array([1.0, 0.0, 0.0])
         else:
             fallback = np.array([0.0, 1.0, 0.0])
@@ -234,13 +235,13 @@ class MeshAlignmentManager:
         result[min_idx] = 1.0
         
         # 선택한 벡터가 reference와 평행한 경우 다른 축 선택
-        if abs(np.dot(result, reference)) > 0.9:
+        if abs(np.dot(result, reference)) > self.NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD:
             # 다음으로 작은 성분의 축 선택
             sorted_indices = np.argsort(abs_ref)
             for idx in sorted_indices:
                 candidate = np.zeros(3, dtype=np.float64)
                 candidate[idx] = 1.0
-                if abs(np.dot(candidate, reference)) < 0.9:
+                if abs(np.dot(candidate, reference)) < self.NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD:
                     result = candidate
                     break
         
@@ -288,19 +289,23 @@ class MeshAlignmentManager:
         if center.shape != (3,):
             raise ValueError(f"center는 (3,) 형태여야 합니다. 현재 shape: {center.shape}")
         
+        # 모든 축에 대해 레이캐스팅 수행
+        intersection_results = [
+            self.ray_caster.get_bidirectional_ray_points(
+                input_mesh, center, principal_evecs[:, i]
+            ) for i in range(3)
+        ]
+
         # 케이스 1: 교차점 개수가 y_axis_intersection_count인 경우
         for i in range(3):
-            intersection_points = self.ray_caster.get_bidirectional_ray_points(
-                input_mesh, center, principal_evecs[:, i]
-            )
-            
-            if len(intersection_points) == self.y_axis_intersection_count:
-                evec_y = self._get_vector_from_closest_intersection(intersection_points, center)
+            if len(intersection_results[i]) == self.y_axis_intersection_count:
+                evec_y = self._get_vector_from_closest_intersection(intersection_results[i], center)
                 used_indices.append(i)
                 return evec_y, used_indices
-            
-            # 케이스 2: 교차점이 0개이고 아직 Y축이 설정되지 않은 경우
-            if len(intersection_points) == 0 and i not in used_indices:
+        
+        # 케이스 2: 교차점이 0개인 경우
+        for i in range(3):
+            if len(intersection_results[i]) == 0:
                 evec_y = self._normalize_vector(principal_evecs[:, i])
                 used_indices.append(i)
                 return evec_y, used_indices
