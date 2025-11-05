@@ -46,6 +46,8 @@ class RayCaster:
         
         # 교차점들 반환
         return points
+
+
     
     def get_bidirectional_ray_points(
         self,
@@ -138,6 +140,137 @@ class RayCaster:
         
         # 벡터 회전
         return np.dot(R, vector)
+
+
+
+
+
+
+    def ray_casting_by_point_cloud(self, mesh, origin: np.ndarray, direction: np.ndarray) -> np.ndarray:
+        """
+        포인트 클라우드 버텍스를 이용한 레이 캐스팅 함수
+        
+        1. 원점에서 레이 방향으로 가장 가까운 점 추출
+        2. 그 방향으로 조금 더 들어가서 원점 갱신
+        3. 새로운 원점에서 나가는 방향(반대)으로 가장 가까운 점 찾기
+        4. 결과적으로 두 개의 점 샘플링
+        
+        Args:
+            mesh: PyVista PolyData 객체
+            origin: 레이 시작점 (numpy array, shape: (1,3))
+            direction: 레이 방향 벡터 (numpy array, shape: (1,3))
+        
+        Returns:
+            교차점 좌표 (numpy array, shape: (N, 3)) - 최대 2개의 점
+        """
+        # 배열 형태 정규화
+        origin_flat = origin.flatten()
+        direction_flat = direction.flatten()
+        
+        # 방향 벡터 정규화
+        direction_norm = direction_flat / np.linalg.norm(direction_flat)
+        
+        # 메시의 모든 버텍스 가져오기
+        vertices = mesh.points
+        
+        # 첫 번째 점 찾기: 원점에서 레이 방향으로 가장 가까운 점
+        first_point = self._find_closest_point_on_ray(
+            vertices, origin_flat, direction_norm, forward=True
+        )
+        
+        if first_point is None:
+            return np.array([]).reshape(0, 3)
+        
+        # 원점 갱신: 첫 번째 점에서 방향으로 조금 더 들어감
+        penetration_distance = 1.0  # 침투 거리 (mm 단위, 필요시 조정 가능)
+        new_origin = first_point + direction_norm * penetration_distance
+        
+        # 두 번째 점 찾기: 새 원점에서 반대 방향으로 가장 가까운 점
+        second_point = self._find_closest_point_on_ray(
+            vertices, new_origin, -direction_norm, forward=True
+        )
+        
+        # 결과 반환
+        result_points = [first_point]
+        if second_point is not None:
+            result_points.append(second_point)
+        
+        return np.array(result_points)
+    
+    def _find_closest_point_on_ray(
+        self, 
+        vertices: np.ndarray, 
+        origin: np.ndarray, 
+        direction: np.ndarray, 
+        forward: bool = True,
+        distance_threshold: float = 5.0
+    ) -> np.ndarray:
+        """
+        레이에 가장 가까운 버텍스를 찾습니다.
+        
+        Args:
+            vertices: 메시의 모든 버텍스 (N, 3)
+            origin: 레이 시작점 (3,)
+            direction: 레이 방향 벡터 (정규화됨) (3,)
+            forward: True면 방향으로, False면 반대 방향의 점만 고려
+            distance_threshold: 레이로부터의 최대 허용 거리 (mm)
+        
+        Returns:
+            가장 가까운 점의 좌표 (3,) 또는 None
+        """
+        # 각 버텍스에서 원점까지의 벡터
+        to_vertices = vertices - origin  # (N, 3)
+        
+        # 레이 방향으로의 투영 거리 (스칼라 투영)
+        projections = np.dot(to_vertices, direction)  # (N,)
+        
+        # forward=True인 경우 양의 투영만, False인 경우 모든 점 고려
+        if forward:
+            valid_mask = projections > 0
+        else:
+            valid_mask = np.ones(len(projections), dtype=bool)
+        
+        if not np.any(valid_mask):
+            return None
+        
+        # 레이 위의 가장 가까운 점 계산
+        projection_points = origin + projections[:, np.newaxis] * direction  # (N, 3)
+        
+        # 각 버텍스와 레이 사이의 거리 계산
+        distances_to_ray = np.linalg.norm(vertices - projection_points, axis=1)  # (N,)
+        
+        # 거리 임계값 내에 있는 점들만 필터링
+        valid_mask &= (distances_to_ray < distance_threshold)
+        
+        if not np.any(valid_mask):
+            return None
+        
+        # 유효한 점들 중에서 원점에서 가장 가까운 점 찾기
+        valid_indices = np.where(valid_mask)[0]
+        distances_from_origin = np.linalg.norm(to_vertices[valid_indices], axis=1)
+        closest_idx = valid_indices[np.argmin(distances_from_origin)]
+        
+        return vertices[closest_idx]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     
     def perform_360_degree_ray_casting(
         self,
@@ -169,7 +302,7 @@ class RayCaster:
             
             # 레이 캐스팅 수행
             plus_direction = current_direction.reshape(1, 3)
-            plus_points = self.ray_casting(input_mesh, ray_origin.reshape(1, 3), plus_direction)
+            plus_points = self.ray_casting_by_point_cloud(input_mesh, ray_origin.reshape(1, 3), plus_direction)
             
             # 교차점이 2개 이상인 경우, 레이 원점과 가장 가까운 2개 선택
             if len(plus_points) >= 2:
