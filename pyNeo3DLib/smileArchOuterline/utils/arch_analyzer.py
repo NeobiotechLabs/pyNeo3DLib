@@ -11,8 +11,14 @@ from .arch_analysis_coordinator import ArchAnalysisCoordinator
 class ArchAnalyzer:
     """치아 악궁 분석을 담당하는 메인 클래스 (리팩토링됨)"""
     
-    def __init__(self):
-        self.coordinator = ArchAnalysisCoordinator()
+    def __init__(self, enable_timing: bool = False):
+        """
+        초기화
+        
+        Args:
+            enable_timing: 성능 측정 활성화 여부 (기본값: False)
+        """
+        self.coordinator = ArchAnalysisCoordinator(enable_timing=enable_timing)
     
     def perform_initial_alignment(self, mesh_path: str) -> Tuple[object, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """

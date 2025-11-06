@@ -15,6 +15,10 @@ from .arch_analyzer import ArchAnalyzer
 from .mesh_direction_aligner import MeshDirectionAligner
 from .mesh_filter import MeshFilter
 from .face_normal_filter import FaceNormalFilter
+from .arch_type_classifier import ArchTypeClassifier
+from .performance_timer import PerformanceTimer
+from .arch_analysis_pipeline import ArchAnalysisPipeline
+from .arch_analysis_coordinator import ArchAnalysisCoordinator
 
 __all__ = [
     'VisualizeForTest',
@@ -29,5 +33,9 @@ __all__ = [
     'ArchAnalyzer',
     'MeshDirectionAligner',
     'MeshFilter',
-    'FaceNormalFilter'
+    'FaceNormalFilter',
+    'ArchTypeClassifier',
+    'PerformanceTimer',
+    'ArchAnalysisPipeline',
+    'ArchAnalysisCoordinator'
 ]
