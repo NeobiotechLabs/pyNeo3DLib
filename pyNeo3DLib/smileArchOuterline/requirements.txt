@@ -2,3 +2,5 @@ pyvista
 numpy
 scikit-learn
 open3d
+scipy
+
