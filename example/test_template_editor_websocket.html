@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>템플릿 편집 API 테스트</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #555;
+            margin-top: 0;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            transition: background-color 0.3s;
+        }
+        button:hover:not(:disabled) {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        button.danger {
+            background-color: #f44336;
+        }
+        button.danger:hover:not(:disabled) {
+            background-color: #da190b;
+        }
+        button.warning {
+            background-color: #ff9800;
+        }
+        button.warning:hover:not(:disabled) {
+            background-color: #e68900;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        .status.idle {
+            background-color: #e0e0e0;
+            color: #555;
+        }
+        .status.started {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+        .status.processing {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .status.completed {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        #messages {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+        .message {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border-left: 4px solid #4CAF50;
+            background-color: white;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .message.info {
+            border-left-color: #2196F3;
+        }
+        .message.success {
+            border-left-color: #4CAF50;
+        }
+        .message.error {
+            border-left-color: #f44336;
+        }
+        .message.warning {
+            border-left-color: #FF9800;
+        }
+        .message-type {
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 5px;
+        }
+        .timestamp {
+            color: #888;
+            font-size: 11px;
+            margin-top: 5px;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 5px 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎨 템플릿 편집 API 테스트</h1>
+    
+    <div class="container">
+        <h2>세션 상태</h2>
+        <div id="sessionStatus" class="status idle">
+            ⚪ 세션 없음 (Idle)
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2>1. 편집 시작 (Start Editing)</h2>
+        <div class="form-group">
+            <label for="blendTemplatePath">템플릿 경로 (Blend Template Path):</label>
+            <input type="text" id="blendTemplatePath" value="" placeholder="템플릿 폴더의 절대 경로를 입력하세요">
+        </div>
+        
+        <div class="form-group">
+            <label for="stlExportPath">내보내기 경로 (STL Export Path):</label>
+            <input type="text" id="stlExportPath" value="" placeholder="내보내기 폴더의 절대 경로를 입력하세요">
+        </div>
+        
+        <div class="form-group">
+            <label for="blendTemplate">템플릿 파일명 (Blend Template File):</label>
+            <input type="text" id="blendTemplate" value="template.blend">
+        </div>
+        
+        <div class="form-group">
+            <label for="startArchDegree">Arch Degree:</label>
+            <input type="number" id="startArchDegree" value="15.5" step="0.1">
+        </div>
+        
+        <div class="form-group">
+            <label for="startYScale">Y Scale:</label>
+            <input type="number" id="startYScale" value="1.2" step="0.1">
+        </div>
+        
+        <button id="startBtn" onclick="startEditing()">편집 시작</button>
+    </div>
+    
+    <div class="container">
+        <h2>2. 변환 적용 (Transform) - 여러 번 가능</h2>
+        <div class="form-group">
+            <label for="transformArchDegree">Arch Degree:</label>
+            <input type="number" id="transformArchDegree" value="20.0" step="0.1">
+        </div>
+        
+        <div class="form-group">
+            <label for="transformYScale">Y Scale:</label>
+            <input type="number" id="transformYScale" value="0.8" step="0.1">
+        </div>
+        
+        <button id="transformBtn" onclick="applyTransform()" disabled>변환 적용</button>
+    </div>
+    
+    <div class="container">
+        <h2>3. 편집 종료 (Stop Editing)</h2>
+        <div class="form-group">
+            <label for="stopArchDegree">Arch Degree:</label>
+            <input type="number" id="stopArchDegree" value="30.0" step="0.1">
+        </div>
+        
+        <div class="form-group">
+            <label for="stopYScale">Y Scale:</label>
+            <input type="number" id="stopYScale" value="1.0" step="0.1">
+        </div>
+        
+        <button id="stopBtn" onclick="stopEditing()" disabled>편집 종료 및 내보내기</button>
+    </div>
+    
+    <div class="container">
+        <h2>4. 빠른 테스트</h2>
+        <div class="button-group">
+            <button onclick="runFullTest()" class="warning">전체 플로우 테스트 (start → transform×2 → stop)</button>
+            <button onclick="runSimpleTest()" class="warning">간단한 플로우 테스트 (start → stop)</button>
+            <button onclick="testInvalidSequence()" class="danger">잘못된 순서 테스트 (transform without start)</button>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2>5. 메시지 로그</h2>
+        <button onclick="clearMessages()">메시지 지우기</button>
+        <div id="messages"></div>
+    </div>
+
+    <script>
+        const BASE_URL = 'http://127.0.0.1:8000';
+        const START_ENDPOINT = `${BASE_URL}/template_editor/start`;
+        const TRANSFORM_ENDPOINT = `${BASE_URL}/template_editor/transform`;
+        const STOP_ENDPOINT = `${BASE_URL}/template_editor/stop`;
+        
+        let sessionStarted = false;
+
+        function updateSessionStatus(status, message) {
+            const statusDiv = document.getElementById('sessionStatus');
+            statusDiv.className = `status ${status}`;
+            statusDiv.textContent = message;
+            
+            // 버튼 상태 업데이트
+            document.getElementById('startBtn').disabled = sessionStarted;
+            document.getElementById('transformBtn').disabled = !sessionStarted;
+            document.getElementById('stopBtn').disabled = !sessionStarted;
+        }
+
+        async function startEditing() {
+            const requestData = {
+                blend_template_path: document.getElementById('blendTemplatePath').value,
+                stl_export_path: document.getElementById('stlExportPath').value,
+                blend_template: document.getElementById('blendTemplate').value,
+                arch_degree: parseFloat(document.getElementById('startArchDegree').value),
+                y_scale: parseFloat(document.getElementById('startYScale').value)
+            };
+
+            try {
+                addMessage(`[START] 편집 시작 요청 전송 중...\n${JSON.stringify(requestData, null, 2)}`, 'info');
+                
+                const response = await fetch(START_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    sessionStarted = true;
+                    updateSessionStatus('started', '🟢 편집 세션 시작됨');
+                    addMessage(`[START] 성공:\n${JSON.stringify(result, null, 2)}`, 'success');
+                } else {
+                    addMessage(`[START] 실패:\n${JSON.stringify(result, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                addMessage(`[START] 오류: ${error.message}`, 'error');
+            }
+        }
+
+        async function applyTransform() {
+            const requestData = {
+                arch_degree: parseFloat(document.getElementById('transformArchDegree').value),
+                y_scale: parseFloat(document.getElementById('transformYScale').value)
+            };
+
+            try {
+                addMessage(`[TRANSFORM] 변환 적용 요청 전송 중...\n${JSON.stringify(requestData, null, 2)}`, 'info');
+                
+                const response = await fetch(TRANSFORM_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    updateSessionStatus('processing', '🔄 변환 적용됨 (편집 중)');
+                    addMessage(`[TRANSFORM] 성공:\n${JSON.stringify(result, null, 2)}`, 'success');
+                } else {
+                    addMessage(`[TRANSFORM] 실패:\n${JSON.stringify(result, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                addMessage(`[TRANSFORM] 오류: ${error.message}`, 'error');
+            }
+        }
+
+        async function stopEditing() {
+            const requestData = {
+                arch_degree: parseFloat(document.getElementById('stopArchDegree').value),
+                y_scale: parseFloat(document.getElementById('stopYScale').value)
+            };
+
+            try {
+                addMessage(`[STOP] 편집 종료 요청 전송 중...\n${JSON.stringify(requestData, null, 2)}`, 'info');
+                
+                const response = await fetch(STOP_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    sessionStarted = false;
+                    updateSessionStatus('completed', '✅ 편집 완료 및 내보내기 완료');
+                    addMessage(`[STOP] 성공:\n${JSON.stringify(result, null, 2)}`, 'success');
+                    
+                    if (result.stl_folder_path) {
+                        addMessage(`STL 파일 경로: ${result.stl_folder_path}`, 'info');
+                    }
+                } else {
+                    sessionStarted = false;
+                    updateSessionStatus('error', '❌ 편집 종료 실패');
+                    addMessage(`[STOP] 실패:\n${JSON.stringify(result, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                addMessage(`[STOP] 오류: ${error.message}`, 'error');
+            }
+        }
+
+        async function runFullTest() {
+            addMessage('=== 전체 플로우 테스트 시작 ===', 'info');
+            
+            // 1. Start
+            document.getElementById('startArchDegree').value = 15.5;
+            document.getElementById('startYScale').value = 1.2;
+            await startEditing();
+            await sleep(2000);
+            
+            if (!sessionStarted) {
+                addMessage('테스트 중단: 편집 시작 실패', 'error');
+                return;
+            }
+            
+            // 2. Transform #1
+            document.getElementById('transformArchDegree').value = 20.0;
+            document.getElementById('transformYScale').value = 0.8;
+            await applyTransform();
+            await sleep(2000);
+            
+            // 3. Transform #2
+            document.getElementById('transformArchDegree').value = 25.0;
+            document.getElementById('transformYScale').value = 0.9;
+            await applyTransform();
+            await sleep(2000);
+            
+            // 4. Stop
+            document.getElementById('stopArchDegree').value = 30.0;
+            document.getElementById('stopYScale').value = 1.0;
+            await stopEditing();
+            
+            addMessage('=== 전체 플로우 테스트 완료 ===', 'success');
+        }
+
+        async function runSimpleTest() {
+            addMessage('=== 간단한 플로우 테스트 시작 ===', 'info');
+            
+            // 1. Start
+            document.getElementById('startArchDegree').value = 18.0;
+            document.getElementById('startYScale').value = 1.1;
+            await startEditing();
+            await sleep(2000);
+            
+            if (!sessionStarted) {
+                addMessage('테스트 중단: 편집 시작 실패', 'error');
+                return;
+            }
+            
+            // 2. Stop (transform 생략)
+            document.getElementById('stopArchDegree').value = 25.0;
+            document.getElementById('stopYScale').value = 1.0;
+            await stopEditing();
+            
+            addMessage('=== 간단한 플로우 테스트 완료 ===', 'success');
+        }
+
+        async function testInvalidSequence() {
+            addMessage('=== 잘못된 순서 테스트: start 없이 transform 호출 ===', 'warning');
+            
+            // 세션이 시작되지 않은 상태에서 transform 호출
+            const originalState = sessionStarted;
+            sessionStarted = false;
+            updateSessionStatus('idle', '⚪ 세션 없음 (의도적으로 idle 상태)');
+            
+            document.getElementById('transformArchDegree').value = 20.0;
+            document.getElementById('transformYScale').value = 0.8;
+            
+            const requestData = {
+                arch_degree: parseFloat(document.getElementById('transformArchDegree').value),
+                y_scale: parseFloat(document.getElementById('transformYScale').value)
+            };
+
+            try {
+                addMessage(`[INVALID TEST] transform 호출 (start 없이)...\n${JSON.stringify(requestData, null, 2)}`, 'warning');
+                
+                const response = await fetch(TRANSFORM_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const result = await response.json();
+                
+                if (result.status === 'error' && result.message.includes('시작되지 않았습니다')) {
+                    addMessage(`[INVALID TEST] 예상대로 오류 반환됨:\n${JSON.stringify(result, null, 2)}`, 'success');
+                } else {
+                    addMessage(`[INVALID TEST] 예상과 다른 응답:\n${JSON.stringify(result, null, 2)}`, 'warning');
+                }
+            } catch (error) {
+                addMessage(`[INVALID TEST] 오류: ${error.message}`, 'error');
+            }
+            
+            sessionStarted = originalState;
+            if (sessionStarted) {
+                updateSessionStatus('started', '🟢 편집 세션 시작됨');
+            } else {
+                updateSessionStatus('idle', '⚪ 세션 없음 (Idle)');
+            }
+            
+            addMessage('=== 잘못된 순서 테스트 완료 ===', 'info');
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        function addMessage(text, type = 'info') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            let icon = 'ℹ️';
+            if (type === 'error') icon = '❌';
+            if (type === 'warning') icon = '⚠️';
+            if (type === 'success') icon = '✅';
+            
+            messageDiv.innerHTML = `<div class="message-type">${icon} ${type.toUpperCase()}</div><pre>${text}</pre><div class="timestamp">${new Date().toLocaleString()}</div>`;
+            document.getElementById('messages').appendChild(messageDiv);
+            
+            // 자동 스크롤
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+
+        // 페이지 로드 시 초기 상태 설정
+        window.addEventListener('load', function() {
+            updateSessionStatus('idle', '⚪ 세션 없음 (Idle)');
+            addMessage('페이지가 로드되었습니다. 편집 시작 버튼을 클릭하여 세션을 시작하세요.', 'info');
+        });
+    </script>
+</body>
+</html>
+
