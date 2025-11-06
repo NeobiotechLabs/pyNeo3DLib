@@ -11,12 +11,67 @@ import requests
 import json
 import sys
 from pathlib import Path
+from typing import Dict, List
+import pytest
 
 # 서버 URL
 BASE_URL = "http://127.0.0.1:8000"
 START_ENDPOINT = f"{BASE_URL}/template_editor/start"
 TRANSFORM_ENDPOINT = f"{BASE_URL}/template_editor/transform"
 STOP_ENDPOINT = f"{BASE_URL}/template_editor/stop"
+
+
+# ============== Pytest Fixtures ==============
+
+@pytest.fixture
+def template_paths():
+    """
+    테스트에 필요한 경로 설정을 반환하는 fixture
+    
+    Returns:
+        dict: 템플릿 경로, 내보내기 경로, 사용 가능한 템플릿 목록을 포함한 딕셔너리
+    """
+    current_dir = Path(__file__).parent
+    blend_template_path = str((current_dir / "data" / "templates").absolute())
+    stl_export_path = str((current_dir / "data" / "exports").absolute())
+    templates_dir = current_dir / "data" / "templates"
+    available_templates = list(templates_dir.glob("*.blend"))
+    
+    return {
+        "blend_template_path": blend_template_path,
+        "stl_export_path": stl_export_path,
+        "templates_dir": templates_dir,
+        "available_templates": available_templates,
+        "template_file": available_templates[0].name if available_templates else None
+    }
+
+
+# ============== 헬퍼 함수 ==============
+
+def get_template_paths() -> Dict[str, any]:
+    """
+    테스트에 필요한 경로 설정을 반환하는 헬퍼 함수
+    pytest를 사용하지 않는 경우에도 사용 가능
+    
+    Returns:
+        dict: 템플릿 경로, 내보내기 경로, 사용 가능한 템플릿 목록을 포함한 딕셔너리
+    """
+    current_dir = Path(__file__).parent
+    blend_template_path = str((current_dir / "data" / "templates").absolute())
+    stl_export_path = str((current_dir / "data" / "exports").absolute())
+    templates_dir = current_dir / "data" / "templates"
+    available_templates = list(templates_dir.glob("*.blend"))
+    
+    return {
+        "blend_template_path": blend_template_path,
+        "stl_export_path": stl_export_path,
+        "templates_dir": templates_dir,
+        "available_templates": available_templates,
+        "template_file": available_templates[0].name if available_templates else None
+    }
+
+
+# ============== 테스트 함수 ==============
 
 def test_template_editor_api():
     """템플릿 편집 API 테스트 - 세 개의 엔드포인트를 순차적으로 호출"""
@@ -43,22 +98,19 @@ def test_template_editor_api():
     # 2. 테스트 데이터 준비
     print("\n=== 2. 테스트 데이터 준비 ===")
     
-    # 실제 환경에 맞게 경로를 수정하세요
-    current_dir = Path(__file__).parent
-    blend_template_path = str((current_dir / "data" / "templates").absolute())
-    stl_export_path = str((current_dir / "data" / "exports").absolute())
-    
-    # 사용 가능한 템플릿 파일 찾기
-    templates_dir = current_dir / "data" / "templates"
-    available_templates = list(templates_dir.glob("*.blend"))
+    # 헬퍼 함수를 사용하여 경로 설정 가져오기
+    paths = get_template_paths()
+    blend_template_path = paths["blend_template_path"]
+    stl_export_path = paths["stl_export_path"]
+    templates_dir = paths["templates_dir"]
+    available_templates = paths["available_templates"]
+    template_file = paths["template_file"]
     
     if not available_templates:
         print(f"[ERROR] .blend 템플릿 파일이 없습니다: {templates_dir}")
         print("  실제 .blend 파일을 준비하여 다시 테스트하세요.")
         return False
     
-    # 첫 번째 사용 가능한 템플릿 사용
-    template_file = available_templates[0].name
     print(f"사용할 템플릿 파일: {template_file}")
     print(f"사용 가능한 템플릿 목록: {[t.name for t in available_templates]}")
     print(f"템플릿 경로: {blend_template_path}")
@@ -299,14 +351,14 @@ def test_api_validation():
     print("\n=== 테스트 4: transform 필수 파라미터 누락 (실패 예상) ===")
     
     # 먼저 start를 호출해서 세션 시작
-    current_dir = Path(__file__).parent
-    blend_template_path = str((current_dir / "data" / "templates").absolute())
-    stl_export_path = str((current_dir / "data" / "exports").absolute())
-    templates_dir = current_dir / "data" / "templates"
-    available_templates = list(templates_dir.glob("*.blend"))
+    # 헬퍼 함수를 사용하여 경로 설정 가져오기
+    paths = get_template_paths()
+    blend_template_path = paths["blend_template_path"]
+    stl_export_path = paths["stl_export_path"]
+    available_templates = paths["available_templates"]
+    template_file = paths["template_file"]
     
     if available_templates:
-        template_file = available_templates[0].name
         start_data = {
             "blend_template_path": blend_template_path,
             "stl_export_path": stl_export_path,
