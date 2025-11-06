@@ -7,12 +7,12 @@ import numpy as np
 from typing import List, Tuple
 from scipy.spatial import KDTree
 
-from .mesh_processor import MeshProcessor
-from .analysis_visualizer import AnalysisVisualizer
-from .curve_sampler import CurveSampler
-from .constants import AnalysisConstants
-from .arch_analysis_pipeline import ArchAnalysisPipeline
-from .performance_timer import PerformanceTimer
+from pyNeo3DLib.smileArchOuterline.utils.mesh_processing.mesh_processor import MeshProcessor
+from pyNeo3DLib.smileArchOuterline.utils.visualization.analysis_visualizer import AnalysisVisualizer
+from pyNeo3DLib.smileArchOuterline.utils.curve_processing.curve_sampler import CurveSampler
+from pyNeo3DLib.smileArchOuterline.utils.common.constants import AnalysisConstants
+from pyNeo3DLib.smileArchOuterline.utils.analysis.arch_analysis_pipeline import ArchAnalysisPipeline
+from pyNeo3DLib.smileArchOuterline.utils.common.performance_timer import PerformanceTimer
 
 
 class ArchAnalysisCoordinator:

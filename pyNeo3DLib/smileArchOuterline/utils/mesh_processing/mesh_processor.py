@@ -5,10 +5,10 @@
 
 import numpy as np
 from typing import Tuple
-from .mesh_aligner import MeshAligner
+# from .mesh_aligner import MeshAligner
 from .mesh_alignment_manager import MeshAlignmentManager
-from .mesh_direction_aligner import MeshDirectionAligner
 from .mesh_filter import MeshFilter
+from .mesh_transformer import MeshTransformer
 
 
 class MeshProcessor:
@@ -16,7 +16,7 @@ class MeshProcessor:
     
     def __init__(self):
         self.mesh_aligner = MeshAlignmentManager()
-        self.direction_aligner = MeshDirectionAligner()
+        self.mesh_transformer = MeshTransformer()
         self.mesh_filter = MeshFilter()
     
     def perform_initial_alignment(self, mesh_path: str) -> Tuple[object, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -35,10 +35,16 @@ class MeshProcessor:
                 - evec_z: Z축 정렬 벡터
         """
         # 메쉬 로드 및 주축 계산
-        mesh_aligner = MeshAligner(mesh_path)
-        input_mesh = mesh_aligner.mesh
-        center = mesh_aligner.center.reshape(1, 3)
-        _, principal_evecs = mesh_aligner.compute_principal_axes()
+        # mesh_aligner = MeshAligner(mesh_path)
+        # input_mesh = mesh_aligner.mesh
+        # center = mesh_aligner.center.reshape(1, 3)
+        # _, principal_evecs = mesh_aligner.compute_principal_axes()
+
+        # MeshAlignmentManager를 사용하여 메쉬 로드 및 주축 계산
+        self.mesh_aligner.load_mesh(mesh_path)
+        input_mesh = self.mesh_aligner.mesh
+        center = self.mesh_aligner.center.reshape(1, 3)
+        _, principal_evecs, _ = self.mesh_aligner.compute_principal_axes()
 
         # 정렬 축 결정
         evec_x, evec_y, evec_z = self.mesh_aligner.determine_alignment_axes(
@@ -67,10 +73,10 @@ class MeshProcessor:
                 - rotation_matrix: 회전 행렬
         """
         # 방향 벡터 계산
-        direction_vector = self.direction_aligner.calculate_direction_vector(points)
+        direction_vector = self.mesh_transformer.calculate_direction_vector(points)
         
         # 포인트들을 Z축에 정렬
-        aligned_points, rotation_matrix = self.direction_aligner.align_points_to_z_axis(
+        aligned_points, rotation_matrix = self.mesh_transformer.align_points_to_z_axis(
             points, direction_vector
         )
 

@@ -5,7 +5,7 @@
 
 import numpy as np
 from typing import Tuple
-from .polar_sampler import PolarSampling
+from pyNeo3DLib.smileArchOuterline.utils.curve_processing.polar_sampler import PolarSampling
 
 
 class ArchTypeClassifier:
@@ -95,19 +95,4 @@ class ArchTypeClassifier:
             float: RMSE 값
         """
         return np.sqrt(np.mean((samples1 - samples2) ** 2))
-    
-    def get_filter_window_size(self, arch_type: str) -> int:
-        """
-        악궁 타입에 맞는 필터 윈도우 크기를 반환합니다.
-        
-        Args:
-            arch_type: "dentulous" 또는 "edentulous"
-            
-        Returns:
-            int: 필터 윈도우 크기
-        """
-        if arch_type == "dentulous":
-            return self.DENTULOUS_WINDOW_SIZE
-        else:
-            return self.EDENTULOUS_WINDOW_SIZE
 

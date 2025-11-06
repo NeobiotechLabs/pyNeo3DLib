@@ -1,8 +1,8 @@
 import numpy as np
 import pyvista as pv
 from typing import List, Optional
-from .constants import AnalysisConstants
-from .vector_utils import VectorUtils
+from pyNeo3DLib.smileArchOuterline.utils.common.constants import AnalysisConstants
+from pyNeo3DLib.smileArchOuterline.utils.common.vector_utils import VectorUtils
 
 
 class PointCloudRayCaster:

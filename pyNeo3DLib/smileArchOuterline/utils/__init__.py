@@ -2,40 +2,19 @@
 Utils package for analyzing_IOS
 """
 
-from .visualizer import VisualizeForTest
-from .polar_sampler import PolarSampling
-from .mesh_aligner import MeshAligner
-from .constants import AnalysisConstants
-from .ray_caster import RayCaster
-from .mesh_alignment_manager import MeshAlignmentManager
-from .signal_processor import SignalProcessor
-from .curve_sampler import CurveSampler
-from .landmark_calculator import LandmarkCalculator
-from .arch_analyzer import ArchAnalyzer
-from .mesh_direction_aligner import MeshDirectionAligner
-from .mesh_filter import MeshFilter
-from .face_normal_filter import FaceNormalFilter
-from .arch_type_classifier import ArchTypeClassifier
-from .performance_timer import PerformanceTimer
-from .arch_analysis_pipeline import ArchAnalysisPipeline
-from .arch_analysis_coordinator import ArchAnalysisCoordinator
+# Sub-packages
+from . import analysis
+from . import mesh_processing
+from . import curve_processing
+from . import visualization
+from . import ray_casting
+from . import common
 
 __all__ = [
-    'VisualizeForTest',
-    'PolarSampling', 
-    'MeshAligner',
-    'AnalysisConstants',
-    'RayCaster',
-    'MeshAlignmentManager',
-    'SignalProcessor',
-    'CurveSampler',
-    'LandmarkCalculator',
-    'ArchAnalyzer',
-    'MeshDirectionAligner',
-    'MeshFilter',
-    'FaceNormalFilter',
-    'ArchTypeClassifier',
-    'PerformanceTimer',
-    'ArchAnalysisPipeline',
-    'ArchAnalysisCoordinator'
+    "analysis",
+    "mesh_processing",
+    "curve_processing",
+    "visualization",
+    "ray_casting",
+    "common"
 ]

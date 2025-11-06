@@ -4,9 +4,9 @@
 
 import numpy as np
 from typing import List
-from .constants import AnalysisConstants
-from .polar_sampler import PolarSampling
-from .visualizer import VisualizeForTest
+from pyNeo3DLib.smileArchOuterline.utils.common.constants import AnalysisConstants
+from pyNeo3DLib.smileArchOuterline.utils.curve_processing.polar_sampler import PolarSampling
+from pyNeo3DLib.smileArchOuterline.utils.visualization.visualizer import VisualizeForTest
 
 
 class CurveSampler:

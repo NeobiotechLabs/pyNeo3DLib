@@ -5,6 +5,7 @@
 
 import numpy as np
 from typing import Tuple
+import pyvista as pv
 
 
 class MeshFilter:
@@ -108,6 +109,39 @@ class MeshFilter:
         mask = np.abs(z_values - z_mean) <= std_threshold * z_std
         
         return points[mask]
+
+    def filter_mesh_by_z_threshold(
+        self, 
+        aligned_mesh: pv.PolyData, 
+        filtered_points: np.ndarray
+    ) -> pv.PolyData:
+        """
+        Z 임계값을 기준으로 메쉬 필터링
+        
+        Args:
+            aligned_mesh: 정렬된 메쉬
+            filtered_points: 필터링된 포인트들 (N, 3)
+            
+        Returns:
+            filtered_aligned_mesh: 필터링된 메쉬
+        """
+        if len(filtered_points) == 0:
+            raise ValueError("filtered_points가 비어있습니다.")
+        
+        if filtered_points.shape[1] != 3:
+            raise ValueError(f"filtered_points는 (N, 3) 형태여야 합니다. 현재 shape: {filtered_points.shape}")
+        
+        z_min_point = np.min(filtered_points[:, 2])
+        mask = aligned_mesh.points[:, 2] > z_min_point
+        filtered_aligned_mesh = aligned_mesh.extract_points(mask)
+
+        # 가장 큰 덩어리만 추출
+        largest_component = filtered_aligned_mesh.extract_largest()
+
+        # 중복된 면이나 점이 있는 경우 제거
+        filtered_largest_component = largest_component.clean()
+        
+        return filtered_largest_component
     
     def filter_points_by_distance_from_center(
         self, 

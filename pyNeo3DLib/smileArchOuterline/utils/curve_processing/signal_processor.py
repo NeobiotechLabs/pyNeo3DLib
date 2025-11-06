@@ -3,7 +3,7 @@
 """
 
 import numpy as np
-from .constants import AnalysisConstants
+from pyNeo3DLib.smileArchOuterline.utils.common.constants import AnalysisConstants
 
 
 class SignalProcessor:

@@ -20,7 +20,7 @@ if __name__ == "__main__":
     
     arch_depth, molar_width, landmarks = analyze_upper_IOS_scandata(
         mesh_path=mesh_path,
-        visualize_result=True
+        visualize_result=False
     )
     
     print(f"arch_depth: {arch_depth}")
