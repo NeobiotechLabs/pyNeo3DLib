@@ -312,8 +312,14 @@ async def generate_gingiva(background_tasks: BackgroundTasks, request: Dict[str,
     {
         "input_path": "/path/to/input/teeth/files",
         "output_path": "/path/to/output",
-        "arch_types": ["maxilla", "mandibular"]  # "maxilla" 또는 "mandibular" 또는 둘 다
+        "arch_types": ["maxilla", "mandibular"],  # "maxilla" 또는 "mandibular" 또는 둘 다
+        "parallel": true  # (선택적) 병렬 처리 여부 (기본값: true, arch_types가 2개 이상일 때 자동 적용)
     }
+    
+    병렬 처리 설명:
+    - parallel=true (기본값): arch_types가 2개 이상일 때 각 타입별로 별도 프로세스를 생성하여 병렬 처리
+      → 성능 향상: 약 50% 시간 단축 (예: maxilla와 mandibular를 동시 생성)
+    - parallel=false: 순차 처리 (하나의 프로세스에서 모든 타입을 차례로 처리)
     """
     global ws
     request_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
@@ -371,22 +377,40 @@ async def generate_gingiva(background_tasks: BackgroundTasks, request: Dict[str,
         print(f"[{request_id}] 출력 경로: {output_path}")
         print(f"[{request_id}] 생성할 타입: {arch_types}")
         
+        # 병렬 처리 옵션 (기본값: True)
+        use_parallel = request.get("parallel", True)
+        
         # 백그라운드에서 치은 생성 실행
-        background_tasks.add_task(
-            gingiva_generator.generate_gingiva,
-            input_path,
-            output_path,
-            arch_types,
-            request_id
-        )
+        if use_parallel and len(arch_types) > 1:
+            print(f"[{request_id}] 병렬 처리 모드 사용 ({len(arch_types)}개 프로세스)")
+            background_tasks.add_task(
+                gingiva_generator.generate_gingiva_parallel,
+                input_path,
+                output_path,
+                arch_types,
+                request_id
+            )
+        else:
+            print(f"[{request_id}] 순차 처리 모드 사용")
+            background_tasks.add_task(
+                gingiva_generator.generate_gingiva,
+                input_path,
+                output_path,
+                arch_types,
+                request_id
+            )
+        
+        processing_mode = "parallel" if (use_parallel and len(arch_types) > 1) else "sequential"
         
         return {
             "status": "processing",
-            "message": "치은 생성이 시작되었습니다. 결과는 WebSocket을 통해 전송됩니다.",
+            "message": f"치은 생성이 시작되었습니다 ({processing_mode} 모드). 결과는 WebSocket을 통해 전송됩니다.",
             "request_id": request_id,
             "input_path": input_path,
             "output_path": output_path,
             "arch_types": arch_types,
+            "processing_mode": processing_mode,
+            "parallel_enabled": use_parallel,
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
