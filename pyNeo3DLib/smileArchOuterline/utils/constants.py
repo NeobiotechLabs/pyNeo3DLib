@@ -33,7 +33,7 @@ class AnalysisConstants:
 
     
     # 아웃라이어 제거 설정
-    MOLAR_OUTLIER_PERCENTILE_THRESHOLD = 2.5
+    MOLAR_OUTLIER_PERCENTILE_THRESHOLD = 10
     
     # 극좌표 샘플링 설정
     DEFAULT_Y_OFFSET = 0.5
