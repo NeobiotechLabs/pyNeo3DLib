@@ -87,12 +87,15 @@ class CurveExtractor:
             num_slices=AnalysisConstants.DEFAULT_NUM_SLICES, 
             angle_step=AnalysisConstants.DEFAULT_ANGLE_STEP
         )
+
+        print(f"result_points_array shape: {result_points_array.shape}")
         
         # 대구치 아웃라이어 제거
         filtered_result_points_array = self.signal_processor.remove_molar_outliers(
             result_points_array, 
             percentile_threshold=AnalysisConstants.MOLAR_OUTLIER_PERCENTILE_THRESHOLD
         )
+
         
         # 메쉬 필터링
         filtered_aligned_mesh = self.mesh_aligner.filter_mesh_by_z_threshold(
@@ -101,12 +104,12 @@ class CurveExtractor:
         
         return filtered_aligned_mesh
     
-    def extract_curve_by_polar_sampling(self, filtered_mesh: object, z_min_point: float) -> np.ndarray:
+    def extract_curve_by_polar_sampling(self, mesh_points: np.ndarray, z_min_point: float) -> np.ndarray:
         """
         극좌표 샘플링을 통해 곡선 포인트를 추출합니다.
         
         Args:
-            filtered_mesh: 필터링된 메쉬
+            mesh_points: 메쉬 포인트 배열
             z_min_point: Z 최소값
             
         Returns:
@@ -114,7 +117,7 @@ class CurveExtractor:
         """
         polar_sampler = PolarSampling(np.array([0, 0, z_min_point]))
         polar_sampling_points = polar_sampler.polar_sampling(
-            filtered_mesh.points,
+            mesh_points,
             angle_step=1,
             mode="ymin",
             y_range=(-np.inf, np.inf)

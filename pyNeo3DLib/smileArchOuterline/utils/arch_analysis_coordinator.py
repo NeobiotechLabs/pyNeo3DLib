@@ -16,6 +16,8 @@ from .constants import AnalysisConstants
 from .tangent_normal_from_curve import CurveTangentNormalCalculator
 from .polar_sampler import PolarSampling
 from .visualizer import VisualizeForTest
+from .ray_caster import RayCaster
+import time
 
 
 class ArchAnalysisCoordinator:
@@ -92,22 +94,27 @@ class ArchAnalysisCoordinator:
                 - filtered_aligned_mesh: 필터링된 메쉬
                 - center_point: 중심점
         """
-        # 1단계: 등고선 포인트 추출
-        filtered_aligned_mesh = self.curve_extractor.filter_mesh_by_z_threshold(
-            aligned_mesh, y_axis
-        )
-   
-        # 2단계: 극좌표 샘플링으로 곡선 추출
-        z_min_point = min(filtered_aligned_mesh.points[:, 2])
-        polar_sampling_points = self.curve_extractor.extract_curve_by_polar_sampling(
-            filtered_aligned_mesh, z_min_point
+        ray_caster = RayCaster()
+        result_points_array = ray_caster.perform_height_based_ray_casting(
+            aligned_mesh.points, y_axis, 
+            num_slices=AnalysisConstants.DEFAULT_NUM_SLICES, 
+            angle_step=AnalysisConstants.DEFAULT_ANGLE_STEP
         )
 
-        
-        # 3단계: 이동평균 필터링
-        moving_average_points = self.signal_processor.moving_average_filter(
-            polar_sampling_points,
-            window_size=50
+
+
+        # 대구치 아웃라이어 제거
+        signal_processor = SignalProcessor()
+        filtered_result_points_array = signal_processor.remove_molar_outliers(
+            aligned_mesh.points, 
+            percentile_threshold=AnalysisConstants.MOLAR_OUTLIER_PERCENTILE_THRESHOLD
+        )
+
+                # 2단계: 극좌표 샘플링으로 곡선 추출
+        z_min_point = min(aligned_mesh.points[:, 2])
+        curve_extractor = CurveExtractor()
+        polar_sampling_points = curve_extractor.extract_curve_by_polar_sampling(
+            filtered_result_points_array, z_min_point
         )
 
 
@@ -194,31 +201,128 @@ class ArchAnalysisCoordinator:
         """
         y_axis = np.array([0, 1, 0])
         # 1단계: 1차 정렬 수행
+        time_start = time.time()
         aligned_mesh, _, _, _, _ = self.mesh_processor.perform_initial_alignment(mesh_path)
-        
+        time_end = time.time()
+        print(f"1차 정렬 시간: {time_end - time_start}")
         # 2단계: 정밀정렬 수행
+        time_start = time.time()
         rotated_mesh, centered_filtered_points, _ = self.perform_precise_alignment(
             aligned_mesh, y_axis
         )
+        time_end = time.time()
+        print(f"정밀정렬 시간: {time_end - time_start}")
+                # 레이캐스팅으로 등고선 포인트 클라우드 추출
+
+
+        ray_caster = RayCaster()
+        result_points_array = ray_caster.perform_height_based_ray_casting(
+            rotated_mesh.points, y_axis, 
+            num_slices=AnalysisConstants.DEFAULT_NUM_SLICES, 
+            angle_step=AnalysisConstants.DEFAULT_ANGLE_STEP
+        )
+
+
+
+        # 대구치 아웃라이어 제거
+        signal_processor = SignalProcessor()
+        filtered_result_points_array = signal_processor.remove_molar_outliers(
+            rotated_mesh.points, 
+            percentile_threshold=AnalysisConstants.MOLAR_OUTLIER_PERCENTILE_THRESHOLD
+        )
+
+                # 2단계: 극좌표 샘플링으로 곡선 추출
+        z_min_point = min(rotated_mesh.points[:, 2])
+        curve_extractor = CurveExtractor()
+        polar_sampling_points = curve_extractor.extract_curve_by_polar_sampling(
+            filtered_result_points_array, z_min_point
+        )
+
+
+
+
+        # 3단계: 이동평균 필터링
+        moving_average_points = self.signal_processor.moving_average_filter(
+           polar_sampling_points ,
+            window_size=AnalysisConstants.DEFAULT_WINDOW_SIZE
+        )
+
+
+
+        # curve tangent and normal calculation
+        curve_tangent_normal_calculator = CurveTangentNormalCalculator()
+        _, curve_normal = curve_tangent_normal_calculator.calculate_tangents_and_normals(moving_average_points)
+        outer_expand_curve_points = moving_average_points - curve_normal * 5
+
+
+        outer_expand_curve_points_min_point = np.min(outer_expand_curve_points[:, 0])
+        outer_expand_curve_points_max_point = np.max(outer_expand_curve_points[:, 0])
+        mask = (filtered_result_points_array[:, 0] > outer_expand_curve_points_min_point) & (filtered_result_points_array[:, 0] < outer_expand_curve_points_max_point)
+        filtered_result_points_array = filtered_result_points_array[mask]
+
+
+
+        # 2단계: 극좌표 샘플링으로 곡선 추출
+        z_min_point = min(filtered_result_points_array[:, 2])
+        polar_sampling_points_second = self.curve_extractor.extract_curve_by_polar_sampling(
+            filtered_result_points_array, z_min_point
+        )
+
+        #  유치악, 무치악 판단해서 필터링 계수 변경시켜야함
+
+        # 80도에서 100도 사이의 포인트 추출 
+        polar_sampler = PolarSampling(np.array([0, 0, z_min_point]))
+        polar_sampling_points_80_100 = polar_sampler.polar_sampling(
+            filtered_result_points_array,
+            angle_step=1,
+            mode="ymin",
+            start_angle=80,
+            end_angle=100,
+            y_range=(-np.inf, np.inf)
+        )
+
+        polar_sampling_points_80_100_second = polar_sampler.polar_sampling(
+            filtered_result_points_array,
+            angle_step=1,
+            mode="farthest",
+            start_angle=80,
+            end_angle=100,
+            y_range=(-np.inf, np.inf)
+        )
+
+        # polar_sampling_points_80_100와 polar_sampling_points_80_100_second 의 RMSE 계산
+        rmse = np.sqrt(np.mean((polar_sampling_points_80_100 - polar_sampling_points_80_100_second) ** 2))
+        print(f"rmse: {rmse}")
+
+
+        if rmse < 2:
+            print("유치악")
+            filter_window_size = 50
+        else:
+            print("무치악")
+            filter_window_size = 20
+
+
 
         
-        # # 3단계: 정밀한 곡선 포인트 추출
-        # precise_smoothed_points, precise_rotated_mesh = self.extract_precise_curve_points(
-        #     rotated_mesh, y_axis
-        # )
+        # 3단계: 정밀한 곡선 포인트 추출
+        moving_average_points = self.signal_processor.moving_average_filter(
+           polar_sampling_points_second ,
+            window_size=filter_window_size
+        )
 
         
         # 4단계: 정규화된 랜드마크 계산
-        landmark_points, arch_depth, molar_width = self.curve_sampler.compute_normalized_landmarks_and_arch_depth_molar_width(centered_filtered_points)
+        landmark_points, arch_depth, molar_width = self.curve_sampler.compute_normalized_landmarks_and_arch_depth_molar_width(moving_average_points)
         
         # 6단계: 최종 시각화 (옵션)
         if visualize_result:
             self.visualizer.visualize_analysis_results(
                 np.array([0,0,0]).reshape(1,3), 
-                rotated_mesh.points, 
-                centered_filtered_points, 
+                filtered_result_points_array, 
+                moving_average_points, 
                 self.curve_sampler.sample_points_by_arc_length(
-                    centered_filtered_points, 
+                    moving_average_points, 
                     AnalysisConstants.DEFAULT_NUM_SAMPLES
                 )
             )
