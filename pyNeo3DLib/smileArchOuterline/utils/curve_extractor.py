@@ -14,6 +14,7 @@ from .polar_sampler import PolarSampling
 import time
 from .visualizer import VisualizeForTest
 import open3d as o3d
+from .point_cloud_ray_caster import PointCloudRayCaster # Import PointCloudRayCaster
 
 
 class CurveExtractor:
@@ -21,6 +22,7 @@ class CurveExtractor:
     
     def __init__(self):
         self.ray_caster = RayCaster()
+        self.point_cloud_ray_caster = PointCloudRayCaster() # Instantiate PointCloudRayCaster
         self.signal_processor = SignalProcessor()
         self.mesh_aligner = MeshAlignmentManager()
         self.curve_sampler = CurveSampler()
@@ -45,7 +47,7 @@ class CurveExtractor:
         # vertices를 다운샘플링 (Voxel Grid - 메시 형태 유지)
         vertices = self._voxel_downsample(vertices, voxel_size=1)
         # 레이캐스팅으로 등고선 포인트 클라우드 추출
-        result_points_array = self.ray_caster.perform_height_based_ray_casting(
+        result_points_array = self.point_cloud_ray_caster.perform_height_based_ray_casting( # Use point_cloud_ray_caster
             vertices, y_axis, 
             num_slices=AnalysisConstants.DEFAULT_NUM_SLICES, 
             angle_step=AnalysisConstants.DEFAULT_ANGLE_STEP
@@ -82,8 +84,8 @@ class CurveExtractor:
             object: 필터링된 메쉬
         """
         # 레이캐스팅으로 등고선 포인트 클라우드 추출
-        result_points_array = self.ray_caster.perform_height_based_ray_casting(
-            aligned_mesh, y_axis, 
+        result_points_array = self.point_cloud_ray_caster.perform_height_based_ray_casting( # Use point_cloud_ray_caster
+            aligned_mesh.points, y_axis, 
             num_slices=AnalysisConstants.DEFAULT_NUM_SLICES, 
             angle_step=AnalysisConstants.DEFAULT_ANGLE_STEP
         )
