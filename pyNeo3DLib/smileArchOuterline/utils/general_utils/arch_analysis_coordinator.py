@@ -75,7 +75,11 @@ class ArchAnalysisCoordinator:
         # 5단계: 선상의 점에서 중심점으로 가는 방향벡터 계산
         centroid_flat = centroid.reshape(AnalysisConstants.VECTOR_DIMENSION)
         direction_to_centroid = centroid_flat - closest_point
-        direction_to_centroid = direction_to_centroid / np.linalg.norm(direction_to_centroid)
+        norm = np.linalg.norm(direction_to_centroid)
+        if norm < AnalysisConstants.EPSILON:
+            # 중심점과 가장 가까운 점이 동일하여 방향 벡터를 계산할 수 없으므로 추가 회전을 생략합니다.
+            return mesh
+        direction_to_centroid /= norm
         
         # 6단계: [0,0,1]과 방향벡터가 이루는 각도 계산 및 Y축 기준 회전
         angle = -np.arccos(np.dot(AnalysisConstants.Z_AXIS_VECTOR_POSITIVE, direction_to_centroid))

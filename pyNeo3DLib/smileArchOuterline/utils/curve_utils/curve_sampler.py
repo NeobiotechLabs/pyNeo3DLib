@@ -186,7 +186,7 @@ class CurveSampler:
         points_xz = sorted_points[:, [AnalysisConstants.LANDMARK_X_INDEX, AnalysisConstants.LANDMARK_Z_INDEX]]
             
         # 4. 중심을 원점으로 이동 (평균값 빼기)
-        mean_values = np.mean(points_xz, axis=AnalysisConstants.LANDMARK_X_INDEX)
+        mean_values = np.mean(points_xz, axis=0)
         landmark_points = points_xz - mean_values
         
         # 4. 반올림

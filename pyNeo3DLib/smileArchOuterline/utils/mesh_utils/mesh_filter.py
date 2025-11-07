@@ -31,7 +31,7 @@ class MeshFilter:
                 - filtered_points: 필터링된 점들
                 - threshold: 사용된 z값 임계값
         """
-        if not points.any():
+        if points.size == 0:
             return points, AnalysisConstants.DEFAULT_Z_THRESHOLD
         
         # 첫 번째와 마지막 점의 z값 절댓값 계산
