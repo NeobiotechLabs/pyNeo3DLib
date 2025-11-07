@@ -225,5 +225,5 @@ class ArchAnalysisCoordinator:
             return arch_depth, molar_width, landmark_points
         except Exception as e:
             print(f"Error in analyze_upper_IOS_scandata: {e}")
-            # 에러 발생 시 기본값 또는 빈 값 반환
-            return 0.0, 0.0, []
+            # 에러 발생 시 기본값 
+            return 0.0, 0.0, [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]
