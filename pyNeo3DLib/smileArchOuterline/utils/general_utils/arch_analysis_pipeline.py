@@ -67,7 +67,7 @@ class ArchAnalysisPipeline:
     def expand_curve_outward(
         self, 
         curve_points: np.ndarray, 
-        expand_distance: float = 5.0
+        expand_distance: float = AnalysisConstants.CURVE_EXPAND_DISTANCE
     ) -> np.ndarray:
         """
         3단계: 곡선을 외측으로 확장
@@ -104,10 +104,10 @@ class ArchAnalysisPipeline:
         Returns:
             np.ndarray: 필터링된 메쉬 포인트
         """
-        x_min = np.min(boundary_curve[:, 0])
-        x_max = np.max(boundary_curve[:, 0])
+        x_min = np.min(boundary_curve[:, AnalysisConstants.X_AXIS_INDEX])
+        x_max = np.max(boundary_curve[:, AnalysisConstants.X_AXIS_INDEX])
         
-        mask = (mesh_points[:, 0] > x_min) & (mesh_points[:, 0] < x_max)
+        mask = (mesh_points[:, AnalysisConstants.X_AXIS_INDEX] > x_min) & (mesh_points[:, AnalysisConstants.X_AXIS_INDEX] < x_max)
         return mesh_points[mask]
     
     def classify_and_extract_final_curve(

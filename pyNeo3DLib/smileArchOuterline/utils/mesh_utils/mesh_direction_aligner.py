@@ -5,18 +5,19 @@
 
 import numpy as np
 from typing import Tuple, Optional
+from ..general_utils.constants import AnalysisConstants
 
 
 class MeshDirectionAligner:
     """메시의 방향을 정렬하는 클래스"""
     
-    def __init__(self, alignment_threshold: float = 0.8):
+    def __init__(self, alignment_threshold: float = AnalysisConstants.ALIGNMENT_THRESHOLD):
         """
         Args:
             alignment_threshold: 정렬 적용을 위한 내적값 임계값 (기본값: 0.8)
         """
         self.alignment_threshold = alignment_threshold
-        self.z_axis = np.array([0, 0, 1])
+        self.z_axis = np.array(AnalysisConstants.Z_AXIS_VECTOR_POSITIVE)
     
     def align_points_to_z_axis(
         self, 
@@ -72,7 +73,7 @@ class MeshDirectionAligner:
         cos_angle = np.dot(direction_vector.flatten(), self.z_axis) / (
             np.linalg.norm(direction_vector) * np.linalg.norm(self.z_axis)
         )
-        return np.clip(cos_angle, -1.0, 1.0)  # 수치적 안정성을 위해 클리핑
+        return np.clip(cos_angle, AnalysisConstants.COSINE_ANGLE_CLIP_MIN, AnalysisConstants.COSINE_ANGLE_CLIP_MAX)  # 수치적 안정성을 위해 클리핑
     
     def _calculate_rotation_matrix(
         self, 
@@ -94,22 +95,22 @@ class MeshDirectionAligner:
         rotation_axis_norm = np.linalg.norm(rotation_axis)
         
         # 회전축이 0에 가까우면 이미 정렬된 상태
-        if rotation_axis_norm < 1e-6:
+        if rotation_axis_norm < AnalysisConstants.ROTATION_AXIS_NORM_THRESHOLD:
             return None
         
         rotation_axis = rotation_axis / rotation_axis_norm
         
         # 로드리게스 회전 공식을 사용한 회전 행렬 계산
         K = np.array([
-            [0, -rotation_axis[2], rotation_axis[1]],
-            [rotation_axis[2], 0, -rotation_axis[0]],
-            [-rotation_axis[1], rotation_axis[0], 0]
+            [AnalysisConstants.ROTATION_MATRIX_ZERO, -rotation_axis[AnalysisConstants.Z_AXIS_INDEX], rotation_axis[AnalysisConstants.Y_AXIS_INDEX]],
+            [rotation_axis[AnalysisConstants.Z_AXIS_INDEX], AnalysisConstants.ROTATION_MATRIX_ZERO, -rotation_axis[AnalysisConstants.X_AXIS_INDEX]],
+            [-rotation_axis[AnalysisConstants.Y_AXIS_INDEX], rotation_axis[AnalysisConstants.X_AXIS_INDEX], AnalysisConstants.ROTATION_MATRIX_ZERO]
         ])
         
         rotation_matrix = (
-            np.eye(3) + 
+            np.eye(AnalysisConstants.MATRIX_DIMENSION_3X3) + 
             np.sin(angle) * K + 
-            (1 - np.cos(angle)) * np.dot(K, K)
+            (AnalysisConstants.ROTATION_MATRIX_ONE - np.cos(angle)) * np.dot(K, K)
         )
         
         return rotation_matrix

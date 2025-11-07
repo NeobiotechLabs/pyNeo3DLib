@@ -7,12 +7,13 @@ import numpy as np
 import pyvista as pv
 from typing import Tuple, List, Optional
 from ..visualizer_utils.visualizer import VisualizeForTest
+from .constants import AnalysisConstants
 
 
 class FaceNormalFilter:
     """Face Normal 필터링을 위한 클래스"""
     
-    def __init__(self, tolerance: float = 0.1):
+    def __init__(self, tolerance: float = AnalysisConstants.FACE_NORMAL_DEFAULT_TOLERANCE):
         """
         FaceNormalFilter 초기화
         
@@ -22,7 +23,7 @@ class FaceNormalFilter:
         self.tolerance = tolerance
     
     def find_vertical_faces(self, mesh: pv.PolyData, 
-                          vertical_direction: np.ndarray = np.array([0, 0, 1])) -> Tuple[pv.PolyData, np.ndarray]:
+                          vertical_direction: np.ndarray = np.array(AnalysisConstants.Z_AXIS_VECTOR_POSITIVE)) -> Tuple[pv.PolyData, np.ndarray]:
         """
         수직 방향과 유사한 법선벡터를 가진 면들을 찾습니다.
         
@@ -51,7 +52,7 @@ class FaceNormalFilter:
             return pv.PolyData(), np.array([])
     
     def find_horizontal_faces(self, mesh: pv.PolyData, 
-                            horizontal_direction: np.ndarray = np.array([0, 1, 0])) -> Tuple[pv.PolyData, np.ndarray]:
+                            horizontal_direction: np.ndarray = np.array(AnalysisConstants.Y_AXIS_VECTOR)) -> Tuple[pv.PolyData, np.ndarray]:
         """
         수평 방향과 유사한 법선벡터를 가진 면들을 찾습니다.
         
@@ -81,7 +82,7 @@ class FaceNormalFilter:
     
     def find_faces_by_angle(self, mesh: pv.PolyData, 
                            target_direction: np.ndarray, 
-                           max_angle_degrees: float = 10.0) -> Tuple[pv.PolyData, np.ndarray]:
+                           max_angle_degrees: float = AnalysisConstants.DEFAULT_MAX_ANGLE_DEGREES) -> Tuple[pv.PolyData, np.ndarray]:
         """
         특정 방향과 일정 각도 이내의 법선벡터를 가진 면들을 찾습니다.
         
@@ -127,12 +128,12 @@ class FaceNormalFilter:
         normals = mesh_with_normals.face_normals
         
         # 각 축과의 내적 계산
-        x_dot = np.abs(np.dot(normals, np.array([1, 0, 0])))
-        y_dot = np.abs(np.dot(normals, np.array([0, 1, 0])))
-        z_dot = np.abs(np.dot(normals, np.array([0, 0, 1])))
+        x_dot = np.abs(np.dot(normals, np.array(AnalysisConstants.X_AXIS_VECTOR_POSITIVE)))
+        y_dot = np.abs(np.dot(normals, np.array(AnalysisConstants.Y_AXIS_VECTOR)))
+        z_dot = np.abs(np.dot(normals, np.array(AnalysisConstants.Z_AXIS_VECTOR_POSITIVE)))
         
         # 각 축과 유사한 방향의 면 개수 계산
-        tolerance = 0.1
+        tolerance = self.tolerance # AnalysisConstants.FACE_NORMAL_DEFAULT_TOLERANCE
         x_aligned = np.sum(x_dot > (1 - tolerance))
         y_aligned = np.sum(y_dot > (1 - tolerance))
         z_aligned = np.sum(z_dot > (1 - tolerance))
@@ -163,12 +164,12 @@ class FaceNormalFilter:
         visualizer = VisualizeForTest()
         
         if show_original:
-            visualizer.visualize_mesh(mesh, color='lightblue', opacity=0.3, title="원본 메시")
+            visualizer.visualize_mesh(mesh, color=AnalysisConstants.VIS_COLOR_LIGHTBLUE, opacity=AnalysisConstants.VIS_OPACITY_LOW, title=AnalysisConstants.VIS_TITLE_ORIGINAL_MESH)
         
         if vertical_mesh is not None and len(vertical_mesh.points) > 0:
-            visualizer.visualize_mesh(vertical_mesh, color='red', opacity=0.7, title="수직 방향 면들")
+            visualizer.visualize_mesh(vertical_mesh, color=AnalysisConstants.VIS_COLOR_RED, opacity=AnalysisConstants.VIS_OPACITY_HIGH, title=AnalysisConstants.VIS_TITLE_VERTICAL_FACES)
         
         if horizontal_mesh is not None and len(horizontal_mesh.points) > 0:
-            visualizer.visualize_mesh(horizontal_mesh, color='green', opacity=0.7, title="수평 방향 면들")
+            visualizer.visualize_mesh(horizontal_mesh, color=AnalysisConstants.VIS_COLOR_GREEN, opacity=AnalysisConstants.VIS_OPACITY_NORMAL, title=AnalysisConstants.VIS_TITLE_HORIZONTAL_FACES)
         
         visualizer.show()

@@ -28,42 +28,42 @@ class LandmarkCalculator:
         z_max = np.max(half_curve[:, 2])
         
         # 5개의 등간격 z 좌표 생성
-        target_z_coords = np.linspace(z_max, z_min, 5)
+        target_z_coords = np.linspace(z_max, z_min, AnalysisConstants.NUM_LANDMARKS_TO_GENERATE)
         
         # 각 타겟 Z에 가장 가까운 포인트 찾기
         landmark_points = []
         for target_z in target_z_coords:
-            diff = np.abs(half_curve[:, 2] - target_z)
+            diff = np.abs(half_curve[:, AnalysisConstants.Z_AXIS_INDEX] - target_z)
             closest_index = np.argmin(diff)
-            landmark_point = np.round(half_curve[closest_index, :], 2).reshape(1, 3)
+            landmark_point = np.round(half_curve[closest_index, :], AnalysisConstants.LANDMARK_ROUND_DECIMAL_PLACES).reshape(AnalysisConstants.SINGLE_ROW_SHAPE, AnalysisConstants.VECTOR_DIMENSION)
             landmark_points.append(landmark_point)
         
         landmark_points = np.concatenate(landmark_points, axis=0)
         
         # Z축 정규화 (첫 번째 포인트 기준)
-        landmark_points[:, 2] = landmark_points[:, 2] - landmark_points[0, 2]
+        landmark_points[:, AnalysisConstants.Z_AXIS_INDEX] = landmark_points[:, AnalysisConstants.Z_AXIS_INDEX] - landmark_points[AnalysisConstants.FIRST_ELEMENT_INDEX, AnalysisConstants.Z_AXIS_INDEX]
         
         # Y축 제거 (X, Z만 사용)
-        landmark_points = landmark_points[:, [0, 2]]
+        landmark_points = landmark_points[:, [AnalysisConstants.X_AXIS_INDEX, AnalysisConstants.Z_AXIS_INDEX]]
         
         # 양수화 및 첫 번째 포인트 제거
-        landmark_points = np.abs(landmark_points)[1:]
+        landmark_points = np.abs(landmark_points)[AnalysisConstants.SECOND_ELEMENT_INDEX_START:]
         
         # 대칭 포인트 생성
         symmetric_points = landmark_points.copy()
-        symmetric_points[:, 0] = -symmetric_points[:, 0]
+        symmetric_points[:, AnalysisConstants.SYMMETRIC_POINT_X_INDEX] = -symmetric_points[:, AnalysisConstants.SYMMETRIC_POINT_X_INDEX]
         symmetric_points = symmetric_points[::-1]
         
         # 전체 랜드마크 생성 (좌측 + 중심 + 우측)
         total_landmark_points = np.concatenate([
             symmetric_points,
-            np.zeros((1, 2)),
+            np.zeros((AnalysisConstants.SINGLE_ROW_SHAPE, AnalysisConstants.NUM_COLS_FOR_SYMMETRIC_POINTS)),
             landmark_points
         ], axis=0)
         
         # NumPy 배열을 Python 리스트로 변환
         landmark_points_list = [
-            np.round([float(coord) for coord in point], 2).tolist()
+            np.round([float(coord) for coord in point], AnalysisConstants.LANDMARK_ROUND_DECIMAL_PLACES).tolist()
             for point in total_landmark_points
         ]
         

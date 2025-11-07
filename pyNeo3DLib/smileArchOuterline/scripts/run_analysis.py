@@ -16,11 +16,11 @@ if __name__ == "__main__":
     print("run_analysis.py")
     script_dir = os.path.dirname(os.path.abspath(__file__))
     smile_arch_dir = os.path.dirname(script_dir)
-    mesh_path = os.path.join(smile_arch_dir, "data","smile_arch_origin.stl")
+    mesh_path = os.path.join(smile_arch_dir, "data","01_김혜자_상악.stl")
     
     arch_depth, molar_width, landmarks = analyze_upper_IOS_scandata(
         mesh_path=mesh_path,
-        visualize_result=False
+        visualize_result=True
     )
     
     print(f"arch_depth: {arch_depth}")

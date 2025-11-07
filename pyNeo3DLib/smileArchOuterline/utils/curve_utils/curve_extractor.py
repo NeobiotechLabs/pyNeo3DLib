@@ -45,7 +45,7 @@ class CurveExtractor:
         time_start = time.time()
 
         # vertices를 다운샘플링 (Voxel Grid - 메시 형태 유지)
-        vertices = self._voxel_downsample(vertices, voxel_size=1)
+        vertices = self._voxel_downsample(vertices, voxel_size=AnalysisConstants.DEFAULT_VOXEL_SIZE_EXTRACTOR)
         # 레이캐스팅으로 등고선 포인트 클라우드 추출
         result_points_array = self.point_cloud_ray_caster.perform_height_based_ray_casting( # Use point_cloud_ray_caster
             vertices, y_axis, 
@@ -117,12 +117,12 @@ class CurveExtractor:
         Returns:
             np.ndarray: 극좌표 샘플링으로 추출된 곡선 포인트
         """
-        polar_sampler = PolarSampling(np.array([0, 0, z_min_point]))
+        polar_sampler = PolarSampling(np.array([AnalysisConstants.POLAR_SAMPLING_CENTER_X_ZERO, AnalysisConstants.POLAR_SAMPLING_CENTER_X_ZERO, z_min_point]))
         polar_sampling_points = polar_sampler.polar_sampling(
             mesh_points,
-            angle_step=1,
-            mode="ymin",
-            y_range=(-np.inf, np.inf)
+            angle_step=AnalysisConstants.POLAR_SAMPLING_ANGLE_STEP_EXTRACTOR,
+            mode=AnalysisConstants.POLAR_SAMPLING_MODE_YMIN,
+            y_range=AnalysisConstants.POLAR_SAMPLING_Y_RANGE_INF
         )
         
         return polar_sampling_points
@@ -139,7 +139,7 @@ class CurveExtractor:
         Returns:
             np.ndarray: 곡선 샘플링으로 추출된 곡선 포인트
         """
-        polar_sampling_center = np.array([0, average_y_value, z_min_point])
+        polar_sampling_center = np.array([AnalysisConstants.POLAR_SAMPLING_CENTER_X_ZERO, average_y_value, z_min_point])
         sampled_curve_points = self.curve_sampler.perform_polar_sampling(
             filtered_mesh.points, 
             polar_sampling_center, 
@@ -150,7 +150,7 @@ class CurveExtractor:
         
         return sampled_curve_points
     
-    def _voxel_downsample(self, points: np.ndarray, voxel_size: float = 0.5) -> np.ndarray:
+    def _voxel_downsample(self, points: np.ndarray, voxel_size: float = AnalysisConstants.DEFAULT_VOXEL_SIZE_EXTRACTOR) -> np.ndarray:
         """
         Voxel Grid를 사용한 포인트 클라우드 다운샘플링 (Open3D 사용)
         메시의 형태를 유지하면서 공간적으로 균등하게 샘플링

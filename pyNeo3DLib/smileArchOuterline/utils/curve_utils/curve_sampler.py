@@ -42,9 +42,9 @@ class CurveSampler:
         self,
         vertices: np.ndarray, 
         polar_center: np.ndarray, 
-        angle_step: float = 1, 
-        y_slice_mid: float = -1,
-        y_offset: float = 0.5
+        angle_step: float = AnalysisConstants.CURVE_SAMPLER_DEFAULT_ANGLE_STEP, 
+        y_slice_mid: float = AnalysisConstants.CURVE_SAMPLER_DEFAULT_Y_SLICE_MID,
+        y_offset: float = AnalysisConstants.CURVE_SAMPLER_DEFAULT_Y_OFFSET
     ) -> np.ndarray:
         """극좌표 샘플링 수행
         
@@ -69,7 +69,7 @@ class CurveSampler:
         outer_points = polar_sampler.polar_sampling(
             vertices, 
             angle_step=angle_step, 
-            mode="farthest", 
+            mode=AnalysisConstants.POLAR_SAMPLING_MODE_FARTHEST, 
             y_range=y_range,
             start_angle=self.polar_start_angle, 
             end_angle=self.polar_end_angle
@@ -79,7 +79,7 @@ class CurveSampler:
         inner_points = polar_sampler.polar_sampling(
             vertices, 
             angle_step=angle_step, 
-            mode="nearest", 
+            mode=AnalysisConstants.POLAR_SAMPLING_MODE_NEAREST, 
             y_range=y_range,
             start_angle=self.polar_start_angle, 
             end_angle=self.polar_end_angle
@@ -98,7 +98,7 @@ class CurveSampler:
         Returns:
             total_length: 곡선의 전체 길이
         """
-        if len(points) < 2:
+        if len(points) < AnalysisConstants.MIN_POINTS_FOR_CURVE_LENGTH:
             return 0.0
         
         # 각 연속된 포인트 쌍 간의 거리 계산 및 합산
@@ -179,14 +179,14 @@ class CurveSampler:
         sampled_array = np.array(sampled_points)
 
         # 2. X값 기준 정렬
-        sorted_indices = np.argsort(sampled_array[:, 0])
+        sorted_indices = np.argsort(sampled_array[:, AnalysisConstants.LANDMARK_X_INDEX])
         sorted_points = sampled_array[sorted_indices]
         
         # 3. Y값 제거 (X, Z만 사용)
-        points_xz = sorted_points[:, [0, 2]]
+        points_xz = sorted_points[:, [AnalysisConstants.LANDMARK_X_INDEX, AnalysisConstants.LANDMARK_Z_INDEX]]
             
         # 4. 중심을 원점으로 이동 (평균값 빼기)
-        mean_values = np.mean(points_xz, axis=0)
+        mean_values = np.mean(points_xz, axis=AnalysisConstants.LANDMARK_X_INDEX)
         landmark_points = points_xz - mean_values
         
         # 4. 반올림
@@ -200,9 +200,9 @@ class CurveSampler:
             landmark_points_list.append(point_list)
 
         # arch_depth는 maxilla_spline_curve_points의 z값 중 최소값과 최대값의 차이
-        arch_depth = abs(min(smoothed_points[:, 2]) - max(smoothed_points[:, 2]))
-        arch_depth = np.round(arch_depth, 2)
-        molar_width = abs(min(smoothed_points[:, 0]) - max(smoothed_points[:, 0]))
-        molar_width = np.round(molar_width, 2)
+        arch_depth = abs(min(smoothed_points[:, AnalysisConstants.LANDMARK_Z_INDEX]) - max(smoothed_points[:, AnalysisConstants.LANDMARK_Z_INDEX]))
+        arch_depth = np.round(arch_depth, AnalysisConstants.ROUND_DECIMAL_PLACES_ARCH_METRICS)
+        molar_width = abs(min(smoothed_points[:, AnalysisConstants.LANDMARK_X_INDEX]) - max(smoothed_points[:, AnalysisConstants.LANDMARK_X_INDEX]))
+        molar_width = np.round(molar_width, AnalysisConstants.ROUND_DECIMAL_PLACES_ARCH_METRICS)
         
         return landmark_points_list, arch_depth, molar_width

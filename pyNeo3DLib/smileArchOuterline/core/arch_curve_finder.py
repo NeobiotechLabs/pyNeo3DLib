@@ -6,7 +6,7 @@
 """
 
 from typing import Tuple, List
-from ..utils.general_utils.arch_analyzer import ArchAnalyzer
+from pyNeo3DLib.smileArchOuterline.utils.general_utils.arch_analyzer import ArchAnalyzer
 
 
 # ===== 기존 함수들은 별도 클래스로 분리됨 =====

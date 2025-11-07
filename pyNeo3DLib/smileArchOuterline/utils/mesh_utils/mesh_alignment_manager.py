@@ -4,6 +4,7 @@
 
 import numpy as np
 import pyvista as pv
+from scipy.spatial import KDTree
 from typing import Tuple, Optional, List
 from ..general_utils.constants import AnalysisConstants
 from ..general_utils.ray_caster import RayCaster
@@ -13,13 +14,13 @@ class MeshAlignmentManager:
     """메쉬 정렬을 관리하는 클래스"""
     
     # 상수 정의
-    EPSILON = 1e-10
-    NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD = 0.9
-    STANDARD_BASIS = np.array([
-        [1.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0]
-    ], dtype=np.float64)
+    # EPSILON = 1e-10
+    # NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD = 0.9
+    # STANDARD_BASIS = np.array([
+    #     [1.0, 0.0, 0.0],
+    #     [0.0, 1.0, 0.0],
+    #     [0.0, 0.0, 1.0]
+    # ], dtype=np.float64)
     
     def __init__(self):
         self.ray_caster = RayCaster()
@@ -40,10 +41,10 @@ class MeshAlignmentManager:
             정규화된 벡터 (3,) 형태
         """
         vector = np.asarray(vector).flatten()
-        if len(vector) != 3:
-            raise ValueError(f"벡터는 3차원이어야 합니다. 현재 shape: {vector.shape}")
+        if len(vector) != AnalysisConstants.VECTOR_DIMENSION:
+            raise ValueError(f"벡터는 {AnalysisConstants.VECTOR_DIMENSION}차원이어야 합니다. 현재 shape: {vector.shape}")
         norm = np.linalg.norm(vector)
-        if norm < self.EPSILON:
+        if norm < AnalysisConstants.EPSILON:
             raise ValueError("영벡터는 정규화할 수 없습니다.")
         return (vector / norm).astype(np.float64)
     
@@ -69,7 +70,7 @@ class MeshAlignmentManager:
         orthogonal = vector - dot_product * reference
         norm = np.linalg.norm(orthogonal)
         
-        if norm < self.EPSILON:
+        if norm < AnalysisConstants.EPSILON:
             return None
         return (orthogonal / norm).astype(np.float64)
     
@@ -92,8 +93,8 @@ class MeshAlignmentManager:
             raise ValueError("교차점이 없습니다.")
         
         center = np.asarray(center).flatten()
-        if center.shape != (3,):
-            raise ValueError(f"center는 (3,) 형태여야 합니다. 현재 shape: {center.shape}")
+        if center.shape != (AnalysisConstants.VECTOR_DIMENSION,):
+            raise ValueError(f"center는 ({AnalysisConstants.VECTOR_DIMENSION},) 형태여야 합니다. 현재 shape: {center.shape}")
         
         distances = np.linalg.norm(intersection_points - center, axis=1)
         closest_point = intersection_points[np.argmin(distances)]
@@ -122,7 +123,7 @@ class MeshAlignmentManager:
         reference = self._normalize_vector(reference)
         
         # 사용되지 않은 벡터만 시도
-        for i in range(3):
+        for i in range(AnalysisConstants.VECTOR_DIMENSION):
             if i not in used_indices:
                 candidate = self._normalize_vector(principal_evecs[:, i])
                 orthogonal = self._orthogonalize_vector(candidate, reference)
@@ -149,7 +150,7 @@ class MeshAlignmentManager:
         reference = self._normalize_vector(reference)
         
         # 모든 주축 벡터 시도
-        for i in range(3):
+        for i in range(AnalysisConstants.VECTOR_DIMENSION):
             candidate = self._normalize_vector(principal_evecs[:, i])
             orthogonal = self._orthogonalize_vector(candidate, reference)
             if orthogonal is not None:
@@ -175,7 +176,7 @@ class MeshAlignmentManager:
         best_candidate = None
         min_dot_product = float('inf')
         
-        for basis_vec in self.STANDARD_BASIS:
+        for basis_vec in AnalysisConstants.STANDARD_BASIS:
             dot_product = abs(np.dot(reference, basis_vec))
             if dot_product < min_dot_product:
                 min_dot_product = dot_product
@@ -200,9 +201,9 @@ class MeshAlignmentManager:
         
         # reference의 성분을 기반으로 적절한 표준 기저 벡터 선택
         abs_ref = np.abs(reference)
-        if abs_ref[0] < self.NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD:
+        if abs_ref[0] < AnalysisConstants.NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD:
             candidate = np.array([1.0, 0.0, 0.0])
-        elif abs_ref[1] < self.NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD:
+        elif abs_ref[1] < AnalysisConstants.NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD:
             candidate = np.array([0.0, 1.0, 0.0])
         else:
             candidate = np.array([0.0, 0.0, 1.0])
@@ -214,7 +215,7 @@ class MeshAlignmentManager:
         # 완전히 실패한 경우 크로스 곱으로 생성
         # reference가 [1,0,0] 또는 [-1,0,0]에 가까우면 fallback = [0,1,0]
         # 그 외의 경우 fallback = [1,0,0]
-        if abs_ref[0] < self.NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD:
+        if abs_ref[0] < AnalysisConstants.NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD:
             fallback = np.array([1.0, 0.0, 0.0])
         else:
             fallback = np.array([0.0, 1.0, 0.0])
@@ -223,7 +224,7 @@ class MeshAlignmentManager:
         cross_norm = np.linalg.norm(cross_result)
         
         # 크로스 곱이 영벡터가 아닌 경우 직교화 시도
-        if cross_norm >= self.EPSILON:
+        if cross_norm >= AnalysisConstants.EPSILON:
             orthogonal = self._orthogonalize_vector(cross_result, reference)
             if orthogonal is not None:
                 return orthogonal
@@ -231,17 +232,17 @@ class MeshAlignmentManager:
         # 최후의 수단: reference와 가장 다른 표준 기저 벡터 사용
         # reference의 각 성분의 절댓값을 확인하여 가장 작은 성분의 축을 선택
         min_idx = np.argmin(abs_ref)
-        result = np.zeros(3, dtype=np.float64)
+        result = np.zeros(AnalysisConstants.VECTOR_DIMENSION, dtype=np.float64)
         result[min_idx] = 1.0
         
         # 선택한 벡터가 reference와 평행한 경우 다른 축 선택
-        if abs(np.dot(result, reference)) > self.NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD:
+        if abs(np.dot(result, reference)) > AnalysisConstants.NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD:
             # 다음으로 작은 성분의 축 선택
             sorted_indices = np.argsort(abs_ref)
             for idx in sorted_indices:
-                candidate = np.zeros(3, dtype=np.float64)
+                candidate = np.zeros(AnalysisConstants.VECTOR_DIMENSION, dtype=np.float64)
                 candidate[idx] = 1.0
-                if abs(np.dot(candidate, reference)) < self.NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD:
+                if abs(np.dot(candidate, reference)) < AnalysisConstants.NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD:
                     result = candidate
                     break
         
@@ -251,10 +252,10 @@ class MeshAlignmentManager:
             return orthogonal
         
         # 절대 실패하지 않도록 보장: reference와 크로스 곱으로 생성 가능한 벡터 찾기
-        for basis_vec in self.STANDARD_BASIS:
+        for basis_vec in AnalysisConstants.STANDARD_BASIS:
             cross_vec = np.cross(reference, basis_vec)
             cross_norm = np.linalg.norm(cross_vec)
-            if cross_norm >= self.EPSILON:
+            if cross_norm >= AnalysisConstants.EPSILON:
                 return self._normalize_vector(cross_vec)
         
         # 이론적으로 도달 불가능하지만 안전을 위해 기본값 반환
@@ -286,32 +287,32 @@ class MeshAlignmentManager:
             (Y축 벡터 (3,), 업데이트된 used_indices)
         """
         center = np.asarray(center).flatten()
-        if center.shape != (3,):
-            raise ValueError(f"center는 (3,) 형태여야 합니다. 현재 shape: {center.shape}")
+        if center.shape != (AnalysisConstants.VECTOR_DIMENSION,):
+            raise ValueError(f"center는 ({AnalysisConstants.VECTOR_DIMENSION},) 형태여야 합니다. 현재 shape: {center.shape}")
         
         # 모든 축에 대해 레이캐스팅 수행
         intersection_results = [
             self.ray_caster.get_bidirectional_ray_points(
                 input_mesh, center, principal_evecs[:, i]
-            ) for i in range(3)
+            ) for i in range(AnalysisConstants.VECTOR_DIMENSION)
         ]
 
         # 케이스 1: 교차점 개수가 y_axis_intersection_count인 경우
-        for i in range(3):
+        for i in range(AnalysisConstants.VECTOR_DIMENSION):
             if len(intersection_results[i]) == self.y_axis_intersection_count:
                 evec_y = self._get_vector_from_closest_intersection(intersection_results[i], center)
                 used_indices.append(i)
                 return evec_y, used_indices
         
         # 케이스 2: 교차점이 0개인 경우
-        for i in range(3):
+        for i in range(AnalysisConstants.VECTOR_DIMENSION):
             if len(intersection_results[i]) == 0:
                 evec_y = self._normalize_vector(principal_evecs[:, i])
                 used_indices.append(i)
                 return evec_y, used_indices
         
         # 케이스 3: 백업 로직 - 사용되지 않은 주축 벡터 사용
-        for i in range(3):
+        for i in range(AnalysisConstants.VECTOR_DIMENSION):
             if i not in used_indices:
                 evec_y = self._normalize_vector(principal_evecs[:, i])
                 used_indices.append(i)
@@ -348,13 +349,13 @@ class MeshAlignmentManager:
             (Z축 벡터 (3,), 업데이트된 used_indices)
         """
         center = np.asarray(center).flatten()
-        if center.shape != (3,):
-            raise ValueError(f"center는 (3,) 형태여야 합니다. 현재 shape: {center.shape}")
+        if center.shape != (AnalysisConstants.VECTOR_DIMENSION,):
+            raise ValueError(f"center는 ({AnalysisConstants.VECTOR_DIMENSION},) 형태여야 합니다. 현재 shape: {center.shape}")
         
         evec_y = self._normalize_vector(evec_y)
         
         # 케이스 1: 교차점 개수가 z_axis_intersection_count (2개)인 경우
-        for i in range(3):
+        for i in range(AnalysisConstants.VECTOR_DIMENSION):
             intersection_points = self.ray_caster.get_bidirectional_ray_points(
                 input_mesh, center, principal_evecs[:, i]
             )
@@ -426,7 +427,7 @@ class MeshAlignmentManager:
         evec_x = np.cross(evec_y, evec_z)
         evec_x_norm = np.linalg.norm(evec_x)
         
-        if evec_x_norm >= self.EPSILON:
+        if evec_x_norm >= AnalysisConstants.EPSILON:
             return self._normalize_vector(evec_x)
         
         # 케이스 2: 외적이 영벡터인 경우 표준 기저 벡터 사용
@@ -478,11 +479,11 @@ class MeshAlignmentManager:
         """
         # 입력 검증 및 정규화
         center = np.asarray(center).flatten()
-        if center.shape != (3,):
-            raise ValueError(f"center는 (3,) 형태여야 합니다. 현재 shape: {center.shape}")
+        if center.shape != (AnalysisConstants.VECTOR_DIMENSION,):
+            raise ValueError(f"center는 ({AnalysisConstants.VECTOR_DIMENSION},) 형태여야 합니다. 현재 shape: {center.shape}")
         
-        if principal_evecs.shape != (3, 3):
-            raise ValueError(f"principal_evecs는 (3, 3) 형태여야 합니다. 현재 shape: {principal_evecs.shape}")
+        if principal_evecs.shape != (AnalysisConstants.VECTOR_DIMENSION, AnalysisConstants.VECTOR_DIMENSION):
+            raise ValueError(f"principal_evecs는 ({AnalysisConstants.VECTOR_DIMENSION}, {AnalysisConstants.VECTOR_DIMENSION}) 형태여야 합니다. 현재 shape: {principal_evecs.shape}")
         
         used_indices: List[int] = []
         
@@ -547,11 +548,7 @@ class MeshAlignmentManager:
             raise ValueError("기저 행렬이 특이행렬입니다. 벡터들이 선형 독립인지 확인하세요.")
         
         # 목표 좌표계 정의 (3, 3)
-        target_matrix = np.array([
-            [1.0, 0.0, 0.0],  # X축
-            [0.0, 1.0, 0.0],  # Y축
-            [0.0, 0.0, 1.0]   # Z축
-        ], dtype=np.float64)
+        target_matrix = AnalysisConstants.TARGET_ALIGNMENT_MATRIX
         
         # 회전 행렬 계산 및 적용
         rotation_matrix = np.matmul(inverse_basis, target_matrix)
@@ -581,8 +578,8 @@ class MeshAlignmentManager:
         if len(filtered_points) == 0:
             raise ValueError("filtered_points가 비어있습니다.")
         
-        if filtered_points.shape[1] != 3:
-            raise ValueError(f"filtered_points는 (N, 3) 형태여야 합니다. 현재 shape: {filtered_points.shape}")
+        if filtered_points.shape[1] != AnalysisConstants.VECTOR_DIMENSION:
+            raise ValueError(f"filtered_points는 (N, {AnalysisConstants.VECTOR_DIMENSION}) 형태여야 합니다. 현재 shape: {filtered_points.shape}")
         
         z_min_point = np.min(filtered_points[:, 2])
         mask = aligned_mesh.points[:, 2] > z_min_point

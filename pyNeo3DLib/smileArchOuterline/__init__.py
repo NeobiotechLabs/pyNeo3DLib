@@ -7,7 +7,7 @@
 __version__ = '0.1.0'
 
 # 필요한 클래스만 라이브러리에서 직접 가져오기
-from .core.arch_curve_finder import analyze_upper_IOS_scandata
+from pyNeo3DLib.smileArchOuterline.core.arch_curve_finder import analyze_upper_IOS_scandata
 
 # 외부에 노출할 이름 목록을 제한
 __all__ = ['analyze_upper_IOS_scandata']

@@ -6,17 +6,18 @@
 import numpy as np
 from typing import Tuple
 from ..curve_utils.polar_sampler import PolarSampling
+from .constants import AnalysisConstants
 
 
 class ArchTypeClassifier:
     """치아 악궁의 타입을 분류하는 클래스 (유치악/무치악)"""
     
     # 분류 임계값
-    RMSE_THRESHOLD = 2.0
+    RMSE_THRESHOLD = AnalysisConstants.RMSE_CLASSIFICATION_THRESHOLD
     
     # 필터 윈도우 크기
-    DENTULOUS_WINDOW_SIZE = 50  # 유치악 (치아가 있는 경우)
-    EDENTULOUS_WINDOW_SIZE = 20  # 무치악 (치아가 없는 경우)
+    DENTULOUS_WINDOW_SIZE = AnalysisConstants.DENTULOUS_FILTER_WINDOW_SIZE  # 유치악 (치아가 있는 경우)
+    EDENTULOUS_WINDOW_SIZE = AnalysisConstants.EDENTULOUS_FILTER_WINDOW_SIZE  # 무치악 (치아가 없는 경우)
     
     def __init__(self):
         """초기화"""
@@ -26,8 +27,8 @@ class ArchTypeClassifier:
         self, 
         points: np.ndarray, 
         z_min: float,
-        start_angle: float = 80,
-        end_angle: float = 100
+        start_angle: float = AnalysisConstants.CLASSIFY_START_ANGLE,
+        end_angle: float = AnalysisConstants.CLASSIFY_END_ANGLE
     ) -> Tuple[str, int, float]:
         """
         악궁 타입을 분류합니다 (유치악/무치악).
@@ -48,26 +49,26 @@ class ArchTypeClassifier:
                 - rmse: 계산된 RMSE 값
         """
         # 극좌표 샘플러 생성
-        polar_sampler = PolarSampling(np.array([0, 0, z_min]))
+        polar_sampler = PolarSampling(np.array([AnalysisConstants.POLAR_SAMPLING_CENTER_X_ZERO, AnalysisConstants.POLAR_SAMPLING_CENTER_X_ZERO, z_min]))
         
         # ymin 모드로 샘플링 (치아의 절단연/교합면)
         ymin_samples = polar_sampler.polar_sampling(
             points,
-            angle_step=1,
-            mode="ymin",
+            angle_step=AnalysisConstants.POLAR_SAMPLER_DEFAULT_ANGLE_STEP,
+            mode=AnalysisConstants.POLAR_SAMPLING_MODE_YMIN_POLAR,
             start_angle=start_angle,
             end_angle=end_angle,
-            y_range=(-np.inf, np.inf)
+            y_range=AnalysisConstants.POLAR_SAMPLING_Y_RANGE_INF
         )
         
         # farthest 모드로 샘플링 (가장 먼 점)
         farthest_samples = polar_sampler.polar_sampling(
             points,
-            angle_step=1,
-            mode="farthest",
+            angle_step=AnalysisConstants.POLAR_SAMPLER_DEFAULT_ANGLE_STEP,
+            mode=AnalysisConstants.POLAR_SAMPLING_MODE_FARTHEST_POLAR,
             start_angle=start_angle,
             end_angle=end_angle,
-            y_range=(-np.inf, np.inf)
+            y_range=AnalysisConstants.POLAR_SAMPLING_Y_RANGE_INF
         )
         
         # RMSE 계산
@@ -75,10 +76,10 @@ class ArchTypeClassifier:
         
         # 타입 분류
         if rmse < self.RMSE_THRESHOLD:
-            arch_type = "dentulous"
+            arch_type = AnalysisConstants.ARCH_TYPE_DENTULOUS
             filter_window_size = self.DENTULOUS_WINDOW_SIZE
         else:
-            arch_type = "edentulous"
+            arch_type = AnalysisConstants.ARCH_TYPE_EDENTULOUS
             filter_window_size = self.EDENTULOUS_WINDOW_SIZE
         
         return arch_type, filter_window_size, rmse
@@ -106,7 +107,7 @@ class ArchTypeClassifier:
         Returns:
             int: 필터 윈도우 크기
         """
-        if arch_type == "dentulous":
+        if arch_type == AnalysisConstants.ARCH_TYPE_DENTULOUS:
             return self.DENTULOUS_WINDOW_SIZE
         else:
             return self.EDENTULOUS_WINDOW_SIZE

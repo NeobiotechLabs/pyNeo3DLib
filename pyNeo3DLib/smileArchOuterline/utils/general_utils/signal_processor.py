@@ -12,12 +12,11 @@ class SignalProcessor:
     def __init__(self):
         self.default_window_size = AnalysisConstants.DEFAULT_WINDOW_SIZE
     
-    def remove_molar_outliers(self, result_points_array: np.ndarray, percentile_threshold: float = 2.5) -> np.ndarray:
-        """
-        대구치쪽 아웃라이어를 제거하는 함수
+    def remove_molar_outliers(self, result_points_array: np.ndarray, percentile_threshold: float = AnalysisConstants.MOLAR_OUTLIER_PERCENTILE_THRESHOLD) -> np.ndarray:
+        """어금니 부위 아웃라이어를 제거합니다.
         
-        Z값을 기준으로 하위 percentile_threshold%에 해당하는 점들을 제거하여
-        대구치 부분의 노이즈를 제거합니다.
+        입력된 포인트 배열에서 어금니 영역의 아웃라이어를 식별하고 제거합니다.
+        주로 Y축 값을 기준으로 백분위수 임계값을 사용하여 필터링합니다.
         
         Args:
             result_points_array: 입력 포인트 배열 (N, 3) [x, y, z]
@@ -27,7 +26,7 @@ class SignalProcessor:
             filtered_result_points_array: 아웃라이어가 제거된 포인트 배열 (M, 3)
         """
         # result_points_array를 z값만 남기고 나머지는 없애서 차원축소
-        squized_into_zline_result_points_array = result_points_array[:, 2]
+        squized_into_zline_result_points_array = result_points_array[:, AnalysisConstants.Z_AXIS_INDEX]
         print(f"Z값 배열 형태: {squized_into_zline_result_points_array.shape}")
 
         # z_result_points_array를 중복값 제거후 데이터 분포를 이용해서 -z방향으로 percentile_threshold% 떨어진값을 제거
@@ -38,7 +37,7 @@ class SignalProcessor:
 
         # result_points_array에서 filtered_z_result_points_array에 해당하는 값을 찾아서하여 필터링
         # z값이 filtered_z_result_points_array에 포함되는 점들만 선택
-        mask = np.isin(result_points_array[:, 2], filtered_z_result_points_array)
+        mask = np.isin(result_points_array[:, AnalysisConstants.Z_AXIS_INDEX], filtered_z_result_points_array)
         filtered_result_points_array = result_points_array[mask]
         
         return filtered_result_points_array
@@ -62,7 +61,7 @@ class SignalProcessor:
             return points
         
         filtered_points = np.zeros_like(points)
-        half_window = window_size // 2
+        half_window = window_size // AnalysisConstants.HALF_WINDOW_DIVISOR
         
         for i in range(len(points)):
             # 윈도우 범위 계산 (경계 처리)
@@ -84,5 +83,5 @@ class SignalProcessor:
         Returns:
             average_y_value: Y값 평균
         """
-        y_values = filtered_points[:, 1]
+        y_values = filtered_points[:, AnalysisConstants.Y_AXIS_INDEX]
         return np.mean(y_values)

@@ -5,6 +5,7 @@
 
 import numpy as np
 from typing import Tuple
+from ..general_utils.constants import AnalysisConstants
 
 
 class MeshFilter:
@@ -30,18 +31,18 @@ class MeshFilter:
                 - filtered_points: 필터링된 점들
                 - threshold: 사용된 z값 임계값
         """
-        if len(points) == 0:
-            return points, 0.0
+        if not points.any():
+            return points, AnalysisConstants.DEFAULT_Z_THRESHOLD
         
         # 첫 번째와 마지막 점의 z값 절댓값 계산
-        first_point_z = abs(points[0, 2])
-        last_point_z = abs(points[-1, 2])
+        first_point_z = abs(points[AnalysisConstants.FIRST_ELEMENT_INDEX, AnalysisConstants.Z_AXIS_INDEX])
+        last_point_z = abs(points[AnalysisConstants.LAST_INDEX, AnalysisConstants.Z_AXIS_INDEX])
         
         # 더 작은 값을 임계값으로 선택
         threshold = min(first_point_z, last_point_z)
         
         # 임계값보다 큰 z값을 가지는 점들만 필터링
-        filtered_points = points[points[:, 2] > -threshold]
+        filtered_points = points[points[:, AnalysisConstants.Z_AXIS_INDEX] > -threshold]
         
         
         return filtered_points, threshold
@@ -49,7 +50,7 @@ class MeshFilter:
     def filter_points_by_z_value(
         self, 
         points: np.ndarray, 
-        z_threshold: float
+        z_threshold: float = AnalysisConstants.DEFAULT_Z_THRESHOLD
     ) -> np.ndarray:
         """
         주어진 z값 임계값으로 점들을 필터링합니다.
@@ -61,7 +62,9 @@ class MeshFilter:
         Returns:
             np.ndarray: 필터링된 점들
         """
-        return points[points[:, 2] > -z_threshold]
+        if not points.any():
+            return points
+        return points[points[:, AnalysisConstants.Z_AXIS_INDEX] > -z_threshold]
     
     def filter_points_by_z_range(
         self, 
@@ -80,12 +83,14 @@ class MeshFilter:
         Returns:
             np.ndarray: 필터링된 점들
         """
-        return points[(points[:, 2] >= z_min) & (points[:, 2] <= z_max)]
+        if not points.any():
+            return points
+        return points[(points[:, AnalysisConstants.Z_AXIS_INDEX] >= z_min) & (points[:, AnalysisConstants.Z_AXIS_INDEX] <= z_max)]
     
     def remove_outliers_by_z_std(
         self, 
         points: np.ndarray, 
-        std_threshold: float = 2.0
+        std_threshold: float = AnalysisConstants.Z_STD_THRESHOLD
     ) -> np.ndarray:
         """
         z값의 표준편차를 기준으로 아웃라이어를 제거합니다.
@@ -97,10 +102,10 @@ class MeshFilter:
         Returns:
             np.ndarray: 아웃라이어가 제거된 점들
         """
-        if len(points) == 0:
+        if not points.any():
             return points
         
-        z_values = points[:, 2]
+        z_values = points[:, AnalysisConstants.Z_AXIS_INDEX]
         z_mean = np.mean(z_values)
         z_std = np.std(z_values)
         
@@ -114,7 +119,7 @@ class MeshFilter:
         points: np.ndarray, 
         center: np.ndarray = None,
         distance_threshold: float = None,
-        percentile: float = 95.0
+        percentile: float = AnalysisConstants.DISTANCE_FILTER_PERCENTILE
     ) -> np.ndarray:
         """
         중심점에서의 거리를 기준으로 점들을 필터링합니다.
@@ -128,7 +133,7 @@ class MeshFilter:
         Returns:
             np.ndarray: 필터링된 점들
         """
-        if len(points) == 0:
+        if not points.any():
             return points
         
         # 중심점 계산
@@ -150,8 +155,8 @@ class MeshFilter:
     def filter_points_by_volume_density(
         self, 
         points: np.ndarray, 
-        grid_size: float = 1.0,
-        min_density: int = 5
+        grid_size: float = AnalysisConstants.DEFAULT_GRID_SIZE,
+        min_density: int = AnalysisConstants.DEFAULT_MIN_DENSITY
     ) -> np.ndarray:
         """
         볼륨 밀도를 기준으로 점들을 필터링합니다.
@@ -166,7 +171,7 @@ class MeshFilter:
         Returns:
             np.ndarray: 필터링된 점들
         """
-        if len(points) == 0:
+        if not points.any():
             return points
         
         # 그리드 인덱스 계산
@@ -183,7 +188,7 @@ class MeshFilter:
         valid_indices = unique_indices[counts >= min_density]
         
         # 유효한 그리드 셀에 속하는 점들만 필터링
-        mask = np.zeros(len(points), dtype=bool)
+        mask = np.zeros(len(points), dtype=AnalysisConstants.NUMPY_ZEROS_DTYPE_BOOL)
         for valid_idx in valid_indices:
             cell_mask = np.all(grid_indices == valid_idx, axis=1)
             mask |= cell_mask

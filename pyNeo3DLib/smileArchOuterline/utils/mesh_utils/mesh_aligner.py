@@ -9,6 +9,7 @@ import numpy as np
 import pyvista as pv
 from typing import Tuple, Optional
 from pathlib import Path
+from ..general_utils.constants import AnalysisConstants
 
 
 class MeshAligner:
@@ -26,8 +27,8 @@ class MeshAligner:
     """
     
     # 상수 정의
-    EPSILON = 1e-9  # 0으로 나누기 방지
-    AXIS_LENGTH_SCALE = 0.35  # 시각화 시 축 길이 스케일
+    EPSILON = AnalysisConstants.MESH_ALIGNER_EPSILON  # 0으로 나누기 방지
+    AXIS_LENGTH_SCALE = AnalysisConstants.AXIS_VISUALIZATION_LENGTH_SCALE  # 시각화 시 축 길이 스케일
     
     def __init__(self, stl_path: str):
         """
@@ -72,8 +73,8 @@ class MeshAligner:
             대각선 길이
         """
         bounds = self.mesh.bounds  # (xmin, xmax, ymin, ymax, zmin, zmax)
-        min_bound = np.array([bounds[0], bounds[2], bounds[4]])
-        max_bound = np.array([bounds[1], bounds[3], bounds[5]])
+        min_bound = np.array([bounds[AnalysisConstants.BBOX_X_MIN_INDEX], bounds[AnalysisConstants.BBOX_Y_MIN_INDEX], bounds[AnalysisConstants.BBOX_Z_MIN_INDEX]])
+        max_bound = np.array([bounds[AnalysisConstants.BBOX_X_MAX_INDEX], bounds[AnalysisConstants.BBOX_Y_MAX_INDEX], bounds[AnalysisConstants.BBOX_Z_MAX_INDEX]])
         return np.linalg.norm(max_bound - min_bound)
     
     def compute_pca(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -98,7 +99,7 @@ class MeshAligner:
         # 결과 저장
         self.pca_eigenvalues = eigenvalues
         self.pca_eigenvectors = eigenvectors
-        self.min_variance_axis = eigenvectors[:, 0]  # 최소 고윳값에 대응
+        self.min_variance_axis = eigenvectors[:, AnalysisConstants.MIN_VARIANCE_AXIS_INDEX]  # 최소 고윳값에 대응
         
         self._pca_computed = True
         
@@ -117,7 +118,7 @@ class MeshAligner:
         """
         # 중심화된 좌표
         centered_vertices = self.vertices - self.center
-        x, y, z = centered_vertices[:, 0], centered_vertices[:, 1], centered_vertices[:, 2]
+        x, y, z = centered_vertices[:, AnalysisConstants.X_AXIS_INDEX], centered_vertices[:, AnalysisConstants.Y_AXIS_INDEX], centered_vertices[:, AnalysisConstants.Z_AXIS_INDEX]
         
         # 관성 텐서 성분 계산
         Ixx = np.sum(y**2 + z**2)
@@ -140,7 +141,7 @@ class MeshAligner:
         
         # 시각화를 위한 축 길이 계산
         # 관성이 작을수록 길이가 길어짐 (회전이 용이한 방향)
-        axis_lengths = 1.0 / np.sqrt(self.inertia_eigenvalues + self.EPSILON)
+        axis_lengths = AnalysisConstants.INERTIA_TENSOR_DIAGONAL_VALUE / np.sqrt(self.inertia_eigenvalues + self.EPSILON)
         axis_lengths = (axis_lengths / axis_lengths.max()) * (self.AXIS_LENGTH_SCALE * self.diagonal_length)
         self.axis_lengths = axis_lengths
         

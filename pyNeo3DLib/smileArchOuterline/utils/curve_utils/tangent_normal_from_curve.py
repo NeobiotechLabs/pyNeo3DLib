@@ -1,6 +1,7 @@
 import numpy as np
 import pyvista as pv
 from typing import Tuple
+from ..general_utils.constants import AnalysisConstants
 
 class CurveTangentNormalCalculator:
     """
@@ -40,14 +41,14 @@ class CurveTangentNormalCalculator:
             tangent = next_point - current_point
             # 접선 벡터 정규화
             norm = np.linalg.norm(tangent)
-            if norm > 1e-10:  # 0에 가까운 값으로 나누는 것 방지
+            if norm > AnalysisConstants.EPSILON:  # 0에 가까운 값으로 나누는 것 방지
                 tangent_normalized = tangent / norm
             else:
                 tangent_normalized = np.zeros_like(tangent)  # 또는 다른 기본 벡터 사용
 
             
             # y축 방향 벡터 [0,1,0]
-            y_axis = np.array([0, 1, 0])
+            y_axis = np.array(AnalysisConstants.Y_AXIS_VECTOR)
             
             # 법선 벡터 계산 (접선 벡터와 y축의 외적)
             normal = np.cross(tangent_normalized, y_axis)
@@ -59,8 +60,8 @@ class CurveTangentNormalCalculator:
             normals[i] = normal_normalized
         
         # 마지막 점의 접선과 법선은 이전 점과 동일하게 설정
-        tangents[-1] = tangents[-2]
-        normals[-1] = normals[-2]
+        tangents[AnalysisConstants.LAST_INDEX] = tangents[AnalysisConstants.SECOND_LAST_INDEX]
+        normals[AnalysisConstants.LAST_INDEX] = normals[AnalysisConstants.SECOND_LAST_INDEX]
         
         return tangents, normals
 

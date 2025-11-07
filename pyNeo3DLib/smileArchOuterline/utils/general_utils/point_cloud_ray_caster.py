@@ -38,7 +38,7 @@ class PointCloudRayCaster:
         )
 
         if first_point is None:
-            return np.array([]).reshape(0, 3)
+            return np.array([]).reshape(0, AnalysisConstants.VECTOR_DIMENSION)
 
         # 결과 반환
         result_points = [first_point]
@@ -52,7 +52,7 @@ class PointCloudRayCaster:
         origin: np.ndarray,
         direction: np.ndarray,
         forward: bool = True,
-        distance_threshold: float = 5.0
+        distance_threshold: float = AnalysisConstants.RAY_DISTANCE_THRESHOLD
     ) -> np.ndarray:
         """
         레이에 가장 가까운 버텍스를 찾습니다.
@@ -77,7 +77,7 @@ class PointCloudRayCaster:
         if forward:
             valid_mask = projections > 0
         else:
-            valid_mask = np.ones(len(projections), dtype=bool)
+            valid_mask = np.ones(len(projections), dtype=AnalysisConstants.NUMPY_ONES_DTYPE_BOOL)
 
         if not np.any(valid_mask):
             return None
@@ -107,7 +107,7 @@ class PointCloudRayCaster:
         ray_origin: np.ndarray,
         rotation_axis: np.ndarray,
         initial_direction: np.ndarray,
-        angle_step: float = 5.0
+        angle_step: float = AnalysisConstants.DEFAULT_ANGLE_STEP_RAY_CASTER
     ) -> np.ndarray:
         """
         360도 회전 레이캐스팅을 수행하여 각 각도에서 레이 원점과 가장 가까운 점 1개를 선택합니다.
@@ -125,21 +125,21 @@ class PointCloudRayCaster:
         selected_points = []
 
         # 0도부터 360도까지 각도 간격으로 회전
-        for angle in np.arange(0, 360, angle_step):
+        for angle in np.arange(AnalysisConstants.ANGLE_360_START, AnalysisConstants.ANGLE_360_END, angle_step):
             # 현재 각도에서의 레이 방향 계산
             current_direction = VectorUtils.rotate_vector_around_axis(initial_direction, rotation_axis, angle)
 
             # 레이 캐스팅 수행
-            plus_direction = current_direction.reshape(1, 3)
-            plus_points = self.ray_casting_by_point_cloud(vertices, ray_origin.reshape(1, 3), plus_direction)
+            plus_direction = current_direction.reshape(AnalysisConstants.SINGLE_ROW_SHAPE, AnalysisConstants.VECTOR_DIMENSION)
+            plus_points = self.ray_casting_by_point_cloud(vertices, ray_origin.reshape(AnalysisConstants.SINGLE_ROW_SHAPE, AnalysisConstants.VECTOR_DIMENSION), plus_direction)
 
             # 교차점이 1개 이상인 경우, 레이 원점과 가장 가까운 1개 선택
-            if len(plus_points) >= 1:
+            if len(plus_points) >= AnalysisConstants.MIN_POINTS_FOR_RAY_CASTING:
                 # 각 교차점과 레이 원점 사이의 거리 계산
                 distances = np.linalg.norm(plus_points - ray_origin, axis=1)
 
                 # 거리가 가장 가까운 1개 포인트의 인덱스 찾기
-                closest_index = np.argsort(distances)[:1]
+                closest_index = np.argsort(distances)[:AnalysisConstants.MIN_POINTS_FOR_RAY_CASTING]
 
                 # 가장 가까운 1개 포인트 선택
                 closest_point = plus_points[closest_index]
@@ -150,9 +150,9 @@ class PointCloudRayCaster:
         if len(selected_points) > 0:
             return np.concatenate(selected_points, axis=0)
         else:
-            return np.array([]).reshape(0, 3)
+            return np.array([]).reshape(0, AnalysisConstants.VECTOR_DIMENSION)
 
-    def perform_height_based_ray_casting(self, vertices: np.ndarray, rotation_axis, num_slices=5, angle_step=5):
+    def perform_height_based_ray_casting(self, vertices: np.ndarray, rotation_axis, num_slices=AnalysisConstants.DEFAULT_NUM_SLICES_RAY_CASTER, angle_step=AnalysisConstants.DEFAULT_ANGLE_STEP_RAY_CASTER):
         """
         높이별로 레이캐스팅하여 등고선 포인트 클라우드 추출
 
@@ -167,13 +167,13 @@ class PointCloudRayCaster:
         # rotation_axis가 None인 경우 기본값 사용
         if rotation_axis is None:
             print("경고: rotation_axis가 None입니다. 기본 Y축을 사용합니다.")
-            rotation_axis = np.array([0, 1, 0])
+            rotation_axis = np.array(AnalysisConstants.Y_AXIS_VECTOR)
 
         # rotation_axis를 1차원 배열로 변환
         rotation_axis = np.asarray(rotation_axis).flatten()
 
-        if len(rotation_axis) != 3:
-            raise ValueError(f"rotation_axis는 3차원 벡터여야 합니다. 현재 형태: {rotation_axis.shape}")
+        if len(rotation_axis) != AnalysisConstants.VECTOR_DIMENSION:
+            raise ValueError(f"rotation_axis는 {AnalysisConstants.VECTOR_DIMENSION}차원 벡터여야 합니다. 현재 형태: {rotation_axis.shape}")
 
         # min_y, max_y를 rotation_axis를 기준으로 계산
         projected_vertices = np.dot(vertices, rotation_axis)
@@ -183,8 +183,8 @@ class PointCloudRayCaster:
         # 높이 슬라이스 계산
         height_step_val = (max_proj - min_proj) / num_slices
 
-        result_points_array = np.array([]).reshape(0, 3)
-        initial_direction = np.array([0, 0, -1]) # 초기 방향 설정 (예시, 실제 데이터에 따라 조정 필요)
+        result_points_array = np.array([]).reshape(0, AnalysisConstants.VECTOR_DIMENSION)
+        initial_direction = np.array(AnalysisConstants.Z_AXIS_VECTOR_NEGATIVE) # 초기 방향 설정 (예시, 실제 데이터에 따라 조정 필요)
 
         for i in range(num_slices):
             # 현재 슬라이스 높이에 해당하는 평면 정의
@@ -223,7 +223,7 @@ class PointCloudRayCaster:
             ray_casting_results = self.perform_360_degree_ray_casting(
                 vertices, ray_origin_for_slice, rotation_axis, initial_direction, angle_step=angle_step
             )
-            ray_casting_results_array = np.array(ray_casting_results).reshape(-1, 3)
+            ray_casting_results_array = np.array(ray_casting_results).reshape(AnalysisConstants.LAST_INDEX, AnalysisConstants.VECTOR_DIMENSION)
             result_points_array = np.concatenate([result_points_array, ray_casting_results_array], axis=0)
 
 

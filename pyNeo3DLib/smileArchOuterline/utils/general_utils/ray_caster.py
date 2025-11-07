@@ -45,7 +45,7 @@ class RayCaster:
         
         if len(points) == 0:
             # 교차점이 없는 경우
-            return np.array([]).reshape(0, 3)
+            return np.array([]).reshape(0, AnalysisConstants.VECTOR_DIMENSION)
         
         # 교차점들 반환
         return points
@@ -77,8 +77,8 @@ class RayCaster:
         evec = principal_evec.flatten()
         
         # 양방향 레이 방향 벡터 생성
-        plus_direction = (evec * scale_factor).reshape(1, 3)
-        minus_direction = (-evec * scale_factor).reshape(1, 3)
+        plus_direction = (evec * scale_factor).reshape(AnalysisConstants.SINGLE_ROW_SHAPE, AnalysisConstants.VECTOR_DIMENSION)
+        minus_direction = (-evec * scale_factor).reshape(AnalysisConstants.SINGLE_ROW_SHAPE, AnalysisConstants.VECTOR_DIMENSION)
         
         # 양방향 레이 캐스팅 수행
         plus_points = self.ray_casting(input_mesh, center, plus_direction)

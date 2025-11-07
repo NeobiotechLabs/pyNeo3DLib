@@ -1,5 +1,6 @@
 import numpy as np
 from typing import Optional
+from .constants import AnalysisConstants
 
 class VectorUtils:
     """벡터 관련 유틸리티 함수들을 제공하는 클래스"""
@@ -24,21 +25,21 @@ class VectorUtils:
         # axis를 1차원 배열로 변환
         axis = np.asarray(axis).flatten()
 
-        if len(axis) != 3:
-            raise ValueError(f"회전축은 3차원 벡터여야 합니다. 현재 형태: {axis.shape}")
+        if len(axis) != AnalysisConstants.VECTOR_DIMENSION:
+            raise ValueError(f"회전축은 {AnalysisConstants.VECTOR_DIMENSION}차원 벡터여야 합니다. 현재 형태: {axis.shape}")
 
         # vector를 1차원 배열로 변환
         vector = np.asarray(vector).flatten()
 
-        if len(vector) != 3:
-            raise ValueError(f"벡터는 3차원 벡터여야 합니다. 현재 형태: {vector.shape}")
+        if len(vector) != AnalysisConstants.VECTOR_DIMENSION:
+            raise ValueError(f"벡터는 {AnalysisConstants.VECTOR_DIMENSION}차원 벡터여야 합니다. 현재 형태: {vector.shape}")
 
         # 각도를 라디안으로 변환
         angle_rad = np.radians(angle_degrees)
 
         # 회전축 정규화
         axis_norm = np.linalg.norm(axis)
-        if axis_norm == 0:
+        if axis_norm == AnalysisConstants.ZERO_MAGNITUDE:
             raise ValueError("회전축의 크기가 0입니다.")
 
         axis = axis / axis_norm
@@ -49,14 +50,14 @@ class VectorUtils:
 
         # 외적 행렬 (skew-symmetric matrix)
         K = np.array([
-            [0, -axis[2], axis[1]],
-            [axis[2], 0, -axis[0]],
-            [-axis[1], axis[0], 0]
+            [AnalysisConstants.ROTATION_MATRIX_ZERO, -axis[AnalysisConstants.Z_AXIS_INDEX], axis[AnalysisConstants.Y_AXIS_INDEX]],
+            [axis[AnalysisConstants.Z_AXIS_INDEX], AnalysisConstants.ROTATION_MATRIX_ZERO, -axis[AnalysisConstants.X_AXIS_INDEX]],
+            [-axis[AnalysisConstants.Y_AXIS_INDEX], axis[AnalysisConstants.X_AXIS_INDEX], AnalysisConstants.ROTATION_MATRIX_ZERO]
         ])
 
         # 회전 행렬 계산: R = I + sin(θ)K + (1-cos(θ))K²
-        I = np.eye(3)
-        R = I + sin_angle * K + (1 - cos_angle) * np.dot(K, K)
+        I = np.eye(AnalysisConstants.MATRIX_DIMENSION_3X3)
+        R = I + sin_angle * K + (AnalysisConstants.ROTATION_MATRIX_ONE - cos_angle) * np.dot(K, K)
 
         # 벡터 회전
         return np.dot(R, vector)

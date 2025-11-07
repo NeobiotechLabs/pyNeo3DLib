@@ -51,30 +51,30 @@ class ArchAnalysisCoordinator:
         smoothed_curve = self.pipeline.smooth_curve(curve)
         
         # 2단계: 곡선의 시작점과 끝점을 잇는 직선 생성
-        direction = smoothed_curve[-1] - smoothed_curve[0]
+        direction = smoothed_curve[AnalysisConstants.LAST_INDEX] - smoothed_curve[AnalysisConstants.FIRST_ELEMENT_INDEX]
         direction = direction / np.linalg.norm(direction)
-        line_points = np.linspace(smoothed_curve[0], smoothed_curve[-1], 100)
-        line_points = line_points + direction * 0.1
+        line_points = np.linspace(smoothed_curve[AnalysisConstants.FIRST_ELEMENT_INDEX], smoothed_curve[AnalysisConstants.LAST_INDEX], AnalysisConstants.LINSPACE_NUM_POINTS)
+        line_points = line_points + direction * AnalysisConstants.DIRECTION_OFFSET_FACTOR
         
         # 3단계: 곡선의 중심점 계산
-        centroid = np.mean(smoothed_curve, axis=0).reshape(1, 3)
+        centroid = np.mean(smoothed_curve, axis=0).reshape(AnalysisConstants.SINGLE_ROW_SHAPE, AnalysisConstants.VECTOR_DIMENSION)
         
         # 4단계: KDTree를 사용해 중심점에서 가장 가까운 선상의 점 찾기
         kdtree = KDTree(line_points)
         _, idx = kdtree.query(centroid, k=1)
-        closest_point = line_points[idx].reshape(3)
+        closest_point = line_points[idx].reshape(AnalysisConstants.VECTOR_DIMENSION)
         
         # 5단계: 선상의 점에서 중심점으로 가는 방향벡터 계산
-        centroid_flat = centroid.reshape(3)
+        centroid_flat = centroid.reshape(AnalysisConstants.VECTOR_DIMENSION)
         direction_to_centroid = centroid_flat - closest_point
         direction_to_centroid = direction_to_centroid / np.linalg.norm(direction_to_centroid)
         
         # 6단계: [0,0,1]과 방향벡터가 이루는 각도 계산 및 Y축 기준 회전
-        angle = -np.arccos(np.dot([0, 0, 1], direction_to_centroid))
+        angle = -np.arccos(np.dot(AnalysisConstants.Z_AXIS_VECTOR_POSITIVE, direction_to_centroid))
         rotation_matrix = np.array([
-            [np.cos(angle), 0, np.sin(angle)],
-            [0, 1, 0],
-            [-np.sin(angle), 0, np.cos(angle)]
+            [np.cos(angle), AnalysisConstants.ROTATION_MATRIX_ZERO, np.sin(angle)],
+            [AnalysisConstants.ROTATION_MATRIX_ZERO, AnalysisConstants.ROTATION_MATRIX_ONE, AnalysisConstants.ROTATION_MATRIX_ZERO],
+            [-np.sin(angle), AnalysisConstants.ROTATION_MATRIX_ZERO, np.cos(angle)]
         ])
         mesh.points = mesh.points @ rotation_matrix
         
@@ -147,7 +147,7 @@ class ArchAnalysisCoordinator:
                 - molar_width: 치아 배열 곡선의 폭
                 - landmark_points: 정규화된 랜드마크 포인트 리스트
         """
-        y_axis = np.array([0, 1, 0])
+        y_axis = np.array(AnalysisConstants.Y_AXIS_VECTOR)
         
         # 1단계: 1차 정렬 수행
         with self.timer.measure("1차 정렬"):
@@ -197,7 +197,7 @@ class ArchAnalysisCoordinator:
                     AnalysisConstants.DEFAULT_NUM_SAMPLES
                 )
                 self.visualizer.visualize_analysis_results(
-                    np.array([0, 0, 0]).reshape(1, 3),
+                    np.array(AnalysisConstants.ORIGIN_POINT).reshape(AnalysisConstants.SINGLE_ROW_SHAPE, AnalysisConstants.VECTOR_DIMENSION),
                     filtered_points,
                     final_curve,
                     sampled_points
