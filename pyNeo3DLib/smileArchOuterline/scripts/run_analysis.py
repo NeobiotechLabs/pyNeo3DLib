@@ -25,7 +25,7 @@ if __name__ == "__main__":
     try:
         arch_depth, molar_width, landmarks = analyze_upper_IOS_scandata(
             mesh_path=mesh_path,
-            visualize_result=True
+            visualize_result=False
         )
     except Exception as e:
         print(f"Error during analysis: {e}")

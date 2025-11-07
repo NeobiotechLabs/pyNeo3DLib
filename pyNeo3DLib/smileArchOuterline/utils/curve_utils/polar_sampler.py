@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Optional, Tuple, Literal
-from pyNeo3DLib.smileArchOuterline.utils.general_utils.constants import AnalysisConstants
+from ..general_utils.constants import AnalysisConstants
 
 
 class PolarSampling:

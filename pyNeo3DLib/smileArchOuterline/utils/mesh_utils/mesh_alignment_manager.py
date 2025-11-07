@@ -13,15 +13,6 @@ from ..general_utils.ray_caster import RayCaster
 class MeshAlignmentManager:
     """메쉬 정렬을 관리하는 클래스"""
     
-    # 상수 정의
-    # EPSILON = 1e-10
-    # NEAR_PARALLEL_DOT_PRODUCT_THRESHOLD = 0.9
-    # STANDARD_BASIS = np.array([
-    #     [1.0, 0.0, 0.0],
-    #     [0.0, 1.0, 0.0],
-    #     [0.0, 0.0, 1.0]
-    # ], dtype=np.float64)
-    
     def __init__(self):
         self.ray_caster = RayCaster()
         self.x_axis_intersection_count = AnalysisConstants.X_AXIS_INTERSECTION_COUNT

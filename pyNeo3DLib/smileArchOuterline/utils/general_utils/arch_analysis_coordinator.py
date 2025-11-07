@@ -51,8 +51,16 @@ class ArchAnalysisCoordinator:
         smoothed_curve = self.pipeline.smooth_curve(curve)
         
         # 2단계: 곡선의 시작점과 끝점을 잇는 직선 생성
-        direction = smoothed_curve[AnalysisConstants.LAST_INDEX] - smoothed_curve[AnalysisConstants.FIRST_ELEMENT_INDEX]
-        direction = direction / np.linalg.norm(direction)
+        if smoothed_curve.shape[0] < 2:
+            print("smoothed_curve가 2개 미만의 포인트를 가지고 있습니다. 방향을 계산할 수 없습니다. 기본 방향을 사용합니다.")
+            direction = np.array([1.0, 0.0, 0.0])  # 기본 방향 벡터
+        else:
+            direction = smoothed_curve[AnalysisConstants.LAST_INDEX] - smoothed_curve[AnalysisConstants.FIRST_ELEMENT_INDEX]
+            norm_direction = np.linalg.norm(direction)
+            if norm_direction == 0:
+                print("norm_direction이 0입니다. 방향을 정규화할 수 없습니다. 기본 방향을 사용합니다.")
+                direction = np.array([1.0, 0.0, 0.0]) # 기본 방향 벡터
+        
         line_points = np.linspace(smoothed_curve[AnalysisConstants.FIRST_ELEMENT_INDEX], smoothed_curve[AnalysisConstants.LAST_INDEX], AnalysisConstants.LINSPACE_NUM_POINTS)
         line_points = line_points + direction * AnalysisConstants.DIRECTION_OFFSET_FACTOR
         
