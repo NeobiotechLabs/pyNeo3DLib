@@ -149,61 +149,81 @@ class ArchAnalysisCoordinator:
         """
         y_axis = np.array(AnalysisConstants.Y_AXIS_VECTOR)
         
-        # 1단계: 1차 정렬 수행
-        with self.timer.measure("1차 정렬"):
-            aligned_mesh, _, _, _, _ = self.mesh_processor.perform_initial_alignment(mesh_path)
-        
-        # 2단계: 정밀정렬 수행
-        with self.timer.measure("정밀정렬"):
-            aligned_mesh, _, _ = self.perform_precise_alignment(aligned_mesh, y_axis)
-        
-        # 3단계: 대구치 아웃라이어 제거
-        with self.timer.measure("대구치 아웃라이어 제거"):
-            mesh_points = self.pipeline.remove_outliers(aligned_mesh.points)
-        
-        # 4단계: 초기 곡선 추출 및 스무딩
-        z_min = np.min(mesh_points[:, 2])
-        with self.timer.measure("초기 곡선 추출 및 스무딩"):
-            initial_curve = self.pipeline.extract_initial_curve(mesh_points, z_min)
-            smoothed_curve = self.pipeline.smooth_curve(initial_curve)
-        
-        # 5단계: 곡선 외측 확장 및 메시 필터링
-        with self.timer.measure("곡선 기반 메시 필터링"):
-            expanded_curve = self.pipeline.expand_curve_outward(smoothed_curve)
-            filtered_points = self.pipeline.filter_mesh_by_curve_boundary(
-                mesh_points, expanded_curve
-            )
-        
-        # 6단계: 치아 타입 분류 및 최종 곡선 추출
-        z_min = np.min(filtered_points[:, 2])
-        with self.timer.measure("치아 타입 분류 및 최종 곡선 추출"):
-            final_curve, arch_type, _, rmse = \
-                self.pipeline.classify_and_extract_final_curve(filtered_points, z_min)
-        
-        print(f"악궁 타입: {arch_type} (RMSE: {rmse:.4f})")
-        
-        # 7단계: 랜드마크 계산
-        with self.timer.measure("랜드마크 계산"):
-            landmark_points, arch_depth, molar_width = \
-                self.curve_sampler.compute_normalized_landmarks_and_arch_depth_molar_width(
-                    final_curve
+        try:
+            # 1단계: 1차 정렬 수행
+            with self.timer.measure("1차 정렬"):
+                aligned_mesh, _, _, _, _ = self.mesh_processor.perform_initial_alignment(mesh_path)
+            
+            if aligned_mesh is None:
+                raise ValueError(f"Initial alignment failed for mesh: {mesh_path}")
+
+            # 2단계: 정밀정렬 수행
+            with self.timer.measure("정밀정렬"):
+                aligned_mesh, _, _ = self.perform_precise_alignment(aligned_mesh, y_axis)
+            
+            # 3단계: 대구치 아웃라이어 제거
+            with self.timer.measure("대구치 아웃라이어 제거"):
+                mesh_points = self.pipeline.remove_outliers(aligned_mesh.points)
+            
+            if mesh_points.shape[0] == 0:
+                raise ValueError("No points remaining after outlier removal.")
+
+            # 4단계: 초기 곡선 추출 및 스무딩
+            z_min = np.min(mesh_points[:, 2])
+            with self.timer.measure("초기 곡선 추출 및 스무딩"):
+                initial_curve = self.pipeline.extract_initial_curve(mesh_points, z_min)
+                smoothed_curve = self.pipeline.smooth_curve(initial_curve)
+            
+            if smoothed_curve.shape[0] == 0:
+                raise ValueError("Failed to extract or smooth initial curve.")
+
+            # 5단계: 곡선 외측 확장 및 메시 필터링
+            with self.timer.measure("곡선 기반 메시 필터링"):
+                expanded_curve = self.pipeline.expand_curve_outward(smoothed_curve)
+                filtered_points = self.pipeline.filter_mesh_by_curve_boundary(
+                    mesh_points, expanded_curve
                 )
-        
-        # 8단계: 시각화 (옵션)
-        if visualize_result:
-            with self.timer.measure("시각화"):
-                sampled_points = self.curve_sampler.sample_points_by_arc_length(
-                    final_curve, 
-                    AnalysisConstants.DEFAULT_NUM_SAMPLES
-                )
-                self.visualizer.visualize_analysis_results(
-                    np.array(AnalysisConstants.ORIGIN_POINT).reshape(AnalysisConstants.SINGLE_ROW_SHAPE, AnalysisConstants.VECTOR_DIMENSION),
-                    filtered_points,
-                    final_curve,
-                    sampled_points
-                )
-        
-        # 성능 측정 요약 출력
-        self.timer.print_summary()
-        
-        return arch_depth, molar_width, landmark_points
+            
+            if filtered_points.shape[0] == 0:
+                raise ValueError("No points remaining after curve-based mesh filtering.")
+
+            # 6단계: 치아 타입 분류 및 최종 곡선 추출
+            z_min = np.min(filtered_points[:, 2])
+            with self.timer.measure("치아 타입 분류 및 최종 곡선 추출"):
+                final_curve, arch_type, _, rmse = \
+                    self.pipeline.classify_and_extract_final_curve(filtered_points, z_min)
+            
+            if final_curve.shape[0] == 0:
+                raise ValueError("Failed to classify or extract final curve.")
+
+            print(f"악궁 타입: {arch_type} (RMSE: {rmse:.4f})")
+            
+            # 7단계: 랜드마크 계산
+            with self.timer.measure("랜드마크 계산"):
+                landmark_points, arch_depth, molar_width = \
+                    self.curve_sampler.compute_normalized_landmarks_and_arch_depth_molar_width(
+                        final_curve
+                    )
+            
+            # 8단계: 시각화 (옵션)
+            if visualize_result:
+                with self.timer.measure("시각화"):
+                    sampled_points = self.curve_sampler.sample_points_by_arc_length(
+                        final_curve, 
+                        AnalysisConstants.DEFAULT_NUM_SAMPLES
+                    )
+                    self.visualizer.visualize_analysis_results(
+                        np.array(AnalysisConstants.ORIGIN_POINT).reshape(AnalysisConstants.SINGLE_ROW_SHAPE, AnalysisConstants.VECTOR_DIMENSION),
+                        filtered_points,
+                        final_curve,
+                        sampled_points
+                    )
+            
+            # 성능 측정 요약 출력
+            self.timer.print_summary()
+            
+            return arch_depth, molar_width, landmark_points
+        except Exception as e:
+            print(f"Error in analyze_upper_IOS_scandata: {e}")
+            # 에러 발생 시 기본값 또는 빈 값 반환
+            return 0.0, 0.0, []

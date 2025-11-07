@@ -16,12 +16,20 @@ if __name__ == "__main__":
     print("run_analysis.py")
     script_dir = os.path.dirname(os.path.abspath(__file__))
     smile_arch_dir = os.path.dirname(script_dir)
-    mesh_path = os.path.join(smile_arch_dir, "data","01_김혜자_상악.stl")
+    mesh_path = os.path.join(smile_arch_dir, "data","smile_arch_origin.stl")
     
-    arch_depth, molar_width, landmarks = analyze_upper_IOS_scandata(
-        mesh_path=mesh_path,
-        visualize_result=True
-    )
+    if not os.path.exists(mesh_path):
+        print(f"Error: Mesh file not found at {mesh_path}")
+        sys.exit(1)
+
+    try:
+        arch_depth, molar_width, landmarks = analyze_upper_IOS_scandata(
+            mesh_path=mesh_path,
+            visualize_result=True
+        )
+    except Exception as e:
+        print(f"Error during analysis: {e}")
+        sys.exit(1)
     
     print(f"arch_depth: {arch_depth}")
     print(f"molar_width: {molar_width}")
