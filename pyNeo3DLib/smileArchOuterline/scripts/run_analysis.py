@@ -7,7 +7,7 @@ sys.path.insert(0, project_root)
 
 # smileArchOuterline의 core 모듈만 직접 import
 sys.path.insert(0, os.path.join(project_root, 'pyNeo3DLib'))
-from smileArchOuterline.core import analyze_upper_IOS_scandata
+from pyNeo3DLib.smileArchOuterline.core.arch_curve_finder import analyze_upper_IOS_scandata
 
 
 if __name__ == "__main__":
@@ -16,7 +16,7 @@ if __name__ == "__main__":
     print("run_analysis.py")
     script_dir = os.path.dirname(os.path.abspath(__file__))
     smile_arch_dir = os.path.dirname(script_dir)
-    mesh_path = os.path.join(smile_arch_dir, "data","05_방성호_상악.stl")
+    mesh_path = os.path.join(smile_arch_dir, "data","smile_arch_origin.stl")
     
     arch_depth, molar_width, landmarks = analyze_upper_IOS_scandata(
         mesh_path=mesh_path,

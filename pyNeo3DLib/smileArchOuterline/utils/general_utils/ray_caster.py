@@ -5,10 +5,10 @@
 import numpy as np
 import pyvista as pv
 from typing import List
-from pyNeo3DLib.smileArchOuterline.utils.common.constants import AnalysisConstants
-from pyNeo3DLib.smileArchOuterline.utils.visualization.visualizer import VisualizeForTest
-from pyNeo3DLib.smileArchOuterline.utils.common.vector_utils import VectorUtils
-from pyNeo3DLib.smileArchOuterline.utils.ray_casting.point_cloud_ray_caster import PointCloudRayCaster
+from .constants import AnalysisConstants
+from ..visualizer_utils.visualizer import VisualizeForTest
+from .vector_utils import VectorUtils
+from .point_cloud_ray_caster import PointCloudRayCaster
 
 
 class RayCaster:

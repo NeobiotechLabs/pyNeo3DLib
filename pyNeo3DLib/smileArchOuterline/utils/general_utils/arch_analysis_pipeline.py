@@ -5,11 +5,11 @@
 
 import numpy as np
 from typing import Tuple
-from pyNeo3DLib.smileArchOuterline.utils.curve_processing.curve_extractor import CurveExtractor
-from pyNeo3DLib.smileArchOuterline.utils.curve_processing.signal_processor import SignalProcessor
+from ..curve_utils.curve_extractor import CurveExtractor
+from .signal_processor import SignalProcessor
 from .arch_type_classifier import ArchTypeClassifier
-from pyNeo3DLib.smileArchOuterline.utils.curve_processing.tangent_normal_from_curve import CurveTangentNormalCalculator
-from pyNeo3DLib.smileArchOuterline.utils.common.constants import AnalysisConstants
+from ..curve_utils.tangent_normal_from_curve import CurveTangentNormalCalculator
+from .constants import AnalysisConstants
 
 
 class ArchAnalysisPipeline:

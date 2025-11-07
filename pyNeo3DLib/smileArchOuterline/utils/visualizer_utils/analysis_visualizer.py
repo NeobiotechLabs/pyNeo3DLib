@@ -5,8 +5,8 @@
 
 import numpy as np
 from typing import List
-from pyNeo3DLib.smileArchOuterline.utils.visualization.visualizer import VisualizeForTest
-from pyNeo3DLib.smileArchOuterline.utils.common.constants import AnalysisConstants
+from .visualizer import VisualizeForTest
+from ..general_utils.constants import AnalysisConstants
 
 
 class AnalysisVisualizer:
@@ -14,6 +14,25 @@ class AnalysisVisualizer:
     
     def __init__(self):
         self.visualizer = VisualizeForTest()
+    
+    def visualize_precise_alignment_results(
+        self, 
+        mesh: object, 
+        center_point: np.ndarray, 
+        curve_points: np.ndarray
+    ) -> None:
+        """
+        정밀정렬 결과를 시각화합니다.
+        
+        Args:
+            mesh: 정렬된 메시
+            center_point: 중심점
+            curve_points: 곡선 포인트들
+        """
+        self.visualizer.visualize_mesh(mesh, color='yellow', opacity=0.5)
+        self.visualizer.visualize_points(center_point, color='blue', point_size=5)
+        self.visualizer.visualize_points(curve_points, color='red', point_size=5)
+        self.visualizer.show()
     
     def visualize_analysis_results(
         self,

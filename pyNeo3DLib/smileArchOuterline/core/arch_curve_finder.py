@@ -6,7 +6,7 @@
 """
 
 from typing import Tuple, List
-from pyNeo3DLib.smileArchOuterline.utils.analysis.arch_analysis_coordinator import ArchAnalysisCoordinator
+from ..utils.general_utils.arch_analyzer import ArchAnalyzer
 
 
 # ===== 기존 함수들은 별도 클래스로 분리됨 =====
@@ -40,8 +40,8 @@ def analyze_upper_IOS_scandata(
             - molar_width: 치아 배열 곡선의 폭
             - landmark_points: 정규화된 랜드마크 포인트 리스트
     """
-    coordinator = ArchAnalysisCoordinator()
-    return coordinator.analyze_upper_IOS_scandata(
+    analyzer = ArchAnalyzer()
+    return analyzer.analyze_upper_IOS_scandata(
         mesh_path=mesh_path,
         visualize_result=visualize_result
     )

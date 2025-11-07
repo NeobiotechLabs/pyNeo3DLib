@@ -5,16 +5,16 @@
 
 import numpy as np
 from typing import Tuple
-from pyNeo3DLib.smileArchOuterline.utils.common.constants import AnalysisConstants
-from pyNeo3DLib.smileArchOuterline.utils.ray_casting.ray_caster import RayCaster
-from pyNeo3DLib.smileArchOuterline.utils.curve_processing.signal_processor import SignalProcessor
-from pyNeo3DLib.smileArchOuterline.utils.mesh_processing.mesh_alignment_manager import MeshAlignmentManager
-from pyNeo3DLib.smileArchOuterline.utils.curve_processing.curve_sampler import CurveSampler
-from pyNeo3DLib.smileArchOuterline.utils.curve_processing.polar_sampler import PolarSampling
+from ..general_utils.constants import AnalysisConstants
+from ..general_utils.ray_caster import RayCaster
+from ..general_utils.signal_processor import SignalProcessor
+from ..mesh_utils.mesh_alignment_manager import MeshAlignmentManager
+from .curve_sampler import CurveSampler
+from .polar_sampler import PolarSampling
 import time
-from pyNeo3DLib.smileArchOuterline.utils.visualization.visualizer import VisualizeForTest
+from ..visualizer_utils.visualizer import VisualizeForTest
 import open3d as o3d
-from pyNeo3DLib.smileArchOuterline.utils.ray_casting.point_cloud_ray_caster import PointCloudRayCaster # Import PointCloudRayCaster
+from ..general_utils.point_cloud_ray_caster import PointCloudRayCaster # Import PointCloudRayCaster
 
 
 class CurveExtractor:
@@ -71,6 +71,40 @@ class CurveExtractor:
         print(f"filtered_aligned_mesh: {filtered_aligned_mesh.points.shape}")
         
         return filtered_result_points_array, filtered_aligned_mesh
+    
+    def filter_mesh_by_z_threshold(self, aligned_mesh: object, y_axis: np.ndarray) -> object:
+        """
+        높이별 레이캐스팅을 통해 등고선 포인트를 추출하고 메쉬를 필터링합니다.
+        
+        Args:
+            aligned_mesh: 정렬된 메쉬
+            y_axis: Y축 벡터
+            
+        Returns:
+            object: 필터링된 메쉬
+        """
+        # 레이캐스팅으로 등고선 포인트 클라우드 추출
+        result_points_array = self.point_cloud_ray_caster.perform_height_based_ray_casting( # Use point_cloud_ray_caster
+            aligned_mesh.points, y_axis, 
+            num_slices=AnalysisConstants.DEFAULT_NUM_SLICES, 
+            angle_step=AnalysisConstants.DEFAULT_ANGLE_STEP
+        )
+
+        print(f"result_points_array shape: {result_points_array.shape}")
+        
+        # 대구치 아웃라이어 제거
+        filtered_result_points_array = self.signal_processor.remove_molar_outliers(
+            result_points_array, 
+            percentile_threshold=AnalysisConstants.MOLAR_OUTLIER_PERCENTILE_THRESHOLD
+        )
+
+        
+        # 메쉬 필터링
+        filtered_aligned_mesh = self.mesh_aligner.filter_mesh_by_z_threshold(
+            aligned_mesh, filtered_result_points_array
+        )
+        
+        return filtered_aligned_mesh
     
     def extract_curve_by_polar_sampling(self, mesh_points: np.ndarray, z_min_point: float) -> np.ndarray:
         """
