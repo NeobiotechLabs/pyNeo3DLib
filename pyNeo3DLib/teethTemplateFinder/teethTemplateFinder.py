@@ -76,9 +76,11 @@ class TeethTemplateFinder:
             
         if teeth_size_type:
             conditions.append(FieldCondition(key="teeth_size_type", match=MatchValue(value=teeth_size_type)))
-        
+
         if removed_teeth_index is not None:
             conditions.append(FieldCondition(key="removed_teeth_index", match=MatchValue(value=removed_teeth_index)))
+        else:
+            conditions.append(FieldCondition(key="removed_teeth_index", match=MatchValue(value=0)))
             
         if arch_type:
             conditions.append(FieldCondition(key="arch_type", match=MatchValue(value=arch_type)))
@@ -146,17 +148,21 @@ if __name__ == "__main__":
     print("Hello, World!")
     teeth_template_finder = TeethTemplateFinder()
     teeth_template_finder.start_template_finder()
-    
-    # 샘플 데이터로 테스트
-    sample_landmarks =  [[-21.23, -17.38], [-19.77, -8.07], [-16.71, 3.04], [-10.67, 12.55], [-0.78, 17.47], [9.46, 12.85], [16.66, 3.69], [21.01, -6.71], [22.04, -17.45]]
+
+    # 샘플 데이터로 테스트 (이판임)
+    arch_depth = 25.99
+    molar_width = 41.7
+    sample_landmarks =  [[-20.77,-13.07],[-18.22,-6.77],[-14.55,1.83],[-8.56,8.92],[-0.45,12.87],[8.34,10.17],[14.76,3.48],[18.52,-4.48],[20.93,-12.95]]
     
     try:
         results = teeth_template_finder.find_template(
-            arch_depth=34.98,
-            molar_width=43.48,
+            arch_depth=arch_depth,
+            molar_width=molar_width,
             landmarks=sample_landmarks,
-            top_k=3
+            top_k=5
         )
+        for result in results:
+            print("Filtered maxilla: " + result["payload"]["files"]["maxilla"])
         print(f"Found {len(results)} templates")
     except Exception as e:
         print(f"Error: {e}")
