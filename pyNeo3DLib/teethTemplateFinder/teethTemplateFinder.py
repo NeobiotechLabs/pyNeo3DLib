@@ -79,6 +79,8 @@ class TeethTemplateFinder:
         
         if removed_teeth_index is not None:
             conditions.append(FieldCondition(key="removed_teeth_index", match=MatchValue(value=removed_teeth_index)))
+        else:
+            conditions.append(FieldCondition(key="removed_teeth_index", match=MatchValue(value=0)))
             
         if arch_type:
             conditions.append(FieldCondition(key="arch_type", match=MatchValue(value=arch_type)))
