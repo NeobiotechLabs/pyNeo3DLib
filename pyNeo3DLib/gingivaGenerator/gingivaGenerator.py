@@ -283,7 +283,7 @@ class GingivaGenerator:
             process_create_elapsed = time.perf_counter() - process_start
             print(f"[{request_id}] [{arch_type}] [PERF] 프로세스 생성: {process_create_elapsed:.4f}초")
             
-            # 실시간으로 stdout과 stderr를 읽어서 출력 및 WebSocket 전송
+            # 실시간으로 stdout과 stderr를 읽어서 출력
             async def stream_output(stream, stream_name):
                 while True:
                     line = await stream.readline()
@@ -292,14 +292,6 @@ class GingivaGenerator:
                     text = line.decode('utf-8', errors='ignore').rstrip()
                     if text:
                         print(f"[{request_id}] [{arch_type}] [{stream_name}] {text}")
-                        # WebSocket으로 진행 상황 전송
-                        await self._send_websocket_message({
-                            "type": "gingiva_generation_progress",
-                            "request_id": request_id,
-                            "arch_type": arch_type,
-                            "message": text,
-                            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        })
             
             # stdout과 stderr를 동시에 스트리밍
             stream_start = time.perf_counter()
@@ -445,7 +437,7 @@ class GingivaGenerator:
             process_create_elapsed = time.perf_counter() - process_start
             print(f"[{request_id}] [PERF] 프로세스 생성: {process_create_elapsed:.4f}초")
             
-            # 실시간으로 stdout과 stderr를 읽어서 출력 및 WebSocket 전송
+            # 실시간으로 stdout과 stderr를 읽어서 출력
             async def stream_output(stream, stream_name):
                 while True:
                     line = await stream.readline()
@@ -454,13 +446,6 @@ class GingivaGenerator:
                     text = line.decode('utf-8', errors='ignore').rstrip()
                     if text:
                         print(f"[{request_id}] [{stream_name}] {text}")
-                        # WebSocket으로 진행 상황 전송
-                        await self._send_websocket_message({
-                            "type": "gingiva_generation_progress",
-                            "request_id": request_id,
-                            "message": text,
-                            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        })
             
             # stdout과 stderr를 동시에 스트리밍
             stream_start = time.perf_counter()
