@@ -20,7 +20,7 @@ class FacePhotoRegistration:
         self.MOUTH_CORNER_LEFT_INDEX = 61 # 또는 78 - 왼쪽 입꼬리 (이미지 기준 왼쪽)
         self.MOUTH_CORNER_RIGHT_INDEX = 291 # 또는 308 - 오른쪽 입꼬리 (이미지 기준 오른쪽)
 
-        self.TARGET_MOUTH_WIDTH_3D = 55.0 # mm 단위로 가정
+        self.TARGET_EYE_TO_MOUTH_DISTANCE_3D = 65.0 # mm 단위 (눈 중심에서 입 중심까지의 평균 거리)
     
     def run_registration(self):
         img_data_raw_rgb = self.__load_and_prepare_image()
@@ -175,24 +175,45 @@ class FacePhotoRegistration:
 
         # 디버깅: 최종 사용될 텍스처 이미지에 랜드마크 점 그리기
         final_image_for_texture = aligned_image_for_texture_base.copy()
-        cv2.circle(final_image_for_texture, (int(lips_center_px[0]), int(lips_center_px[1])), 5, (0, 255, 0), -1) # 초록
-        cv2.circle(final_image_for_texture, (int(mouth_left_px[0]), int(mouth_left_px[1])), 3, (255, 0, 0), -1)   # 파랑
-        cv2.circle(final_image_for_texture, (int(mouth_right_px[0]), int(mouth_right_px[1])), 3, (0, 0, 255), -1)   # 빨강
+        cv2.circle(final_image_for_texture, (int(lips_center_px[0]), int(lips_center_px[1])), 5, (0, 255, 0), -1) # 초록 (입 중심)
+        cv2.circle(final_image_for_texture, (int(mouth_left_px[0]), int(mouth_left_px[1])), 3, (255, 0, 0), -1)   # 파랑 (왼쪽 입꼬리)
+        cv2.circle(final_image_for_texture, (int(mouth_right_px[0]), int(mouth_right_px[1])), 3, (0, 0, 255), -1)   # 빨강 (오른쪽 입꼬리)
 
-        pixel_mouth_width = np.linalg.norm(np.array(mouth_right_px) - np.array(mouth_left_px))
-        print(f"[DEBUG] 감지된 입 너비 (픽셀): {pixel_mouth_width:.2f}")
+        # 양 눈의 중심점 계산 (회전된 이미지에서 눈 좌표를 다시 가져와야 함)
+        eye_left_center = landmarks_on_rotated_image["eye_left"]
+        eye_right_center = landmarks_on_rotated_image["eye_right"]
+        eye_center_x = (eye_left_center[0] + eye_right_center[0]) / 2
+        eye_center_y = (eye_left_center[1] + eye_right_center[1]) / 2
+        eye_center = np.array([eye_center_x, eye_center_y])
+
+        # 시각화를 위해 눈 관련 점들도 표시
+        cv2.circle(final_image_for_texture, (int(eye_left_center[0]), int(eye_left_center[1])), 3, (255, 255, 0), -1)   # 노랑 (왼쪽 눈)
+        cv2.circle(final_image_for_texture, (int(eye_right_center[0]), int(eye_right_center[1])), 3, (255, 255, 0), -1)  # 노랑 (오른쪽 눈)
+        cv2.circle(final_image_for_texture, (int(eye_center_x), int(eye_center_y)), 4, (255, 0, 255), -1)  # 마젠타 (눈 중심)
+        
+        # 눈 중심과 입 중심을 연결하는 선 그리기
+        cv2.line(final_image_for_texture, (int(eye_center_x), int(eye_center_y)), (int(lips_center_px[0]), int(lips_center_px[1])), (0, 255, 255), 2)  # 시안색 선
+
+        # 눈 중심과 입 중심 사이의 거리 계산
+        lips_center = np.array(lips_center_px)
+        pixel_eye_to_mouth_distance = np.linalg.norm(lips_center - eye_center)
+        print(f"[DEBUG] 감지된 눈-입 거리 (픽셀): {pixel_eye_to_mouth_distance:.2f}")
+        print(f"[DEBUG] 눈 중심 좌표: ({eye_center_x:.1f}, {eye_center_y:.1f})")
+        print(f"[DEBUG] 입 중심 좌표: ({lips_center_px[0]:.1f}, {lips_center_px[1]:.1f})")
 
         # 최종 텍스처 이미지의 크기 (회전 없음)
         final_h_tex, final_w_tex, _ = final_image_for_texture.shape
         print(f"[DEBUG] 최종 텍스처 이미지 크기 (W, H): ({final_w_tex}, {final_h_tex})")
 
-        # --- 스케일링 로직: 회전 없는 버전에 맞게 수정 ---
-        # 입 너비(이미지의 수평)를 기준으로 3D 평면의 X축 크기(너비)를 계산
-        if pixel_mouth_width > 1e-3:
-            target_plane_x_size = (final_w_tex / pixel_mouth_width) * self.TARGET_MOUTH_WIDTH_3D
+        # --- 스케일링 로직: 눈-입 거리 기반으로 수정 ---
+        # 눈-입 거리를 기준으로 전체 이미지의 스케일 계산
+        if pixel_eye_to_mouth_distance > 1e-3:
+            scale_factor = self.TARGET_EYE_TO_MOUTH_DISTANCE_3D / pixel_eye_to_mouth_distance
+            target_plane_x_size = final_w_tex * scale_factor
         else:
-            print("[WARNING] 입 너비가 0에 가깝습니다. 임의의 스케일(100mm)로 평면 너비를 설정합니다.")
+            print("[WARNING] 눈-입 거리가 0에 가깝습니다. 임의의 스케일(100mm)로 평면 너비를 설정합니다.")
             target_plane_x_size = 100.0
+        print(f"[DEBUG] 계산된 스케일 팩터: {scale_factor:.4f}" if pixel_eye_to_mouth_distance > 1e-3 else "")
         print(f"[DEBUG] 계산된 목표 평면 X 크기 (3D): {target_plane_x_size:.2f}")
 
         # 평면의 Z 크기(높이)를 최종 텍스처 이미지의 가로세로 비율에 맞게 조정
