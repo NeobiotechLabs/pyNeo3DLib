@@ -29,7 +29,7 @@ setup(
         "scikit-image==0.22.0",
         "qdrant-client",
         "psutil",
-        "single_template_maker_lib @ git+ssh://git@github.com/NeobiotechLabs/Single_template_maker.git@fix_ginigvagen_error",
+        "single_template_maker_lib @ git+ssh://git@github.com/NeobiotechLabs/Single_template_maker.git",
         "teeth-template-editor @ git+ssh://git@github.com/NeobiotechLabs/TeethTemplateEditor.git@processLeak"
     ],
     author="NeoBiotech",
