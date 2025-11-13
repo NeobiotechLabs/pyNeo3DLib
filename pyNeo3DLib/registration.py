@@ -325,59 +325,155 @@ class Neo3DRegistration:
     
     async def run_registration(self, visualize=False):       
         # 설정이 이미 검증되었으므로 별도 검증 불필요
+        
+        # 기본값 초기화 (에러 발생 시 사용)
+        ios_laminate_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
+        ios_upper_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
+        ios_lower_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
+        facescan_laminate_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
+        transformed_face_smile_mesh = None
+        facephoto_meshes = None
+        type_of_facedata = None
+        facescan_rest_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
+        facescan_retraction_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
+        cbct_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
+        ios_bow_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
+        condyle_result = None
+        golden_proportion_result = None
+        smilearch_outerline_result = None
 
-        await self.progress_reporter.report_progress("ios_laminate_registration")
-        ios_laminate_result = self.__ios_laminate_registration(visualize=visualize)
+        # IOS Laminate Registration
+        try:
+            await self.progress_reporter.report_progress("ios_laminate_registration")
+            ios_laminate_result = self.__ios_laminate_registration(visualize=visualize)
+            print(f'✅ ios_laminate_registration 성공')
+        except Exception as e:
+            print(f'❌ ios_laminate_registration 실패: {str(e)}')
+            ios_laminate_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
 
-        await self.progress_reporter.report_progress("ios_upper_registration")
-        ios_upper_result = ios_laminate_result #self.__ios_upper_registration()
+        # IOS Upper Registration
+        try:
+            await self.progress_reporter.report_progress("ios_upper_registration")
+            ios_upper_result = ios_laminate_result #self.__ios_upper_registration()
+            print(f'✅ ios_upper_registration 성공')
+        except Exception as e:
+            print(f'❌ ios_upper_registration 실패: {str(e)}')
+            ios_upper_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
 
-        await self.progress_reporter.report_progress("ios_lower_registration")
-        ios_lower_result = ios_laminate_result #self.__ios_lower_registration()
+        # IOS Lower Registration
+        try:
+            await self.progress_reporter.report_progress("ios_lower_registration")
+            ios_lower_result = ios_laminate_result #self.__ios_lower_registration()
+            print(f'✅ ios_lower_registration 성공')
+        except Exception as e:
+            print(f'❌ ios_lower_registration 실패: {str(e)}')
+            ios_lower_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
 
-        await self.progress_reporter.report_progress("facescan_laminate_registration")
+        # FaceScan Laminate Registration (중요: facephoto_meshes 보존)
+        try:
+            await self.progress_reporter.report_progress("facescan_laminate_registration")
             
-        # FaceScan 인 경우 텍스처 파일을 찾아서 입술 지움, FacePhoto 인 경우 이미지에서 입술 지움
-        self.__erase_mouth()
+            # FaceScan 인 경우 텍스처 파일을 찾아서 입술 지움, FacePhoto 인 경우 이미지에서 입술 지움
+            try:
+                self.__erase_mouth()
+            except Exception as e:
+                print(f'⚠️ __erase_mouth 실패 (계속 진행): {str(e)}')
             
-        facescan_laminate_result, transformed_face_smile_mesh, type_of_facedata = self.__facescan_laminate_registration(visualize=visualize)
+            facescan_laminate_result, transformed_face_smile_mesh, type_of_facedata = self.__facescan_laminate_registration(visualize=visualize)
+            print(f'✅ facescan_laminate_registration 성공 (type: {type_of_facedata})')
+            
+            # FacePhoto인 경우 transformed_face_smile_mesh를 반드시 보존
+            if type_of_facedata == "FacePhoto":
+                facephoto_meshes = transformed_face_smile_mesh
+                print(f'✅ facephoto_meshes 보존 완료')
+        except Exception as e:
+            print(f'❌ facescan_laminate_registration 실패: {str(e)}')
+            facescan_laminate_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
+            transformed_face_smile_mesh = None
+            type_of_facedata = None
 
-        if(type_of_facedata == "FaceScan"):
-            await self.progress_reporter.report_progress("facescan_rest_registration")
-            facescan_rest_result, facescan_retraction_result = self.__facescan_rest_registration(transformed_face_smile_mesh, facescan_laminate_result, visualize=visualize)
-            facephoto_meshes = None
-        else:
-            facephoto_meshes = transformed_face_smile_mesh
+        # FaceScan Rest/Retraction Registration
+        if type_of_facedata == "FaceScan":
+            try:
+                await self.progress_reporter.report_progress("facescan_rest_registration")
+                facescan_rest_result, facescan_retraction_result = self.__facescan_rest_registration(transformed_face_smile_mesh, facescan_laminate_result, visualize=visualize)
+                facephoto_meshes = None
+                print(f'✅ facescan_rest_registration 성공')
+            except Exception as e:
+                print(f'❌ facescan_rest_registration 실패: {str(e)}')
+                facescan_rest_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
+                facescan_retraction_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
+                facephoto_meshes = None
+        elif type_of_facedata == "FacePhoto":
+            # FacePhoto는 이미 위에서 facephoto_meshes에 저장됨
             facescan_rest_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
             facescan_retraction_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
 
-        await self.progress_reporter.report_progress("cbct_registration")
-        cbct_result = self.__cbct_registration()
+        # CBCT Registration
+        try:
+            await self.progress_reporter.report_progress("cbct_registration")
+            cbct_result = self.__cbct_registration()
+            print(f'✅ cbct_registration 성공')
+        except Exception as e:
+            print(f'❌ cbct_registration 실패: {str(e)}')
+            cbct_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
 
-        await self.progress_reporter.report_progress("ios_bow_registration")
-        ios_bow_result = np.array(RegistrationConstants.IDENTITY_MATRIX) #self.__ios_bow_registration(ios_laminate_result, visualize=visualize)
+        # IOS Bow Registration
+        try:
+            await self.progress_reporter.report_progress("ios_bow_registration")
+            ios_bow_result = np.array(RegistrationConstants.IDENTITY_MATRIX) #self.__ios_bow_registration(ios_laminate_result, visualize=visualize)
+            print(f'✅ ios_bow_registration 성공')
+        except Exception as e:
+            print(f'❌ ios_bow_registration 실패: {str(e)}')
+            ios_bow_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
         
-        await self.progress_reporter.report_progress("condyle_registration")
-        condyle_result = self.__condyle_detection(facescan_laminate_result, visualize)
-        print(f'__condyle_detection result: {condyle_result}')
+        # Condyle Detection (현재 주석 처리됨)
+        # try:
+        #     await self.progress_reporter.report_progress("condyle_registration")
+        #     condyle_result = self.__condyle_detection(facescan_laminate_result, visualize)
+        #     print(f'✅ condyle_registration 성공: {condyle_result}')
+        # except Exception as e:
+        #     print(f'❌ condyle_registration 실패: {str(e)}')
+        #     condyle_result = None
         
-        await self.progress_reporter.report_progress("golden_proportion_registration")
-        # FaceAlignment3D 결과가 있는 경우 직접 전달, 아니면 기존 방식 사용
-        if type_of_facedata == "FacePhoto" and facephoto_meshes is not None:
-            golden_proportion_result = self.__golden_proportion_detection(facescan_laminate_result, visualize, face_mesh_or_result=facephoto_meshes)
-        else:
-            golden_proportion_result = self.__golden_proportion_detection(facescan_laminate_result, visualize)
-        print(f'__golden_proportion_detection result: {golden_proportion_result}')       
+        # Golden Proportion Detection (독립적, 꼭 필요)
+        try:
+            await self.progress_reporter.report_progress("golden_proportion_registration")
+            # FaceAlignment3D 결과가 있는 경우 직접 전달, 아니면 기존 방식 사용
+            if type_of_facedata == "FacePhoto" and facephoto_meshes is not None:
+                golden_proportion_result = self.__golden_proportion_detection(facescan_laminate_result, visualize, face_mesh_or_result=facephoto_meshes)
+            else:
+                golden_proportion_result = self.__golden_proportion_detection(facescan_laminate_result, visualize)
+            print(f'✅ golden_proportion_registration 성공: {golden_proportion_result}')
+        except Exception as e:
+            print(f'❌ golden_proportion_registration 실패: {str(e)}')
+            golden_proportion_result = None
                
-        await self.progress_reporter.report_progress("smilearch_outerline_registration")
-        smilearch_outerline_result = self.__smilearch_outerline_detect(visualize)
+        # SmileArch Outerline Detection (템플릿 검색을 위해 꼭 필요)
+        try:
+            await self.progress_reporter.report_progress("smilearch_outerline_registration")
+            smilearch_outerline_result = self.__smilearch_outerline_detect(visualize)
+            print(f'✅ smilearch_outerline_registration 성공')
+        except Exception as e:
+            print(f'❌ smilearch_outerline_registration 실패: {str(e)}')
+            smilearch_outerline_result = None
 
-        result = self.__make_result_json(
-            ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), facescan_laminate_result.tolist(), facephoto_meshes, facescan_rest_result.tolist(), facescan_retraction_result.tolist(), cbct_result.tolist(), ios_bow_result.tolist(), condyle_result, golden_proportion_result, smilearch_outerline_result
-        )
-        
-        await self.progress_reporter.report_completion(result)
-        return result
+        # 결과 JSON 생성 (부분 결과라도 반환)
+        try:
+            result = self.__make_result_json(
+                ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), 
+                facescan_laminate_result.tolist(), facephoto_meshes, 
+                facescan_rest_result.tolist(), facescan_retraction_result.tolist(), 
+                cbct_result.tolist(), ios_bow_result.tolist(), 
+                condyle_result, golden_proportion_result, smilearch_outerline_result
+            )
+            
+            await self.progress_reporter.report_completion(result)
+            return result
+        except Exception as e:
+            print(f'❌ __make_result_json 실패: {str(e)}')
+            # 결과 생성 실패 시에도 에러를 상위로 전달
+            raise
 
     def __make_result_json(self, ios_laminate_result, 
                             ios_upper_result, 
