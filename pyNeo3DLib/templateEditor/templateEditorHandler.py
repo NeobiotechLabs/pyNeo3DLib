@@ -102,7 +102,8 @@ class TemplateEditorHandler:
                     "stl_export_path": str,
                     "blend_template": str,
                     "arch_degree": float,
-                    "y_scale": float
+                    "y_scale": float,
+                    "config_file": str (optional, default: "config.json")
                 }
             request_id: 요청 ID
             
@@ -139,10 +140,12 @@ class TemplateEditorHandler:
             blend_template = request["blend_template"]
             arch_degree = request["arch_degree"]
             y_scale = request["y_scale"]
+            config_file = request.get("config_file", "config.json")  # 선택적 파라미터 (기본값: config.json)
             
             print(f"[{request_id}] 템플릿 경로: {blend_template_path}")
             print(f"[{request_id}] 내보내기 경로: {stl_export_path}")
             print(f"[{request_id}] 템플릿 파일: {blend_template}")
+            print(f"[{request_id}] 설정 파일: {config_file}")
             
             # Handler 초기화 (최초 시작 또는 경로가 변경된 경우)
             if (self.editor_handler is None or 
@@ -152,7 +155,8 @@ class TemplateEditorHandler:
                 print(f"[{request_id}] 새 편집 세션 생성 중...")
                 self.editor_handler = self._create_editing_session(
                     blend_template_path=blend_template_path,
-                    stl_export_path=stl_export_path
+                    stl_export_path=stl_export_path,
+                    config_file=config_file
                 )
                 self.config["blend_template_path"] = blend_template_path
                 self.config["stl_export_path"] = stl_export_path

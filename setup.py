@@ -30,7 +30,7 @@ setup(
         "qdrant-client",
         "psutil",
         "single_template_maker_lib @ git+ssh://git@github.com/NeobiotechLabs/Single_template_maker.git",
-        "teeth-template-editor @ git+ssh://git@github.com/NeobiotechLabs/TeethTemplateEditor.git@processLeak"
+        "teeth-template-editor @ git+ssh://git@github.com/NeobiotechLabs/TeethTemplateEditor.git"
     ],
     author="NeoBiotech",
     description="3D 데이터 처리를 위한 파이썬 라이브러리",
