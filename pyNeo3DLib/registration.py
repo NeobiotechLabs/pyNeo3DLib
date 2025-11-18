@@ -26,7 +26,7 @@ class RegistrationConstants:
     """등록 작업에 사용되는 상수들"""
     LAMINATE_PATH = os.path.join(os.path.dirname(__file__), "smile_arch_half.stl")
     CENTERPIN_PATH = os.path.join(os.path.dirname(__file__), "center_pin.stl")
-    TOTAL_PROGRESS_STEPS = 10
+    TOTAL_PROGRESS_STEPS = 8
     WEBSOCKET_SLEEP_DURATION = 0.1
     IDENTITY_MATRIX = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
 
@@ -426,29 +426,7 @@ class Neo3DRegistration:
         except Exception as e:
             print(f'❌ ios_bow_registration 실패: {str(e)}')
             ios_bow_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
-        
-        # Condyle Detection (현재 주석 처리됨)
-        # try:
-        #     await self.progress_reporter.report_progress("condyle_registration")
-        #     condyle_result = self.__condyle_detection(facescan_laminate_result, visualize)
-        #     print(f'✅ condyle_registration 성공: {condyle_result}')
-        # except Exception as e:
-        #     print(f'❌ condyle_registration 실패: {str(e)}')
-        #     condyle_result = None
-        
-        # Golden Proportion Detection (독립적, 꼭 필요)
-        try:
-            await self.progress_reporter.report_progress("golden_proportion_registration")
-            # FaceAlignment3D 결과가 있는 경우 직접 전달, 아니면 기존 방식 사용
-            if type_of_facedata == "FacePhoto" and facephoto_meshes is not None:
-                golden_proportion_result = self.__golden_proportion_detection(facescan_laminate_result, visualize, face_mesh_or_result=facephoto_meshes)
-            else:
-                golden_proportion_result = self.__golden_proportion_detection(facescan_laminate_result, visualize)
-            print(f'✅ golden_proportion_registration 성공: {golden_proportion_result}')
-        except Exception as e:
-            print(f'❌ golden_proportion_registration 실패: {str(e)}')
-            golden_proportion_result = None
-               
+                       
         # SmileArch Outerline Detection (템플릿 검색을 위해 꼭 필요)
         try:
             await self.progress_reporter.report_progress("smilearch_outerline_registration")
@@ -465,7 +443,8 @@ class Neo3DRegistration:
                 facescan_laminate_result.tolist(), facephoto_meshes, 
                 facescan_rest_result.tolist(), facescan_retraction_result.tolist(), 
                 cbct_result.tolist(), ios_bow_result.tolist(), 
-                condyle_result, golden_proportion_result, smilearch_outerline_result
+                # condyle_result, golden_proportion_result, 
+                smilearch_outerline_result
             )
             
             await self.progress_reporter.report_completion(result)
@@ -484,8 +463,8 @@ class Neo3DRegistration:
                             facescan_retraction_result, 
                             cbct_result, 
                             ios_bow_result,
-                            condyle_result,
-                            golden_proportion_result,
+                            # condyle_result,
+                            # golden_proportion_result,
                             smilearch_outerline_result):
         
         print("=====================================")
@@ -501,8 +480,8 @@ class Neo3DRegistration:
         print(f'cbct_result: {cbct_result}')
 
         print(f'ios_bow_result: {ios_bow_result}')
-        print(f'condyle_result: {condyle_result}')
-        print(f'golden_proportion_result: {golden_proportion_result}')
+        # print(f'condyle_result: {condyle_result}')
+        # print(f'golden_proportion_result: {golden_proportion_result}')
         print(f'smilearch_outerline_result: {smilearch_outerline_result}')
         print("=====================================")
 
@@ -524,23 +503,7 @@ class Neo3DRegistration:
 
         self.parsed_json["cbct"]["transform_matrix"] = cbct_result
         self.parsed_json["smilearch_bow"]["transform_matrix"] = ios_bow_result
-        
-        # condyle 정보 추가
-        if condyle_result is not None:
-            vertices, faces = self.__make_condyle_plane(condyle_result)
-            condyle_json = {
-                "vertices": vertices.tolist(),
-                "faces": faces.tolist(),
-                "points": condyle_result.tolist()
-            }
-            self.parsed_json["condyle"] = {"mesh": condyle_json}
-            
-        if golden_proportion_result is not None:
-            golden_proportion_json = {
-                "points": golden_proportion_result  # 이미 딕셔너리 형태이므로 그대로 사용
-            }
-            self.parsed_json["golden_proportion"] = golden_proportion_json
-            
+                   
         if smilearch_outerline_result is not None:
             arch_depth, molar_width, landmark_points = smilearch_outerline_result
             smilearch_outerline_json = {
@@ -826,159 +789,7 @@ class Neo3DRegistration:
         print("cbct_registration")
         matrix = np.array(RegistrationConstants.IDENTITY_MATRIX)
         return matrix
-    
-    def __ios_bow_registration(self, ios_laminate_result, visualize=False):
-        print("ios_bow_registration")
-        # Lazy import
-        from pyNeo3DLib.bowRegistration.iosBowRegistration import IOSBowRegistration
-        
-        ios_data = self.parsed_json["ios"]
-        for ios in ios_data:
-            if ios["subType"] == "smileArch":
-                ios_bow_registration = IOSBowRegistration(ios["path"], RegistrationConstants.CENTERPIN_PATH, visualize)
-                # result_matrix 는 ios 정렬된 상태에서의 bow 이동 매트릭스
-                result_matrix = ios_bow_registration.run_registration()
-
-                # ios_laminate_result 는 정렬 + 라미네이트 정합 이동의 합
-                # 이를 빼고 라미네이트 정합 이동만 구하기 위해해 역행렬 적용
-                ios_transform_matrix_inv = np.linalg.inv(ios_bow_registration.ios_transform_matrix)
-                ios_moved = np.dot(ios_laminate_result, ios_transform_matrix_inv)
                 
-                # 라미네이트 정합 이동 + bow 이동 적용
-                # final_result = np.dot(bow_moved, ios_laminate_result)
-                final_result = np.dot(ios_moved, result_matrix)
-                final_result = self.__correct_reflection(final_result)
-                print(f'final_result: {final_result}')
-
-                return final_result
-            
-    def __condyle_detection(self, face_registration_result, visualize=False):
-        print("condyle detection")
-        facescan_data = self.parsed_json["facescan"]
-        for facescan in facescan_data:
-            if facescan["subType"] == "faceSmile":
-                print(f'facescan["path"]: {facescan["path"]}')
-                if facescan["path"].endswith(".obj") or facescan["path"].endswith(".ply"):
-                    # Lazy import
-                    from pyNeo3DLib.condyleFinder.condyleFinder import CondyleFinder
-                    
-                    # Now register this file with the laminate model
-                    condyle_finder = CondyleFinder(facescan["path"], visualize)
-                    result = condyle_finder.run_analysis()
-                    
-                    # face_registration_result 변환 행렬을 콘딜 점들에 적용
-                    if result is not None and len(result) > 0:
-                        # result를 numpy 배열로 변환
-                        condyle_points = np.array(result)
-                        
-                        # 동차 좌표로 변환 (4x4 행렬 적용을 위해)
-                        ones = np.ones((condyle_points.shape[0], 1))
-                        homogeneous_points = np.hstack([condyle_points, ones])
-                        
-                        # 변환 행렬 적용
-                        transformed_points = np.dot(homogeneous_points, face_registration_result.T)
-                        
-                        # 3D 좌표만 추출 (동차 좌표에서 w=1로 나누기)
-                        result = transformed_points[:, :3] / transformed_points[:, 3:4]
-                    
-                    return result
-                else:
-                    return None
-                
-    def __golden_proportion_detection(self, face_registration_result, visualize=False, face_mesh_or_result=None):
-        print("golden_proportion_detection")
-        
-        # Lazy import
-        from pyNeo3DLib.goldenProportion.goldenProportionFinder import GoldenProportionFinder
-        
-        try:
-            # 메시 객체가 직접 전달된 경우 (FaceAlignment3D 결과 등)
-            if face_mesh_or_result is not None:
-                print("메시 객체에서 직접 황금비율 분석 수행")
-                
-                # 입력 타입에 따라 적절한 방식으로 GoldenProportionFinder 생성
-                if hasattr(face_mesh_or_result, 'front_plane'):
-                    # FaceAlignmentResult 객체인 경우
-                    golden_proportion_finder = GoldenProportionFinder.from_face_alignment_result(
-                        face_mesh_or_result, visualization=visualize)
-                else:
-                    # Mesh 객체인 경우
-                    golden_proportion_finder = GoldenProportionFinder.from_mesh(
-                        face_mesh_or_result, visualization=visualize)
-            
-            # 파일 경로 기반 처리 (기존 방식)
-            else:
-                facescan_data = self.parsed_json["facescan"]
-                for facescan in facescan_data:
-                    if facescan["subType"] == "faceSmile":
-                        print(f'facescan["path"]: {facescan["path"]}')
-                        
-                        # 3D 메시 파일 또는 이미지 파일 지원
-                        file_path = facescan["path"]
-                        if (file_path.endswith(".obj") or file_path.endswith(".ply") or 
-                            file_path.endswith(".stl") or file_path.endswith(".jpg") or 
-                            file_path.endswith(".png")):
-                            
-                            # 파일 확장자에 따라 적절한 방식으로 GoldenProportionFinder 생성
-                            if file_path.endswith((".obj", ".ply", ".stl")):
-                                # 3D 메시 파일의 경우 - 기존 방식 사용 (호환성 유지)
-                                golden_proportion_finder = GoldenProportionFinder(
-                                    face_mesh_path=file_path, visualization=visualize)
-                                
-                            elif file_path.endswith((".jpg", ".png")):
-                                # 이미지 파일의 경우 - plane mesh 생성
-                                golden_proportion_finder = GoldenProportionFinder.from_image(
-                                    file_path, visualization=visualize)
-                        else:
-                            print(f"지원하지 않는 파일 형식: {file_path}")
-                            return None
-                        break
-                else:
-                    print("faceSmile 데이터를 찾을 수 없습니다.")
-                    return None
-            
-            # 분석 실행
-            result = golden_proportion_finder.run_analysis()
-            print(f'golden_proportion_finder result: {result}')
-            
-            if result is not None and len(result) > 0:
-                # result를 numpy 배열로 변환
-                golden_proportion_points = np.array([result['a'], result['b'], result['c'], result['d']])
-                print(f"디버그: golden_proportion_points 형태: {golden_proportion_points.shape}")
-                print(f"디버그: face_registration_result 형태: {np.array(face_registration_result).shape}")
-                print(f"디버그: face_registration_result: {face_registration_result}")
-                
-                # 동차 좌표로 변환 (4x4 행렬 적용을 위해)
-                ones = np.ones((golden_proportion_points.shape[0], 1))
-                homogeneous_points = np.hstack([golden_proportion_points, ones])
-                print(f"디버그: homogeneous_points 형태: {homogeneous_points.shape}")
-                
-                # 변환 행렬 적용
-                face_registration_matrix = np.array(face_registration_result)
-                if face_registration_matrix.shape == (4, 4):
-                    transformed_points = np.dot(homogeneous_points, face_registration_matrix.T)
-                else:
-                    print(f"경고: 변환 행렬 형태가 올바르지 않습니다: {face_registration_matrix.shape}")
-                    print("변환 행렬 적용을 건너뛰고 원본 좌표를 사용합니다.")
-                    transformed_points = homogeneous_points
-                
-                # 3D 좌표만 추출 (동차 좌표에서 w=1로 나누기)
-                transformed_coords = transformed_points[:, :3] / transformed_points[:, 3:4]
-                
-                # a, b, c, d 키 값을 유지하여 딕셔너리로 반환
-                result = {
-                    'a': transformed_coords[0].tolist(),
-                    'b': transformed_coords[1].tolist(),
-                    'c': transformed_coords[2].tolist(),
-                    'd': transformed_coords[3].tolist()
-                }
-            
-            return result
-            
-        except Exception as e:
-            print(f"황금비율 분석 실패: {e}")
-            return None
-    
                 
     def __smilearch_outerline_detect(self, visualize=False):
         print("smilearch_outerline_detect")
@@ -998,23 +809,6 @@ class Neo3DRegistration:
                 )
                 return arch_depth, molar_width, landmarks
         return None
-    
-            
-    def __make_condyle_plane(self, condyle_points):
-        print("make_condyle_plane")
-        # 콘딜 점들을 포함하는 평면 만들기
-        if condyle_points is not None and len(condyle_points) == 2:
-            points = np.array(condyle_points)
-            
-            # 세 번째 점 생성 (첫 번째 점에서 y축으로 10만큼 이동)
-            third_point = np.array([0, 0, 0])
-            points = np.vstack([points, third_point])
-
-            # 삼각형 메시 생성
-            vertices = points
-            faces = np.array([[0, 1, 2]])  # 세 점을 연결하는 하나의 삼각형
-
-            return vertices, faces
         
 
     def __correct_reflection(self, matrix):
