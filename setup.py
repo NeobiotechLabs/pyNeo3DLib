@@ -27,7 +27,7 @@ setup(
         "tensorflow==2.12.0",
         "keras==2.12.0",
         "scikit-image==0.22.0",
-        "qdrant-client",
+        "qdrant-client==1.15.1",
         "psutil",
         "single_template_maker_lib @ git+ssh://git@github.com/NeobiotechLabs/Single_template_maker.git",
         "teeth-template-editor @ git+ssh://git@github.com/NeobiotechLabs/TeethTemplateEditor.git"
