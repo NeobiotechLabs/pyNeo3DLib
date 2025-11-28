@@ -684,6 +684,13 @@ class Neo3DRegistration:
             if texture_file:
                 print(f"텍스처 파일을 찾았습니다: {texture_file}")
                 # 텍스처 파일에서 입술 지우기 (원본 파일 덮어쓰기)
+                
+                origin_path = texture_file.replace(os.path.splitext(texture_file)[1], "_origin" + os.path.splitext(texture_file)[1])
+                if not os.path.exists(origin_path):
+                    import shutil
+                    shutil.copy2(texture_file, origin_path)
+                    print(f"원본 파일 생성: {origin_path}")
+                
                 success = mouth_eraser.erase_mouth(texture_file, texture_file)
                 if success:
                     print(f"텍스처 파일의 입술이 성공적으로 지워졌습니다: {texture_file}")
