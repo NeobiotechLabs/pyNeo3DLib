@@ -351,11 +351,9 @@ class Neo3DRegistration:
             print(f'❌ ios_laminate_registration 실패: {str(e)}')
             ios_laminate_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
 
-        smile_arch_bow_data = self.config.smilearch_bow_data
-        if not smile_arch_bow_data or not smile_arch_bow_data.is_valid_for_processing():
-            raise ValueError("SmileArch Bow data is required but not provided or invalid")
-        mock_maxilla_path = smile_arch_bow_data.path
-        mock_maxilla_path = mock_maxilla_path.replace("bow\\smilearch_bow.stl", "teeth_templates_mock\\maxilla\\maxilla_1.stl")
+        # mock_maxilla_path 는 ios_initial_alignment\\data 의 maxilla_1.stl 경로
+        mock_maxilla_path = os.path.join(os.path.dirname(__file__), "ios_initial_alignment", "data", "maxilla_1.stl")
+        print(f'mock_maxilla_path: {mock_maxilla_path}')
 
         # IOS Upper Registration
         try:
