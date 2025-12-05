@@ -351,13 +351,16 @@ class Neo3DRegistration:
             print(f'❌ ios_laminate_registration 실패: {str(e)}')
             ios_laminate_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
 
-        # mock_maxilla_path 는 ios_initial_alignment\\data 의 maxilla_1.stl 경로
-        mock_maxilla_path = os.path.join(os.path.dirname(__file__), "ios_initial_alignment", "data", "maxilla_1.stl")
-        print(f'mock_maxilla_path: {mock_maxilla_path}')
 
         # IOS Upper Registration
         try:
             await self.progress_reporter.report_progress("ios_upper_registration")
+            mock_maxilla_path = os.path.join(os.path.dirname(__file__), "ios_initial_alignment", "data", "maxilla_1.stl")
+            print(f'mock_maxilla_path: {mock_maxilla_path}')
+
+            if not os.path.exists(mock_maxilla_path):
+                raise FileNotFoundError(f"Mock maxilla file not found: {mock_maxilla_path}")
+
             ios_upper_transform_matrix, _ = self.__align_3d_meshes(mock_maxilla_path, self.config.get_ios_by_subtype("upper").path)
             ios_upper_result = ios_upper_transform_matrix
             print(f'✅ ios_upper_registration 성공')

@@ -7,7 +7,7 @@ setup(
         include=["pyNeo3DLib", "pyNeo3DLib.*"]
     ),
     package_data={
-        "pyNeo3DLib": ["*.stl"]
+        "pyNeo3DLib": ["*.stl", "ios_initial_alignment/data/maxilla_1.stl"]
     },
     install_requires=[
         "numpy",
