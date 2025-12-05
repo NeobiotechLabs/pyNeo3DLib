@@ -6,7 +6,7 @@ from PIL import Image
 import io
 import base64
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional,Tuple
 from pathlib import Path
 
 # Lazy import: 실제 사용 시점에만 import (mediapipe 의존성 회피)
@@ -351,10 +351,17 @@ class Neo3DRegistration:
             print(f'❌ ios_laminate_registration 실패: {str(e)}')
             ios_laminate_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
 
+        smile_arch_bow_data = self.config.smilearch_bow_data
+        if not smile_arch_bow_data or not smile_arch_bow_data.is_valid_for_processing():
+            raise ValueError("SmileArch Bow data is required but not provided or invalid")
+        mock_maxilla_path = smile_arch_bow_data.path
+        mock_maxilla_path = mock_maxilla_path.replace("bow\\smilearch_bow.stl", "teeth_templates_mock\\maxilla\\maxilla_1.stl")
+
         # IOS Upper Registration
         try:
             await self.progress_reporter.report_progress("ios_upper_registration")
-            ios_upper_result = ios_laminate_result #self.__ios_upper_registration()
+            ios_upper_transform_matrix, _ = self.__align_3d_meshes(mock_maxilla_path, self.config.get_ios_by_subtype("upper").path)
+            ios_upper_result = ios_upper_transform_matrix
             print(f'✅ ios_upper_registration 성공')
         except Exception as e:
             print(f'❌ ios_upper_registration 실패: {str(e)}')
@@ -363,7 +370,7 @@ class Neo3DRegistration:
         # IOS Lower Registration
         try:
             await self.progress_reporter.report_progress("ios_lower_registration")
-            ios_lower_result = ios_laminate_result #self.__ios_lower_registration()
+            ios_lower_result = ios_upper_result
             print(f'✅ ios_lower_registration 성공')
         except Exception as e:
             print(f'❌ ios_lower_registration 실패: {str(e)}')
@@ -831,4 +838,14 @@ class Neo3DRegistration:
             return np.dot(reflection_fix, matrix)
         return matrix
 
+    def __align_3d_meshes(self, target_stl_path: str,
+                   control_stl_path: str,
+                   downsample_voxel_size: float = 1) -> Tuple[np.ndarray, dict]:
 
+        from pyNeo3DLib.ios_initial_alignment.initial_alignment.mesh_aligner import MeshAligner 
+        aligner = MeshAligner()
+        return aligner.align_from_files(
+            target_stl_path, control_stl_path,
+            downsample_voxel_size=downsample_voxel_size,
+            verbose=True
+        )
