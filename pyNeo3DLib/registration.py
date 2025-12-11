@@ -10,6 +10,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from pyNeo3DLib.fileLoader.mesh import Mesh
 
+import pyvista as pv
+import trimesh
+from scipy.linalg import eigh
+from pyNeo3DLib.smileArchOuterline.utils.ray_caster import RayCaster
+
 # Lazy import: 실제 사용 시점에만 import (mediapipe 의존성 회피)
 # from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegistration
 # from pyNeo3DLib.faceRegisration.faceLaminateRegistration import FaceLaminateRegistration  # mediapipe 필요
@@ -30,6 +35,7 @@ class RegistrationConstants:
     TOTAL_PROGRESS_STEPS = 8
     WEBSOCKET_SLEEP_DURATION = 0.1
     IDENTITY_MATRIX = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+    LOWER_JAW_Z_OFFSET = -15  # 하악(lower jaw) Z축 위치 조정 오프셋
 
 
 @dataclass
@@ -347,15 +353,11 @@ class Neo3DRegistration:
         # IOS Laminate Registration
         try:
             await self.progress_reporter.report_progress("ios_laminate_registration")
-            ios_laminate_result = self.__ios_laminate_registration(visualize=False)
+            ios_laminate_result = self.__ios_laminate_registration(visualize=visualize)
             print(f'✅ ios_laminate_registration 성공')
         except Exception as e:
             print(f'❌ ios_laminate_registration 실패: {str(e)}')
             ios_laminate_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
-
-
-        # IOS Upper/Lower Registration - 메시 객체 생성
-        from pyNeo3DLib.fileLoader.mesh import Mesh
 
         smile_arch_path = self.config.get_ios_by_subtype("smileArch").path
         ios_upper_path = self.config.get_ios_by_subtype("upper").path
@@ -964,7 +966,7 @@ class Neo3DRegistration:
 
             if not is_upper:
                 lower_translation_matrix = np.eye(4)
-                lower_translation_matrix[:3, 3] = np.array([0, 0, -15])
+                lower_translation_matrix[:3, 3] = np.array([0, 0, RegistrationConstants.LOWER_JAW_Z_OFFSET])
                 combined_transformation_matrix = np.matmul(lower_translation_matrix, combined_transformation_matrix)
                 
             return combined_transformation_matrix
@@ -1031,14 +1033,26 @@ class Neo3DRegistration:
         ios_mesh: "Mesh",
         closest_axis_vector: np.ndarray,
     ) -> Optional[np.ndarray]:
-        """Z축 벡터를 계산합니다 (Upper/Lower에 따라 다른 방식)."""
-
+        """
+        Z축 벡터를 계산합니다.
+        
+        IOS 메시의 평균 법선 벡터와 주축 벡터의 내적을 계산하여
+        방향을 결정합니다. 두 벡터가 같은 방향이면 주축 벡터를,
+        반대 방향이면 주축 벡터의 반대 방향을 반환합니다.
+        
+        Args:
+            ios_mesh: IOS 메시 객체 (상악 또는 하악)
+            closest_axis_vector: PCA로 계산된 주축 벡터
+            
+        Returns:
+            방향이 결정된 Z축 벡터
+        """
         if ios_mesh.normals is None:
             ios_mesh._compute_normals()
         
         ios_normals = np.asarray(ios_mesh.normals)
         ios_normals_mean = np.mean(ios_normals, axis=0)
-        print(f"✅ 하악 메쉬 법선벡터 평균값: {ios_normals_mean}")
+        print(f"✅ IOS 메시 법선벡터 평균값: {ios_normals_mean}")
         
         # 내적으로 방향 확인
         inner_product = np.dot(closest_axis_vector, ios_normals_mean)
@@ -1105,8 +1119,7 @@ class Neo3DRegistration:
         Returns:
             교차점에서 도심점으로 가는 벡터, 교차점이 없으면 None
         """
-        import pyvista as pv
-        from pyNeo3DLib.smileArchOuterline.utils.ray_caster import RayCaster
+
         
         # pyvista 메시 생성
         pv_mesh = self._create_pyvista_mesh(mesh_vertices, mesh_faces)
@@ -1129,7 +1142,7 @@ class Neo3DRegistration:
         faces: np.ndarray
     ) -> Any:
         """PyVista 메시를 생성합니다."""
-        import pyvista as pv
+
         faces_with_count = np.column_stack([np.full(len(faces), 3), faces])
         return pv.PolyData(vertices, faces_with_count)
     
@@ -1180,7 +1193,6 @@ class Neo3DRegistration:
         Returns:
             단일 교차점을 가진 축 방향 벡터, 없으면 None
         """
-        from pyNeo3DLib.smileArchOuterline.utils.ray_caster import RayCaster
         
         # PyVista 메시 및 RayCaster 준비
         pv_mesh = self._create_pyvista_mesh(mesh_vertices, mesh_faces)
@@ -1480,7 +1492,7 @@ def compute_principal_axes_from_vertices(vertices: np.ndarray, faces: Optional[n
         >>> print(f"제2주축: {axes[:, 1]}")
         >>> print(f"제3주축: {axes[:, 2]}")
     """
-    import trimesh
+
     
     # trimesh 객체 생성
     if faces is not None:
@@ -1529,7 +1541,7 @@ def compute_minimum_variance_axis_from_vertices(vertices: np.ndarray, verbose: b
         PCA는 공분산 행렬을 사용하여 데이터의 주성분을 찾습니다.
         분산이 가장 작은 축은 데이터가 가장 평평한 방향을 나타냅니다.
     """
-    from scipy.linalg import eigh
+
     
     # 1. 데이터의 중심 계산
     centroid = np.mean(vertices, axis=0)
