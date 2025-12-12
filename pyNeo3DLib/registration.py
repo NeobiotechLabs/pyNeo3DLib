@@ -6,8 +6,16 @@ from PIL import Image
 import io
 import base64
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
+from pyNeo3DLib.fileLoader.mesh import Mesh
+
+from pyNeo3DLib.iosRegistration.ios_transformation import (
+    IOSTransformationCalculator,
+    IOSTransformationConstants,
+    compute_principal_axes_from_vertices,
+    compute_minimum_variance_axis_from_vertices
+)
 
 # Lazy import: 실제 사용 시점에만 import (mediapipe 의존성 회피)
 # from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegistration
@@ -29,6 +37,7 @@ class RegistrationConstants:
     TOTAL_PROGRESS_STEPS = 8
     WEBSOCKET_SLEEP_DURATION = 0.1
     IDENTITY_MATRIX = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+    LOWER_JAW_Z_OFFSET = -15  # 하악(lower jaw) Z축 위치 조정 오프셋
 
 
 @dataclass
@@ -202,7 +211,8 @@ class ProgressReporter:
                 await self.websocket.send_json(result_event.get_json())
             
             await asyncio.sleep(RegistrationConstants.WEBSOCKET_SLEEP_DURATION)
-    
+
+
 
 class ConfigParser:
     """설정 파싱 및 검증을 담당하는 클래스"""
@@ -321,6 +331,7 @@ class Neo3DRegistration:
         
         self.websocket = websocket
         self.progress_reporter = ProgressReporter(websocket)
+        self.ios_transformation_calculator = IOSTransformationCalculator(self.progress_reporter)
     
     
     async def run_registration(self, visualize=False):       
@@ -351,25 +362,35 @@ class Neo3DRegistration:
             print(f'❌ ios_laminate_registration 실패: {str(e)}')
             ios_laminate_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
 
+        smile_arch_path = self.config.get_ios_by_subtype("smileArch").path
+        ios_upper_path = self.config.get_ios_by_subtype("upper").path
+        ios_lower_path = self.config.get_ios_by_subtype("lower").path
+
+        ios_upper_mesh = Mesh.from_file(ios_upper_path)
+        ios_lower_mesh = Mesh.from_file(ios_lower_path)
+        smile_arch_mesh = Mesh.from_file(smile_arch_path)
+
         # IOS Upper Registration
-        try:
-            await self.progress_reporter.report_progress("ios_upper_registration")
-            ios_upper_result = ios_laminate_result #self.__ios_upper_registration()
-            print(f'✅ ios_upper_registration 성공')
-        except Exception as e:
-            print(f'❌ ios_upper_registration 실패: {str(e)}')
-            ios_upper_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
-
+        ios_upper_result = await self.ios_transformation_calculator.safe_compute_ios_transformation(
+            progress_name="ios_upper_registration",
+            ios_mesh=ios_upper_mesh,
+            smile_arch_mesh=smile_arch_mesh,
+            ios_laminate_result=ios_laminate_result,
+            transformation_name="combined_transformation_matrix_upper",
+            is_upper=True
+        )
+   
         # IOS Lower Registration
-        try:
-            await self.progress_reporter.report_progress("ios_lower_registration")
-            ios_lower_result = ios_laminate_result #self.__ios_lower_registration()
-            print(f'✅ ios_lower_registration 성공')
-        except Exception as e:
-            print(f'❌ ios_lower_registration 실패: {str(e)}')
-            ios_lower_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
+        ios_lower_result = await self.ios_transformation_calculator.safe_compute_ios_transformation(
+            progress_name="ios_lower_registration",
+            ios_mesh=ios_lower_mesh,
+            smile_arch_mesh=smile_arch_mesh,
+            ios_laminate_result=ios_laminate_result,
+            transformation_name="combined_transformation_matrix_lower",
+            is_upper=False
+        )
 
-        # FaceScan Laminate Registration (중요: facephoto_meshes 보존)
+
         try:
             await self.progress_reporter.report_progress("facescan_laminate_registration")
             
@@ -832,3 +853,12 @@ class Neo3DRegistration:
         return matrix
 
 
+
+
+
+
+
+
+
+
+    
