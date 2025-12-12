@@ -95,8 +95,7 @@ class TransformationCalculator:
     def compute_combined_transformation(
         self,
         rotation_matrix: np.ndarray,
-        centroid: np.ndarray,
-        source_vertices: np.ndarray,
+        source_centroid: np.ndarray,
         target_centroid: np.ndarray
     ) -> np.ndarray:
         """
@@ -111,15 +110,12 @@ class TransformationCalculator:
         
         Args:
             rotation_matrix: 4x4 동차 변환 행렬
-            centroid: 회전 중심점 (메시의 무게중심)
-            source_vertices: 변환할 메시의 정점 배열
+            source_centroid: 소스 메시의 무게중심 (회전 중심점)
             target_centroid: 목표 위치의 무게중심
             
         Returns:
             4x4 동차 변환 행렬
         """
-        # 소스 도심점 계산
-        source_centroid = np.mean(source_vertices, axis=0)
         
         # 1단계: 소스 도심점을 원점으로 이동하는 변환 행렬 (T1)
         T1 = np.eye(4)

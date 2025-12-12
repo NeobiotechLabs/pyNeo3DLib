@@ -47,7 +47,16 @@ class CoordinateSystemBuilder:
         
         # 2. z축을 y축에 직교하도록 조정 후 정규화
         z_orthogonal = closest_axis_vector - np.dot(closest_axis_vector, y_axis_vector) * y_axis_vector
-        z_axis_vector = z_orthogonal / np.linalg.norm(z_orthogonal)
+        z_orthogonal_norm = np.linalg.norm(z_orthogonal)
+        
+        # 두 벡터가 평행한 경우 (collinear) 체크 - 0으로 나누기 방지
+        if z_orthogonal_norm < 1e-10:
+            raise ValueError(
+                "closest_axis_vector와 single_intersection_direction이 평행(collinear)합니다. "
+                "직교 좌표계를 구축할 수 없습니다. 서로 다른 방향의 벡터를 입력해주세요."
+            )
+        
+        z_axis_vector = z_orthogonal / z_orthogonal_norm
         
         # 3. x축을 y축과 z축에 직교하도록 외적으로 재계산
         x_axis_vector = np.cross(y_axis_vector, z_axis_vector)

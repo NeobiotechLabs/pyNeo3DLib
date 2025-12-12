@@ -136,8 +136,9 @@ class RayCastingService:
         remaining_axes_indices = [i for i in range(3) if i != closest_axis_idx]
         
         # 나머지 두 축에 대해 레이캐스팅 수행
+        # principal_axes는 3x3 행렬로, 각 열(column)이 주축 벡터
         for axis_idx in remaining_axes_indices:
-            axis_vector = principal_axes[axis_idx]
+            axis_vector = principal_axes[:, axis_idx]
             
             # 단일 교차점 확인
             unit_vector = self._check_single_intersection(

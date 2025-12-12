@@ -218,8 +218,7 @@ class IOSTransformationFacade:
         # 회전 + 이동을 결합한 변환 행렬 계산
         combined_transformation_matrix = self._transform_calculator.compute_combined_transformation(
             rotation_matrix=rotation_matrix,
-            centroid=centroid,
-            source_vertices=ios_vertices,
+            source_centroid=centroid,
             target_centroid=smile_arch_centroid
         )
         

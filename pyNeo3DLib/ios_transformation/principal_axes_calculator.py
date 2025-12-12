@@ -48,8 +48,10 @@ class PrincipalAxesCalculator:
         print(f"[INFO] Minimum variance axis: {minimum_variance_axis}")
         
         # principal_axes에서 minimum_variance_axis와 가장 가까운 주축 찾기
-        closest_axis = np.argmax(np.abs(np.dot(principal_axes, minimum_variance_axis)))
-        closest_axis_vector = principal_axes[closest_axis]
+        # principal_axes는 3x3 행렬로, 각 열(column)이 주축 벡터
+        # 따라서 전치(T)하여 각 주축 벡터와 내적을 계산하고, 열 인덱싱으로 벡터를 가져옴
+        closest_axis = np.argmax(np.abs(np.dot(principal_axes.T, minimum_variance_axis)))
+        closest_axis_vector = principal_axes[:, closest_axis]
         print(f"[INFO] Closest axis index: {closest_axis}")
         print(f"[INFO] Closest axis vector: {closest_axis_vector}")
         
