@@ -126,6 +126,23 @@ async def get_registration(background_tasks: BackgroundTasks, registration: Dict
         "request_id": request_id
     }
 
+
+@app.post("/find_outerline")
+async def find_outerline(ios_upper_path:str):
+    from pyNeo3DLib.smileArchOuterline.core import analyze_upper_IOS_scandata
+    print(ios_upper_path)
+
+    arch_depth, molar_width, landmark_points = analyze_upper_IOS_scandata(
+                    mesh_path=ios_upper_path,
+                    visualize_result=False
+                )
+    return {
+        "status": "success",
+        "arch_depth": arch_depth,
+        "molar_width": molar_width,
+        "landmark_points": landmark_points
+    }
+
 @app.get("/health")
 async def health_check():
     """
