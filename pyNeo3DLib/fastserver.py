@@ -128,20 +128,70 @@ async def get_registration(background_tasks: BackgroundTasks, registration: Dict
 
 
 @app.post("/find_outerline")
-async def find_outerline(ios_upper_path:str):
-    from pyNeo3DLib.smileArchOuterline.core import analyze_upper_IOS_scandata
-    print(ios_upper_path)
+async def find_outerline(ios_upper_path: str = Body(..., embed=True)):
+    request_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+    print(f"[{request_id}] Find Outerline API called")
+    
+    try:
+        # 1. Input Validation
+        if not ios_upper_path:
+            raise ValueError("File path cannot be empty")
+            
+        clean_path = ios_upper_path.strip().strip('"').strip("'")
+        if not os.path.exists(clean_path):
+            raise FileNotFoundError(f"File not found: {clean_path}")
 
-    arch_depth, molar_width, landmark_points = analyze_upper_IOS_scandata(
-                    mesh_path=ios_upper_path,
+        print(f"[{request_id}] Processing file: {clean_path}")
+
+        # 2. Logic Execution
+        from pyNeo3DLib.smileArchOuterline.core import analyze_upper_IOS_scandata
+        
+        arch_depth, molar_width, landmark_points = analyze_upper_IOS_scandata(
+                    mesh_path=clean_path,
                     visualize_result=False
                 )
-    return {
-        "status": "success",
-        "arch_depth": arch_depth,
-        "molar_width": molar_width,
-        "landmark_points": landmark_points
-    }
+        
+        print(f"[{request_id}] Analysis completed successfully")
+        
+        return {
+            "status": "success",
+            "request_id": request_id,
+            "arch_depth": arch_depth,
+            "molar_width": molar_width,
+            "landmark_points": landmark_points,
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+    except FileNotFoundError as e:
+        print(f"[{request_id}] File Error: {str(e)}")
+        return {
+            "status": "error",
+            "request_id": request_id,
+            "error_type": "FileNotFoundError",
+            "message": str(e),
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+    except ImportError as e:
+        print(f"[{request_id}] Import Error: {str(e)}")
+        return {
+            "status": "error",
+            "request_id": request_id,
+            "error_type": "ImportError",
+            "message": "Failed to load analysis module. Please check server installation.",
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+    except Exception as e:
+        print(f"[{request_id}] Unexpected Error: {str(e)}")
+        from traceback import format_exc
+        print(format_exc()) # Log stack trace for server debugging
+        return {
+            "status": "error",
+            "request_id": request_id,
+            "error_type": type(e).__name__,
+            "message": f"An error occurred during analysis: {str(e)}",
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
 
 @app.get("/health")
 async def health_check():
