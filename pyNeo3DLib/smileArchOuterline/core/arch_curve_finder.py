@@ -4,7 +4,8 @@
 이 모듈은 IOS(Intraoral Scanner) 스캔 데이터를 분석하여
 치아 악궁의 중심선을 추출하고 정규화된 랜드마크를 생성합니다.
 """
-
+import vtk
+vtk.vtkObject.GlobalWarningDisplayOff()
 from typing import Tuple, List
 from ..utils.arch_analyzer import ArchAnalyzer
 
