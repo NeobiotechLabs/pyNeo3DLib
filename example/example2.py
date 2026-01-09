@@ -239,12 +239,12 @@ def show_result(result):
     vis.destroy_window()
 
 async def main():
-    with open(f"{__file__}/../sampleInput_ply.json", "r") as f:
+    with open(f"{__file__}/../sampleInput_yun_only_ios.json", "r", encoding='utf-8') as f:
         json_string = f.read()
         reg = Neo3DRegistration(json_string, fastserver.ws)
         print(reg.version)
         print(reg.parsed_json)
-        result = await reg.run_registration(visualize=False)
+        result = await reg.run_registration(visualize=True)
 
     show_result(result)
 
