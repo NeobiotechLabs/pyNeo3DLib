@@ -15,12 +15,16 @@ def visualize_meshes(meshes, names=None, title="메쉬 시각화", selected_vert
     # 이름이 지정되지 않은 경우 기본 이름 생성
     if names is None:
         names = [f"메쉬 {i+1}" for i in range(len(meshes))]
+        
+    previous_color = None
+    
     
     # 플롯터 생성
     plotter = pv.Plotter()
-    
+
     # 랜덤 색상 생성 함수
     def random_color():
+        nonlocal previous_color
         # Use distinct colors by selecting from predefined color list
         colors = [
             [1.0, 0.0, 0.0],  # Red
@@ -33,7 +37,16 @@ def visualize_meshes(meshes, names=None, title="메쉬 시각화", selected_vert
             [0.0, 0.5, 0.0],  # Dark green
             [0.0, 0.0, 0.5],  # Dark blue
         ]
-        return random.choice(colors)
+        if previous_color is None:
+            color = random.choice(colors)
+            previous_color = color
+            return color
+        else:
+            while True:
+                color = random.choice(colors)
+                if color != previous_color:
+                    previous_color = color
+                    return color
     
     # 각 메쉬 시각화
     for i, (mesh, name) in enumerate(zip(meshes, names)):

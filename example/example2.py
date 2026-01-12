@@ -98,6 +98,59 @@ def show_result(result):
                 except Exception as e:
                     print(f"Error loading mesh from {ios_path}: {e}")
                     print("Skipping this mesh...")
+    
+    # 2-1. ios[upper] 모델 로드 및 변환 매트릭스 적용
+    for ios_item in result['ios']:
+        if ios_item['subType'] == 'upper':
+            ios_path = ios_item['path']
+            if check_file(ios_path):
+                try:
+                    upper_mesh = o3d.io.read_triangle_mesh(ios_path)
+                    
+                    if len(upper_mesh.vertices) == 0:
+                        print(f"Warning: Failed to load upper mesh from {ios_path}")
+                        break
+                        
+                    upper_mesh.compute_vertex_normals()
+                    # 빨간색으로 설정
+                    upper_mesh.paint_uniform_color([1.0, 0.4, 0.4])
+                    
+                    # 변환 매트릭스 적용
+                    transform_matrix = np.array(ios_item['transform_matrix'])
+                    upper_mesh.transform(transform_matrix)
+                    
+                    models.append(upper_mesh)
+                    print(f"Successfully loaded and transformed upper mesh")
+                    
+                except Exception as e:
+                    print(f"Error loading upper mesh from {ios_path}: {e}")
+            break
+    
+    # 2-2. ios[lower] 모델 로드 및 변환 매트릭스 적용
+    for ios_item in result['ios']:
+        if ios_item['subType'] == 'lower':
+            ios_path = ios_item['path']
+            if check_file(ios_path):
+                try:
+                    lower_mesh = o3d.io.read_triangle_mesh(ios_path)
+                    
+                    if len(lower_mesh.vertices) == 0:
+                        print(f"Warning: Failed to load lower mesh from {ios_path}")
+                        break
+                        
+                    lower_mesh.compute_vertex_normals()
+                    # 파란색으로 설정
+                    lower_mesh.paint_uniform_color([0.4, 0.4, 1.0])
+                    
+                    # 변환 매트릭스 적용
+                    transform_matrix = np.array(ios_item['transform_matrix'])
+                    lower_mesh.transform(transform_matrix)
+                    
+                    models.append(lower_mesh)
+                    print(f"Successfully loaded and transformed lower mesh")
+                    
+                except Exception as e:
+                    print(f"Error loading lower mesh from {ios_path}: {e}")
             break
     
     # 3. facescan[smile] 모델 로드 및 변환 매트릭스 적용
@@ -239,12 +292,12 @@ def show_result(result):
     vis.destroy_window()
 
 async def main():
-    with open(f"{__file__}/../sampleInput_ply.json", "r") as f:
+    with open(f"{__file__}/../sampleInput.json", "r", encoding='utf-8') as f:
         json_string = f.read()
         reg = Neo3DRegistration(json_string, fastserver.ws)
         print(reg.version)
         print(reg.parsed_json)
-        result = await reg.run_registration(visualize=False)
+        result = await reg.run_registration(visualize=True)
 
     show_result(result)
 

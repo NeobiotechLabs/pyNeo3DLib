@@ -5,15 +5,15 @@
     "ios": [
         {
             "subType": "smileArch",
-            "path": "D:/Git/PyNeo3DLib/example/data/ios_with_smilearch.stl"
+            "path": "D:/Git/PyNeo3DLib/example/data/ios/smileArch.stl"
         },
         {
             "subType": "upper",
-            "path": "D:/Git/PyNeo3DLib/example/data/upper_ahn.stl"
+            "path": "D:/Git/PyNeo3DLib/example/data/ios/upper.stl"
         },
         {
             "subType": "lower",
-            "path": "D:/Git/PyNeo3DLib/example/data/upper_ahn.stl"
+            "path": "D:/Git/PyNeo3DLib/example/data/ios/lower.stl"
         }
     ],
     "facescan": [

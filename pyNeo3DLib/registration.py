@@ -10,13 +10,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from pyNeo3DLib.fileLoader.mesh import Mesh
 
-from pyNeo3DLib.iosRegistration.ios_transformation import (
-    IOSTransformationCalculator,
-    IOSTransformationConstants,
-    compute_principal_axes_from_vertices,
-    compute_minimum_variance_axis_from_vertices
-)
-
 # Lazy import: 실제 사용 시점에만 import (mediapipe 의존성 회피)
 # from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegistration
 # from pyNeo3DLib.faceRegisration.faceLaminateRegistration import FaceLaminateRegistration  # mediapipe 필요
@@ -370,25 +363,20 @@ class Neo3DRegistration:
         ios_lower_mesh = Mesh.from_file(ios_lower_path)
         smile_arch_mesh = Mesh.from_file(smile_arch_path)
 
-        # IOS Upper Registration
-        ios_upper_result = await self.ios_transformation_calculator.safe_compute_ios_transformation(
-            progress_name="ios_upper_registration",
-            ios_mesh=ios_upper_mesh,
-            smile_arch_mesh=smile_arch_mesh,
-            ios_laminate_result=ios_laminate_result,
-            transformation_name="combined_transformation_matrix_upper",
-            is_upper=True
-        )
-   
-        # IOS Lower Registration
-        ios_lower_result = await self.ios_transformation_calculator.safe_compute_ios_transformation(
-            progress_name="ios_lower_registration",
-            ios_mesh=ios_lower_mesh,
-            smile_arch_mesh=smile_arch_mesh,
-            ios_laminate_result=ios_laminate_result,
-            transformation_name="combined_transformation_matrix_lower",
-            is_upper=False
-        )
+        # IOS Upper/Lower Registration (한번에 처리)
+        try:
+            await self.progress_reporter.report_progress("ios_upper_lower_registration")
+            from pyNeo3DLib.iosRegistration.iosUpperLowerRegistration import IOSUpperLowerRegistration
+            
+            ios_registration = IOSUpperLowerRegistration(
+                ios_upper_mesh, ios_lower_mesh, smile_arch_mesh, ios_laminate_result
+            )
+            ios_upper_result, ios_lower_result = await ios_registration.compute_transformations()
+            print(f'✅ ios_upper_lower_registration 성공')
+        except Exception as e:
+            print(f'❌ ios_upper_lower_registration 실패: {str(e)}')
+            ios_upper_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
+            ios_lower_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
 
 
         try:

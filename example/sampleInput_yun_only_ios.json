@@ -1,0 +1,39 @@
+{
+    "laminate": {
+        "path": "D:/Git/PyNeo3DLib/example/data/smile_arch_half.stl"
+    },
+    "ios": [
+        {
+            "subType": "smileArch",
+            "path": "C:\\Users\\right\\AppData\\Roaming\\NeoSmileArch\\patientdata\\2025122210533032\\additional\\2025-12-19-.-maxillary.stl"
+        },
+        {
+            "subType": "upper",
+            "path": "C:\\Users\\right\\AppData\\Roaming\\NeoSmileArch\\patientdata\\2025122210533032\\additional\\2025-12-19-윤회길 상하악-maxillary.stl"
+        },
+        {
+            "subType": "lower",
+            "path": "C:\\Users\\right\\AppData\\Roaming\\NeoSmileArch\\patientdata\\2025122210533032\\additional\\2025-12-19-윤회길 상하악-mandibular_scanbody.stl"
+        }
+    ],
+    "facescan": [
+        {
+            "subType": "faceSmile",
+            "path": ""
+        },
+        {
+            "subType": "faceRest",
+            "path": ""
+        },
+        {
+            "subType": "faceRetraction",
+            "path": ""
+        }
+    ],
+    "cbct": {
+        "path": ""
+    },
+    "smilearch_bow": {
+        "path": "D:\\Git\\NeoSmileArch\\resources\\sample_datas\\bow\\smilearch_bow.stl"
+    }
+}
