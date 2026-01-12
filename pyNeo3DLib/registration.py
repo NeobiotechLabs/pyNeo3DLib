@@ -324,7 +324,6 @@ class Neo3DRegistration:
         
         self.websocket = websocket
         self.progress_reporter = ProgressReporter(websocket)
-        self.ios_transformation_calculator = IOSTransformationCalculator(self.progress_reporter)
     
     
     async def run_registration(self, visualize=False):       
