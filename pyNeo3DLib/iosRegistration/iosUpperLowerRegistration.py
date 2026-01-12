@@ -508,7 +508,7 @@ def run_rotation_limited_icp(
         if verbose:
             print(f"    1단계: Y-슬라이딩 + ICP 탐색 (+5 → -25mm, 2.5mm step)...")
         
-        for ty in np.linspace(5, -20, 13):  # +5 → -25mm, 2.5mm step (30mm 범위)
+        for ty in np.linspace(5, -10, 13):  # +5 → -25mm, 2.5mm step (30mm 범위)
             best_z_score = float('inf')
             
             for tz in np.linspace(-10, 10, 5):
