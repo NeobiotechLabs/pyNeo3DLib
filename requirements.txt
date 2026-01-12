@@ -3,7 +3,7 @@ fastapi
 uvicorn
 pydantic
 scipy
-mediapipe
+mediapipe>=0.10.9,<0.10.30
 msvc-runtime;platform_system=='Windows'
 open3d
 opencv-python
