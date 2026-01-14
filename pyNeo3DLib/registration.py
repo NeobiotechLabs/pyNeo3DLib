@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from pyNeo3DLib.fileLoader.mesh import Mesh
-from pyNeo3DLib.visualization.neovis import visualize_meshes
 
 # Lazy import: 실제 사용 시점에만 import (mediapipe 의존성 회피)
 # from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegistration
