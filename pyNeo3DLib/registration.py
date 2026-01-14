@@ -349,7 +349,7 @@ class Neo3DRegistration:
         # IOS Laminate Registration
         try:
             await self.progress_reporter.report_progress("ios_laminate_registration")
-            ios_laminate_result = self.__ios_laminate_registration(visualize=False)
+            ios_laminate_result = self.__ios_laminate_registration(visualize=visualize)
             print(f'✅ ios_laminate_registration 성공')
         except Exception as e:
             print(f'❌ ios_laminate_registration 실패: {str(e)}')
@@ -388,7 +388,7 @@ class Neo3DRegistration:
             except Exception as e:
                 print(f'⚠️ __erase_mouth 실패 (계속 진행): {str(e)}')
             
-            facescan_laminate_result, transformed_face_smile_mesh, type_of_facedata = self.__facescan_laminate_registration(visualize=False)
+            facescan_laminate_result, transformed_face_smile_mesh, type_of_facedata = self.__facescan_laminate_registration(visualize=visualize)
             print(f'✅ facescan_laminate_registration 성공 (type: {type_of_facedata})')
             
             # FacePhoto인 경우 transformed_face_smile_mesh를 반드시 보존
@@ -405,7 +405,7 @@ class Neo3DRegistration:
         if type_of_facedata == "FaceScan":
             try:
                 await self.progress_reporter.report_progress("facescan_rest_registration")
-                facescan_rest_result, facescan_retraction_result = self.__facescan_rest_registration(transformed_face_smile_mesh, facescan_laminate_result, visualize=False)
+                facescan_rest_result, facescan_retraction_result = self.__facescan_rest_registration(transformed_face_smile_mesh, facescan_laminate_result, visualize=visualize)
                 facephoto_meshes = None
                 print(f'✅ facescan_rest_registration 성공')
             except Exception as e:
@@ -421,7 +421,7 @@ class Neo3DRegistration:
         # CBCT Registration
         try:
             await self.progress_reporter.report_progress("cbct_registration")
-            cbct_result = self.__cbct_registration()
+            cbct_result = self.__cbct_registration(visualize=visualize)
             print(f'✅ cbct_registration 성공')
         except Exception as e:
             print(f'❌ cbct_registration 실패: {str(e)}')
