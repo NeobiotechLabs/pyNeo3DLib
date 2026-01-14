@@ -132,7 +132,14 @@ class FaceLaminateRegistration:
             )
         
         # 7. 첫 번째 ICP 정합
-        lip_mesh, rotated_face_mesh = self._apply_first_icp(lip_mesh, rotated_face_mesh)
+        lip_mesh, rotated_face_mesh = self._apply_icp(lip_mesh, rotated_face_mesh)
+
+        if self.visualization:
+            visualize_meshes(
+                [lip_mesh, rotated_face_mesh, self.laminate_mesh], 
+                ["Lip", "Rotated FaceScan", "Laminate"], 
+                title="After first ICP"
+            )
         
         # 8. ICP 후 노이즈 제거
         lip_mesh = self._mesh_cleaner.remove_noise_by_normal_angle(lip_mesh)
@@ -143,14 +150,14 @@ class FaceLaminateRegistration:
         )
         
         # 10. 두 번째 ICP 정합
-        rotated_face_mesh = self._apply_second_icp(lip_mesh, rotated_face_mesh)
+        lip_mesh, rotated_face_mesh = self._apply_icp(lip_mesh, rotated_face_mesh)
         
         # 11. 최종 시각화
         if self.visualization:
             visualize_meshes(
                 [lip_mesh, rotated_face_mesh, self.laminate_mesh], 
                 ["Lip", "Rotated FaceScan", "Laminate"], 
-                title="Final Result"
+                title="After second ICP"
             )
         
         print("Final accumulated transformation matrix:")
@@ -252,7 +259,7 @@ class FaceLaminateRegistration:
         
         return lip_mesh, rotated_face_mesh
     
-    def _apply_first_icp(self, lip_mesh: Mesh, rotated_face_mesh: Mesh):
+    def _apply_icp(self, lip_mesh: Mesh, rotated_face_mesh: Mesh):
         """첫 번째 ICP 정합을 적용합니다."""
         icp_result = self._icp_registrator.register(lip_mesh, self.laminate_mesh)
         
@@ -271,24 +278,7 @@ class FaceLaminateRegistration:
         
         return icp_result.transformed_mesh, rotated_face_mesh
     
-    def _apply_second_icp(self, lip_mesh: Mesh, rotated_face_mesh: Mesh):
-        """두 번째 ICP 정합을 적용합니다."""
-        icp_result = self._icp_registrator.register(lip_mesh, self.laminate_mesh)
-        
-        # 변환 행렬 누적
-        self.transform_matrix = np.dot(
-            icp_result.transformation_matrix, 
-            self.transform_matrix
-        )
-        
-        # 페이스 메쉬에 변환 적용
-        MeshTransformer.apply_rotation_and_translation_inplace(
-            rotated_face_mesh,
-            icp_result.transformation_matrix[:3, :3],
-            icp_result.transformation_matrix[:3, 3]
-        )
-        
-        return rotated_face_mesh
+
 
 
 if __name__ == "__main__":

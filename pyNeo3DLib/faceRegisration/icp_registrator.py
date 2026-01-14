@@ -79,6 +79,9 @@ class ICPRegistrator:
             source_pcd, _ = self._remove_statistical_outliers(
                 source_pcd, nb_neighbors, std_ratio, "Source"
             )
+            target_pcd, _ = self._remove_statistical_outliers(
+                target_pcd, nb_neighbors, std_ratio, "Target"
+            )
         
         # 색상 설정
         source_pcd.paint_uniform_color([1, 0, 0])  # 빨간색
