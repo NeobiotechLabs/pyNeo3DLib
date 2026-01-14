@@ -434,7 +434,7 @@ class Neo3DRegistration:
         except Exception as e:
             print(f'❌ ios_bow_registration 실패: {str(e)}')
             ios_bow_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
-                       
+           
         # SmileArch Outerline Detection (템플릿 검색을 위해 꼭 필요)
         try:
             await self.progress_reporter.report_progress("smilearch_outerline_registration")
