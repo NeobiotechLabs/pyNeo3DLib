@@ -421,7 +421,7 @@ class Neo3DRegistration:
         # CBCT Registration
         try:
             await self.progress_reporter.report_progress("cbct_registration")
-            cbct_result = self.__cbct_registration(visualize=visualize)
+            cbct_result = self.__cbct_registration()
             print(f'✅ cbct_registration 성공')
         except Exception as e:
             print(f'❌ cbct_registration 실패: {str(e)}')
