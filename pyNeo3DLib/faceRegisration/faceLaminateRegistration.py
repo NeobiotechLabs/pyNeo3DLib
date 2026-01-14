@@ -1,760 +1,301 @@
-import numpy as np
-from pyNeo3DLib.fileLoader.mesh import Mesh
-import copy
-from scipy.spatial import ConvexHull
-import mediapipe as mp
-from pyNeo3DLib.visualization.neovis import visualize_meshes
-import cv2
-import open3d as o3d
-import time
-import os
-from scipy.ndimage import binary_fill_holes
+"""
+페이스 라미네이트 정합 모듈
 
-class FaceMeshAnalyzer:
-    def __init__(self):
-        """Initialize MediaPipe Face Mesh"""
-        self.mp_face_mesh = mp.solutions.face_mesh
-        self.face_mesh = self.mp_face_mesh.FaceMesh(
-            static_image_mode=True,
-            max_num_faces=1,
-            min_detection_confidence=0.5
-        )
-        
-        # Lip landmark indices
-        self.outer_lips = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409,
-                          291, 375, 321, 405, 314, 17, 84, 181, 91, 146]
-        self.inner_lips = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415,
-                          308, 324, 318, 402, 317, 14, 87, 178, 88, 95]
-  
+이 모듈은 페이스 스캔과 라미네이트 메쉬 간의 정합을 오케스트레이션합니다.
+단일 책임 원칙(SRP)에 따라 전체 워크플로우 조정만을 담당합니다.
+"""
+import numpy as np
+import copy
+
+from pyNeo3DLib.fileLoader.mesh import Mesh
+from pyNeo3DLib.visualization.neovis import visualize_meshes
+
+# 분리된 모듈들 import
+from pyNeo3DLib.faceRegisration.mesh_transformer import MeshTransformer
+from pyNeo3DLib.faceRegisration.mesh_converter import MeshConverter
+from pyNeo3DLib.faceRegisration.mesh_cleaner import MeshCleaner
+from pyNeo3DLib.faceRegisration.icp_registrator import ICPRegistrator
+from pyNeo3DLib.faceRegisration.texture_mesh_extractor import TextureMeshExtractor
+from pyNeo3DLib.faceRegisration.incisor_aligner import IncisorAligner
+from pyNeo3DLib.faceRegisration.mouthEraserForface import MouthEraserForFace
+from pyNeo3DLib.faceRegisration.upper_anterior_extractor import UpperAnteriorExtractor
 
 
 class FaceLaminateRegistration:
-    def __init__(self, face_path, laminate_path, visualization=False):
+    """
+    페이스 스캔과 라미네이트 메쉬 간의 정합을 수행하는 클래스.
+    
+    단일 책임: 정합 워크플로우 오케스트레이션
+    
+    이 클래스는 다음 컴포넌트들을 조합하여 정합을 수행합니다:
+    - MeshTransformer: 메쉬 변환
+    - ICPRegistrator: ICP 정합
+    - TextureMeshExtractor: 텍스처 기반 메쉬 추출
+    - MeshCleaner: 메쉬 클리닝
+    - IncisorAligner: 중절치 정렬
+    - UpperAnteriorExtractor: 상악전치부 추출
+    """
+    
+    def __init__(self, face_path: str, laminate_path: str, visualization: bool = False):
+        """
+        FaceLaminateRegistration 초기화
+        
+        Args:
+            face_path: 페이스 스캔 파일 경로
+            laminate_path: 라미네이트 메쉬 파일 경로
+            visualization: 시각화 활성화 여부
+        """
         self.face_smile_path = face_path
         self.laminate_path = laminate_path
         self.visualization = visualization
-        # Initialize transformation matrix (set as 4x4 matrix)
+        
+        # 변환 행렬 초기화
         self.transform_matrix = np.eye(4)
-
-        self.__load_models()
-
-    def __load_models(self):
+        
+        # 컴포넌트 초기화
+        self._mesh_transformer = MeshTransformer()
+        self._mesh_cleaner = MeshCleaner()
+        self._icp_registrator = ICPRegistrator(visualization=visualization)
+        self._texture_extractor = TextureMeshExtractor()
+        self._incisor_aligner = IncisorAligner()
+        self._upper_anterior_extractor = UpperAnteriorExtractor()
+        
+        # 메쉬 로드
+        self._load_models()
+    
+    def _load_models(self):
+        """메쉬 파일들을 로드합니다."""
         self.face_smile_mesh = Mesh.from_file(self.face_smile_path)
         self.laminate_mesh = Mesh.from_file(self.laminate_path)
-
-        return self.face_smile_mesh, self.laminate_mesh
     
-    def apply_transformation(self, transformation_matrix):
-        """
-        Apply transformation to face_smile_mesh and accumulate in transform_matrix.
-        
-        Args:
-            transformation_matrix (np.ndarray): 4x4 transformation matrix
-        """
-        # Accumulate transformation matrix
-        self.transform_matrix = np.dot(transformation_matrix, self.transform_matrix)
-        
-        # Convert to homogeneous coordinates (4xN matrix)
-        vertices = self.face_smile_mesh.vertices
-        vertices_homogeneous = np.hstack((vertices, np.ones((vertices.shape[0], 1))))
-        # Convert from homogeneous coordinates to 3D coordinates
-        transformed_vertices = np.dot(vertices_homogeneous, self.transform_matrix.T)
-        self.face_smile_mesh.vertices = transformed_vertices[:, :3]
-        
-        # Apply only rotation to normal vectors (no translation)
-        if self.face_smile_mesh.normals is not None:
-            normals = self.face_smile_mesh.normals
-            rotation_matrix = self.transform_matrix[:3, :3]
-            self.face_smile_mesh.normals = np.dot(normals, rotation_matrix.T)
-    
-    def align_y_axis(self):
-        """
-        Apply 180-degree rotation transformation around Z-axis.
-        """
-        # Create transformation matrix for 180-degree rotation around Z-axis
-        angle = np.pi  # 180 degrees
-        rotation_matrix = np.array([
-            [np.cos(angle), -np.sin(angle), 0, 0],
-            [np.sin(angle), np.cos(angle), 0, 0],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
-        ])
-        
-        # Apply transformation
-        self.apply_transformation(rotation_matrix)
-
-    def find_lip_via_analyze_face_landmarks(self):
-        """
-        Extract lip landmarks from face image and convert to UV coordinates.
-        """
-        analyzer = FaceMeshAnalyzer()
-        
-        # Extract image file path (supporting both .obj and .ply files)
-        base_path = self.face_smile_path.rsplit('.', 1)[0]  # Remove extension
-        image_path = base_path + '.png'
-        if not os.path.exists(image_path):
-            image_path = base_path + '.jpg'
-            if not os.path.exists(image_path):
-                raise FileNotFoundError(f"Image file not found: {base_path}.png or {base_path}.jpg")
-        
-        # Load image
-        image = cv2.imread(image_path)
-        if image is None:
-            raise ValueError(f"Cannot load image: {image_path}")
-        
-        # Get image size
-        h, w = image.shape[:2]
-        
-        # Convert image to RGB (MediaPipe requires RGB format)
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        
-        # Detect face landmarks
-        results = analyzer.face_mesh.process(image_rgb)
-        
-        if not results.multi_face_landmarks:
-            raise ValueError("Cannot detect face in the image.")
-        
-        # Get first face landmarks
-        face_landmarks = results.multi_face_landmarks[0]
-        
-        # Extract lip landmarks
-        inner_points = []
-        outer_points = []
-        
-        # Extract inner lip landmarks
-        for idx in analyzer.inner_lips:
-            landmark = face_landmarks.landmark[idx]
-            # Convert image coordinates to pixel coordinates (0~1 range to pixel coordinates)
-            x = int(landmark.x * w)
-            y = int(landmark.y * h)
-            inner_points.append([x, y])
-        
-        # Extract outer lip landmarks
-        for idx in analyzer.outer_lips:
-            landmark = face_landmarks.landmark[idx]
-            # Convert image coordinates to pixel coordinates (0~1 range to pixel coordinates)
-            x = int(landmark.x * w)
-            y = int(landmark.y * h)
-            outer_points.append([x, y])
-        
-        # Convert to UV coordinates (normalize and flip coordinates)
-        inner_uv_points = self._normalize_and_flip_coordinates(inner_points, (w, h))
-        outer_uv_points = self._normalize_and_flip_coordinates(outer_points, (w, h))
-        
-        # Save results
-        self.inner_lip_points = inner_points
-        self.outer_lip_points = outer_points
-        self.inner_lip_uv = inner_uv_points
-        self.outer_lip_uv = outer_uv_points
-        
-        return inner_uv_points, outer_uv_points
-    
-    def _normalize_and_flip_coordinates(self, points, image_size):
-        """
-        Convert image coordinates to UV coordinates.
-        
-        Args:
-            points: List of image coordinates [[x1, y1], [x2, y2], ...]
-            image_size: Image size (width, height)
-            
-        Returns:
-            List of UV coordinates [[u1, v1], [u2, v2], ...]
-        """
-        w, h = image_size
-        uv_points = []
-        
-        for x, y in points:
-            # Normalize (to 0~1 range)
-            u = x / w
-            v = y / h
-            
-            # Flip V coordinate (image coordinate system and UV coordinate system have opposite Y-axis direction)
-            v = 1.0 - v
-            
-            uv_points.append([u, v])
-        
-        return uv_points
-    
-    def is_point_in_polygon(self, point, polygon, epsilon=1e-10):
-        """Check if a point is inside a polygon (Ray Casting Algorithm)"""
-        x, y = point
-        n = len(polygon)
-        inside = False
-        
-        # Handle points on boundary line
-        def on_segment(p, q, r):
-            if (q[0] <= max(p[0], r[0]) and q[0] >= min(p[0], r[0]) and
-                q[1] <= max(p[1], r[1]) and q[1] >= min(p[1], r[1])):
-                d = (r[1] - p[1]) * (q[0] - p[0]) - (q[1] - p[1]) * (r[0] - p[0])
-                if abs(d) < epsilon:
-                    return True
-            return False
-        
-        # Check points on boundary line
-        j = n - 1
-        for i in range(n):
-            if on_segment(polygon[i], [x, y], polygon[j]):
-                return True
-            j = i
-        
-        # Ray casting
-        j = n - 1
-        for i in range(n):
-            if ((polygon[i, 1] > y) != (polygon[j, 1] > y) and
-                (x < (polygon[j, 0] - polygon[i, 0]) * (y - polygon[i, 1]) /
-                (polygon[j, 1] - polygon[i, 1]) + polygon[i, 0])):
-                inside = not inside
-            j = i
-        
-        return inside
-
-
-    def find_lip_regions(self, mesh, inner_uv_points, margin=0.005):
-        """Detect inner lip regions with vectorized optimization"""
-        start_time = time.time()
-        print(f"[Time Measurement] Lip region detection started")
-        
-        # Prepare mesh data
-        prep_start = time.time()
-        faces = np.asarray(mesh.faces)
-        
-        # Check if UV coordinates exist
-        if not hasattr(mesh, 'uvs') or mesh.uvs is None:
-            print("Error: No UV coordinates found in mesh")
-            print(f"Mesh attributes: {[attr for attr in dir(mesh) if not attr.startswith('_')]}")
-            raise ValueError("UV coordinates are required for lip detection but not found in mesh")
-        
-        uvs = np.asarray(mesh.uvs)
-        face_uvs = np.asarray(mesh.face_uvs)
-        
-        # Debug: Check data types and dimensions
-        print(f"Debug: faces dtype: {faces.dtype}, face_uvs dtype: {face_uvs.dtype}")
-        print(f"Debug: faces shape: {faces.shape}, face_uvs shape: {face_uvs.shape}")
-        print(f"Debug: uvs shape: {uvs.shape}, uvs dtype: {uvs.dtype}")
-        print(f"Debug: uvs content preview: {uvs[:5] if len(uvs.shape) > 0 and uvs.shape[0] > 0 else 'Empty or 0-dimensional'}")
-        
-        # Check UV array dimensions
-        if uvs.ndim == 0 or (uvs.ndim > 0 and uvs.shape[0] == 0):
-            print("Error: UV coordinates array is empty or 0-dimensional")
-            raise ValueError("UV coordinates are empty - cannot proceed with lip detection")
-        
-        # Ensure face_uvs are integers
-        if face_uvs.dtype != np.int32:
-            print(f"Warning: Converting face_uvs from {face_uvs.dtype} to int32")
-            face_uvs = face_uvs.astype(np.int32)
-        
-        print(f"[Time Measurement] Mesh data preparation: {time.time() - prep_start:.4f} seconds")
-        
-        # Convert to numpy array and ensure closed boundary
-        inner_uv_points = np.array(inner_uv_points)
-        if not np.allclose(inner_uv_points[0], inner_uv_points[-1]):
-            inner_uv_points = np.vstack([inner_uv_points, inner_uv_points[0]])
-        
-        # Calculate bounding box with margin
-        min_uv = np.min(inner_uv_points, axis=0) - margin
-        max_uv = np.max(inner_uv_points, axis=0) + margin
-        
-        # Get all triangle UV coordinates and centers at once
-        all_triangle_uvs = uvs[face_uvs]
-        triangle_centers = np.mean(all_triangle_uvs, axis=1)
-        
-        # Quick bounding box filtering - vectorized
-        bbox_mask = np.all((triangle_centers >= min_uv) & (triangle_centers <= max_uv), axis=1)
-        candidate_indices = np.where(bbox_mask)[0]
-        
-        # Process candidate triangles
-        triangle_start = time.time()
-        print(f"[Time Measurement] Processing {len(candidate_indices)} candidate triangles")
-        
-        # Vectorized triangle processing
-        candidate_centers = triangle_centers[candidate_indices]
-        candidate_uvs = all_triangle_uvs[candidate_indices]
-        
-        # Check all vertices are within bounding box
-        vertices_in_bbox = np.all(
-            (candidate_uvs >= min_uv) & (candidate_uvs <= max_uv),
-            axis=(1, 2)
-        )
-        
-        inner_triangles = set()
-        
-        # Process triangles in larger batches
-        batch_size = 5000  # 더 큰 배치 사이즈 사용
-        for i in range(0, len(candidate_indices), batch_size):
-            batch_end = min(i + batch_size, len(candidate_indices))
-            batch_indices = candidate_indices[i:batch_end]
-            
-            # Get batch data
-            centers_batch = candidate_centers[i:batch_end]
-            uvs_batch = candidate_uvs[i:batch_end]
-            bbox_batch = vertices_in_bbox[i:batch_end]
-            
-            # Check centers first
-            for j, (idx, center, uvs, in_bbox) in enumerate(zip(batch_indices, centers_batch, uvs_batch, bbox_batch)):
-                if not in_bbox:
-                    continue
-                    
-                if self.is_point_in_polygon(center, inner_uv_points):
-                    inner_triangles.add(idx)
-                    continue
-                
-                # Only check vertices if center is outside
-                for vertex_uv in uvs:
-                    if self.is_point_in_polygon(vertex_uv, inner_uv_points):
-                        inner_triangles.add(idx)
-                    break
-        
-        print(f"[Time Measurement] Triangle processing completed: {time.time() - triangle_start:.4f} seconds")
-        print(f"[Time Measurement] Number of selected triangles: {len(inner_triangles)}")
-        
-        # Collect vertices efficiently using numpy operations
-        vertex_start = time.time()
-        triangle_array = np.array(list(inner_triangles))
-        selected_faces = faces[triangle_array]
-        inner_vertices = np.unique(selected_faces.flatten())
-        
-        print(f"[Time Measurement] Vertex collection completed: {time.time() - vertex_start:.4f} seconds")
-        print(f"[Time Measurement] Number of selected vertices: {len(inner_vertices)}")
-        
-        total_time = time.time() - start_time
-        print(f"[Time Measurement] Total time for lip region detection: {total_time:.4f} seconds")
-        
-        return inner_vertices.tolist()
-
-    def find_lip_via_convex_hull(self, inner_uv_points, shrink_factor=0.8):
-        """
-        Select mesh inside lips using inner lip UV coordinates.
-        
-        Args:
-            inner_uv_points: List of inner lip UV coordinates [[u1, v1], [u2, v2], ...]
-            shrink_factor: Factor to shrink the lip region (default 0.8 for 80%)
-            
-        Returns:
-            Partial mesh composed of selected vertices
-        """
-        start_time = time.time()
-        print(f"[Time Measurement] Lip mesh generation started")
-        
-        # Convert UV coordinates to numpy array
-        uv_start = time.time()
-        inner_uv_points = np.array(inner_uv_points)
-        
-        # Apply shrinking to reduce outer lip area and noise
-        if shrink_factor < 1.0:
-            # Calculate centroid of lip region
-            center = np.mean(inner_uv_points, axis=0)
-            
-            # Shrink each point towards the center
-            inner_uv_points = center + (inner_uv_points - center) * shrink_factor
-            print(f"Lip region shrunk to {shrink_factor*100:.1f}% of original size to reduce noise")
-        
-        print(f"[Time Measurement] UV coordinate conversion: {time.time() - uv_start:.4f} seconds")
-        
-        # Find lip region vertices
-        region_start = time.time()
-        selected_vertices = self.find_lip_regions(self.face_smile_mesh, inner_uv_points)
-        print(f"[Time Measurement] Finding lip region vertices: {time.time() - region_start:.4f} seconds")
-        
-        print(f"Number of selected vertices: {len(selected_vertices)}")
-        
-        if len(selected_vertices) == 0:
-            print("Warning: No vertices selected!")
-            return None
-        
-        # Save selected vertices
-        self.lip_vertices = selected_vertices
-        
-        # Create partial mesh from selected vertices
-        mesh_start = time.time()
-        lip_mesh = self.face_smile_mesh.extract_mesh_from_vertices(selected_vertices)
-        print(f"[Time Measurement] Partial mesh generation: {time.time() - mesh_start:.4f} seconds")
-        
-        total_time = time.time() - start_time
-        print(f"[Time Measurement] Total time for lip mesh generation: {total_time:.4f} seconds")
-        
-        return lip_mesh
-    
-    def align_lip_to_laminate(self, lip_mesh):
-        """Move lip mesh to laminate mesh position with improved alignment"""
-        # Calculate center points of each mesh
-        lip_center = np.mean(lip_mesh.vertices, axis=0)
-        laminate_center = np.mean(self.laminate_mesh.vertices, axis=0)
-        
-        # Calculate translation vector
-        translation = laminate_center - lip_center
-        
-        # Create translation transformation matrix
-        transform_matrix = np.eye(4)
-        transform_matrix[:3, 3] = translation
-        
-        # Apply transformation to lip mesh
-        vertices = lip_mesh.vertices
-        vertices_homogeneous = np.hstack((vertices, np.ones((vertices.shape[0], 1))))
-        transformed_vertices = np.dot(vertices_homogeneous, transform_matrix.T)
-        lip_mesh.vertices = transformed_vertices[:, :3]
-        
-        # Apply only rotation to normal vectors
-        if lip_mesh.normals is not None:
-            normals = lip_mesh.normals
-            rotation_matrix = transform_matrix[:3, :3]
-            lip_mesh.normals = np.dot(normals, rotation_matrix.T)
-        
-        # Accumulate transformation matrix
-        self.transform_matrix = np.dot(transform_matrix, self.transform_matrix)
-        
-        return lip_mesh
-
-
-    def fast_registration_with_vis(self, source_mesh, target_mesh, vis=None):
-        """
-        Perform ICP registration in 3 steps and visualize the process.
-        Returns:
-            transformed_source_mesh: Transformed source mesh
-            transform_matrix: Applied transformation matrix
-        """
-        import open3d as o3d
-        import copy
-        import time
-        import numpy as np
-        
-        # Convert Mesh to Open3D PointCloud
-        def mesh_to_pointcloud(mesh):
-            # 1. Create point cloud
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(mesh.vertices)
-            
-            # 2. Process normal vectors
-            if mesh.normals is not None:
-                pcd.normals = o3d.utility.Vector3dVector(mesh.normals)
-            else:
-                temp_mesh = o3d.geometry.TriangleMesh()
-                temp_mesh.vertices = o3d.utility.Vector3dVector(mesh.vertices)
-                temp_mesh.triangles = o3d.utility.Vector3iVector(mesh.faces)
-                temp_mesh.compute_vertex_normals()
-                pcd.normals = temp_mesh.vertex_normals
-            
-            # 3. Estimate normal direction and check consistency
-            pcd.estimate_normals(
-                search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30)
-            )
-            pcd.orient_normals_consistent_tangent_plane(k=100)
-            
-            pcd.uniform_down_sample(every_k_points=2)
-            
-            return pcd
-        
-        # Create visualization window
-        if vis is None and self.visualization:
-            vis = o3d.visualization.Visualizer()
-            vis.create_window(window_name='Registration', width=1920, height=1080)
-            opt = vis.get_render_option()
-            opt.background_color = np.asarray([0.9, 0.9, 0.9])
-            opt.point_size = 2.0
-            
-            # Camera settings (view from +y direction to -y direction)
-            ctr = vis.get_view_control()
-            ctr.set_zoom(0.8)
-            ctr.set_front([0, -1, 0])  # -y direction to look at
-            ctr.set_up([0, 0, 1])      # z-axis up
-            
-            # Force camera settings
-            vis.poll_events()
-            vis.update_renderer()
-            time.sleep(0.1)
-        
-        # Convert Mesh to PointCloud
-        print("\nConverting Mesh to PointCloud...")
-        source = mesh_to_pointcloud(source_mesh)
-        target = mesh_to_pointcloud(target_mesh)
-        
-        # Set source to red, target to blue
-        source.paint_uniform_color([1, 0, 0])
-        target.paint_uniform_color([0, 0, 1])
-        
-        if self.visualization:
-            # Visualize initial state
-            vis.clear_geometries()
-            vis.add_geometry(source)
-            vis.add_geometry(target)
-            
-            # Reset camera view
-            ctr = vis.get_view_control()
-            ctr.set_zoom(0.8)
-            ctr.set_front([0, -1, 0])
-            ctr.set_up([0, 0, 1])
-            
-            vis.poll_events()
-            vis.update_renderer()
-            time.sleep(1)
-        
-        # ICP execution
-        print("\nStarting 1st ICP registration...")
-        current_transform = np.eye(4)
-        
-        for iteration in range(1000):
-            result = o3d.pipelines.registration.registration_icp(
-                source, target,
-                1.0,  # Distance threshold
-                current_transform,
-                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-                o3d.pipelines.registration.ICPConvergenceCriteria(
-                    relative_fitness=1e-6,
-                    relative_rmse=1e-6,
-                    max_iteration=1
-                )
-            )
-            
-            if iteration % 20 == 0:  # Visualize every iteration
-                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
-                
-                # Update visualization
-                source_temp = copy.deepcopy(source)
-                source_temp.transform(result.transformation)
-                if self.visualization:
-                    vis.clear_geometries()
-                    vis.add_geometry(source_temp)
-                    vis.add_geometry(target)
-                
-                # Reset camera view each iteration
-                    ctr = vis.get_view_control()
-                    ctr.set_zoom(0.8)
-                    ctr.set_front([0, -1, 0])
-                    ctr.set_up([0, 0, 1])
-                    
-                    vis.poll_events()
-                    vis.update_renderer()
-                    time.sleep(0.05)  # Adjust animation speed
-            
-            if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
-                break
-                
-            current_transform = result.transformation
-        
-        print("Starting 2nd ICP registration...")
-        for iteration in range(1000):
-            result = o3d.pipelines.registration.registration_icp(
-                source, target,
-                0.3,  # Distance threshold
-                current_transform,
-                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-                o3d.pipelines.registration.ICPConvergenceCriteria(
-                    relative_fitness=1e-6,
-                    relative_rmse=1e-6,
-                    max_iteration=1
-                )
-            )
-            
-            if iteration % 20 == 0:  # Visualize every iteration
-                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
-                
-                # Update visualization
-                source_temp = copy.deepcopy(source)
-                source_temp.transform(result.transformation)
-                if self.visualization:
-                    vis.clear_geometries()
-                    vis.add_geometry(source_temp)
-                    vis.add_geometry(target)
-                
-                    # Reset camera view each iteration
-                    ctr = vis.get_view_control()
-                    ctr.set_zoom(0.8)
-                    ctr.set_front([0, -1, 0])
-                    ctr.set_up([0, 0, 1])
-                    
-                    vis.poll_events()
-                    vis.update_renderer()
-                    time.sleep(0.05)  # Adjust animation speed
-            
-            if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
-                break
-                
-            current_transform = result.transformation
-        
-        print("Starting 3rd ICP registration...")
-        for iteration in range(1000):
-            result = o3d.pipelines.registration.registration_icp(
-                source, target,
-                0.05,  # Distance threshold
-                current_transform,
-                o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-                o3d.pipelines.registration.ICPConvergenceCriteria(
-                    relative_fitness=1e-6,
-                    relative_rmse=1e-6,
-                    max_iteration=1
-                )
-            )
-            
-            if iteration % 20 == 0:  # Visualize every iteration
-                print(f"  - ICP iteration {iteration}: fitness = {result.fitness:.6f}")
-                
-                # Update visualization
-                source_temp = copy.deepcopy(source)
-                source_temp.transform(result.transformation)
-                if self.visualization:
-                    vis.clear_geometries()
-                    vis.add_geometry(source_temp)
-                    vis.add_geometry(target)
-                    
-                    # Reset camera view each iteration
-                    ctr = vis.get_view_control()
-                    ctr.set_zoom(0.8)
-                    ctr.set_front([0, -1, 0])
-                    ctr.set_up([0, 0, 1])
-                    
-                    vis.poll_events()
-                    vis.update_renderer()
-                    time.sleep(0.05)  # Adjust animation speed
-            
-            if np.allclose(result.transformation, current_transform, atol=1e-6):
-                print(f"  - ICP converged (iteration {iteration})")
-                break
-                
-            current_transform = result.transformation
-        
-        print("\n=== Registration completed ===")
-        print(f"Final fitness: {result.fitness:.6f}")
-        
-        if self.visualization:
-            # Keep visualization window open and allow mouse interaction
-            while True:
-                if not vis.poll_events():
-                    break
-                vis.update_renderer()
-                time.sleep(0.1)
-        
-        # Create transformed source mesh
-        transformed_source_mesh = copy.deepcopy(source_mesh)
-        transformed_source_mesh.vertices = np.dot(
-            source_mesh.vertices,
-            current_transform[:3, :3].T
-        ) + current_transform[:3, 3]
-        
-        return transformed_source_mesh, current_transform
-    
-
     def run_registration(self):
-        # Initial mesh visualization
-        if self.visualization:
-            visualize_meshes([self.face_smile_mesh, self.laminate_mesh], ["Face", "Laminate"], title="Initial Meshes")
+        """
+        전체 정합 프로세스를 실행합니다.
         
-        # Y-axis alignment
-        self.align_y_axis()
+        Returns:
+            tuple: (최종 변환 행렬, 변환된 페이스 메쉬)
+        """
+        # 1. 초기 시각화
         if self.visualization:
-            visualize_meshes([self.face_smile_mesh, self.laminate_mesh], ["Face", "Laminate"], title="After Y-axis Alignment")
+            visualize_meshes(
+                [self.face_smile_mesh, self.laminate_mesh], 
+                ["Face", "Laminate"], 
+                title="Initial Meshes"
+            )
+        
+        # 2. Y축 정렬 (Z축 중심 180도 회전)
+        self._align_y_axis()
+        if self.visualization:
+            visualize_meshes(
+                [self.face_smile_mesh, self.laminate_mesh], 
+                ["Face", "Laminate"], 
+                title="After Y-axis Alignment"
+            )
         print("Y-axis alignment transformation matrix:")
         print(self.transform_matrix)
         
-        # Extract lip landmarks
-        inner_uv_points, outer_uv_points = self.find_lip_via_analyze_face_landmarks()
-        print("Lip UV coordinates:")
-        print("Inner:", inner_uv_points)
-        print("Outer:", outer_uv_points)
-        
-        # Create inner lip partial mesh with 80% shrinkage to reduce noise
-        lip_mesh = self.find_lip_via_convex_hull(inner_uv_points, shrink_factor=0.8)
+        # 3. 입술 영역 메쉬 추출
+        lip_mesh = self._extract_lip_mesh()
         if lip_mesh is None:
-            print("Lip mesh generation failed")
             return None, None
         
-        # Move lip mesh to laminate position
-        lip_mesh = self.align_lip_to_laminate(lip_mesh)
-        
-        # Apply accumulated transformation to entire mesh
-        moved_smile_mesh = copy.deepcopy(self.face_smile_mesh)
-        # Apply only translation transformation
-        translation = self.transform_matrix[:3, 3]
-        moved_smile_mesh.vertices = moved_smile_mesh.vertices + translation
-        
-        # Final result visualization
         if self.visualization:
-            visualize_meshes([lip_mesh, moved_smile_mesh, self.laminate_mesh], 
-                            ["Lip", "Moved Face", "Laminate"], 
-                            title="Final Result")
+            visualize_meshes(
+                [lip_mesh, self.face_smile_mesh], 
+                ["Lip", "FaceScan"], 
+                title="Lip Mesh Extracted"
+            )
+        
+        # 4. 상악전치부 추출 및 좌표계 계산
+        lip_mesh, local_coordinate_system = self._extract_upper_anterior(lip_mesh)
+        
+        if self.visualization:
+            visualize_meshes(
+                [lip_mesh, self.laminate_mesh], 
+                ["Lip", "Laminate"], 
+                title="Upper Anterior with Coordinate System"
+            )
+        
+        # 5. 글로벌 좌표계로 변환
+        lip_mesh, rotated_face_mesh = self._transform_to_global(lip_mesh, local_coordinate_system)
+        
+        # 6. 첫 번째 중절치 정렬
+        lip_mesh, rotated_face_mesh = self._apply_incisor_alignment(
+            lip_mesh, rotated_face_mesh
+        )
+        
+        if self.visualization:
+            visualize_meshes(
+                [lip_mesh, rotated_face_mesh, self.laminate_mesh], 
+                ["Lip", "Rotated FaceScan", "Laminate"], 
+                title="After Incisor Alignment"
+            )
+        
+        # 7. 첫 번째 ICP 정합
+        lip_mesh, rotated_face_mesh = self._apply_first_icp(lip_mesh, rotated_face_mesh)
+        
+        # 8. ICP 후 노이즈 제거
+        lip_mesh = self._mesh_cleaner.remove_noise_by_normal_angle(lip_mesh)
+        
+        # 9. 두 번째 중절치 정렬
+        lip_mesh, rotated_face_mesh = self._apply_incisor_alignment(
+            lip_mesh, rotated_face_mesh
+        )
+        
+        # 10. 두 번째 ICP 정합
+        rotated_face_mesh = self._apply_second_icp(lip_mesh, rotated_face_mesh)
+        
+        # 11. 최종 시각화
+        if self.visualization:
+            visualize_meshes(
+                [lip_mesh, rotated_face_mesh, self.laminate_mesh], 
+                ["Lip", "Rotated FaceScan", "Laminate"], 
+                title="Final Result"
+            )
+        
         print("Final accumulated transformation matrix:")
         print(self.transform_matrix)
-
-        # Now match meshes using ICP
-        transformed_mesh, fast_registration_transform_matrix = self.fast_registration_with_vis(lip_mesh, self.laminate_mesh)
-
-        # Apply final transformation at once
-        final_transform = np.dot(
-            fast_registration_transform_matrix, 
-            self.transform_matrix)
         
-        self.transform_matrix = final_transform
+        return self.transform_matrix, rotated_face_mesh
+    
+    def _align_y_axis(self):
+        """Z축 중심 180도 회전을 적용합니다."""
+        rotation_matrix = MeshTransformer.create_rotation_matrix_z(np.pi)
         
-        moved_smile_mesh.vertices = np.dot(moved_smile_mesh.vertices, fast_registration_transform_matrix[:3, :3].T) + fast_registration_transform_matrix[:3, 3]
+        # 변환 행렬 누적
+        self.transform_matrix = np.dot(rotation_matrix, self.transform_matrix)
         
-        if self.visualization:
-            visualize_meshes([transformed_mesh, moved_smile_mesh, self.laminate_mesh], 
-                            ["Lip", "Moved Face", "Laminate"], 
-                            title="Final Result")
-        return final_transform, moved_smile_mesh
+        # 메쉬에 변환 적용
+        MeshTransformer.apply_transformation_inplace(self.face_smile_mesh, rotation_matrix)
+    
+    def _extract_lip_mesh(self) -> Mesh:
+        """입술 영역 메쉬를 추출합니다."""
+        # 입술 텍스처 생성
+        mouth_eraser = MouthEraserForFace()
+        texture_with_transparent_mouth = mouth_eraser.erase_mouth(self.face_smile_path)
         
-
-    def visualize_lip_landmarks(self):
-        """
-        Visualize lip landmarks on the image.
-        """
-        # Extract image file path (supporting both .obj and .ply files)
-        base_path = self.face_smile_path.rsplit('.', 1)[0]  # Remove extension
-        image_path = base_path + '.png'
-        if not os.path.exists(image_path):
-            image_path = base_path + '.jpg'
-            if not os.path.exists(image_path):
-                raise FileNotFoundError(f"Image file not found: {base_path}.png or {base_path}.jpg")
+        if texture_with_transparent_mouth is None:
+            print("Face with transparent mouth generation failed")
+            return None
         
-        # Load image
-        image = cv2.imread(image_path)
-        if image is None:
-            raise ValueError(f"Cannot load image: {image_path}")
+        # 투명 영역 메쉬 추출
+        lip_mesh = self._texture_extractor.extract_transparent_region(
+            mesh=self.face_smile_mesh,
+            texture_image=texture_with_transparent_mouth
+        )
         
-        # Copy image (preserve original)
-        vis_image = image.copy()
+        if lip_mesh is None:
+            print("Lip mesh extraction failed")
+            return None
         
-        # Check if lip landmarks are already extracted
-        if not hasattr(self, 'inner_lip_points') or not hasattr(self, 'outer_lip_points'):
-            # Extract landmarks if not already extracted
-            inner_uv_points, outer_uv_points = self.find_lip_via_analyze_face_landmarks()
+        # 메쉬 클리닝
+        lip_mesh = self._mesh_cleaner.clean_mesh(lip_mesh)
         
-        # Visualize inner lip landmarks (blue)
-        for point in self.inner_lip_points:
-            x, y = point
-            cv2.circle(vis_image, (x, y), 3, (255, 0, 0), -1)  # Blue
+        print("Lip mesh extraction completed")
+        return lip_mesh
+    
+    def _extract_upper_anterior(self, lip_mesh: Mesh):
+        """상악전치부를 추출하고 로컬 좌표계를 반환합니다."""
+        extraction_result = self._upper_anterior_extractor.extract(lip_mesh)
+        upper_anterior_mesh = extraction_result.upper_anterior_mesh
         
-        # Visualize outer lip landmarks (red)
-        for point in self.outer_lip_points:
-            x, y = point
-            cv2.circle(vis_image, (x, y), 3, (0, 0, 255), -1)  # Red
+        # 로컬 좌표계 정의 (고정값)
+        local_coordinate_system = np.array([
+            [1, 0, 0],   # X축
+            [0, 0, 1],   # Y축
+            [0, -1, 0]   # Z축
+        ])
         
-        # Connect inner lip landmarks (blue)
-        for i in range(len(self.inner_lip_points)):
-            pt1 = tuple(self.inner_lip_points[i])
-            pt2 = tuple(self.inner_lip_points[(i + 1) % len(self.inner_lip_points)])
-            cv2.line(vis_image, pt1, pt2, (255, 0, 0), 1)
+        return upper_anterior_mesh, local_coordinate_system
+    
+    def _transform_to_global(self, lip_mesh: Mesh, local_coordinate_system: np.ndarray):
+        """로컬 좌표계에서 글로벌 좌표계로 변환합니다."""
+        # 변환 행렬 계산
+        rotation_matrix_3x3 = np.linalg.inv(local_coordinate_system)
+        global_transform = np.eye(4)
+        global_transform[:3, :3] = rotation_matrix_3x3.T
         
-        # Connect outer lip landmarks (red)
-        for i in range(len(self.outer_lip_points)):
-            pt1 = tuple(self.outer_lip_points[i])
-            pt2 = tuple(self.outer_lip_points[(i + 1) % len(self.outer_lip_points)])
-            cv2.line(vis_image, pt1, pt2, (0, 0, 255), 1)
+        # 입술 메쉬 변환
+        lip_mesh.vertices = np.dot(
+            lip_mesh.vertices, 
+            global_transform[:3, :3].T
+        ) + global_transform[:3, 3]
         
-        # Save image
-        output_dir = os.path.dirname(image_path)
-        base_name = os.path.splitext(os.path.basename(image_path))[0]
-        vis_path = os.path.join(output_dir, f"{base_name}_landmarks.png")
-        cv2.imwrite(vis_path, vis_image)
+        # 페이스 메쉬 복사 및 변환
+        rotated_face_mesh = copy.deepcopy(self.face_smile_mesh)
+        rotated_face_mesh.vertices = np.dot(
+            rotated_face_mesh.vertices, 
+            global_transform[:3, :3].T
+        ) + global_transform[:3, 3]
         
-        print(f"Landmark visualization saved: {vis_path}")
+        # 변환 행렬 누적
+        self.transform_matrix = np.dot(global_transform, self.transform_matrix)
         
-        return vis_path
+        return lip_mesh, rotated_face_mesh
+    
+    def _apply_incisor_alignment(self, lip_mesh: Mesh, rotated_face_mesh: Mesh):
+        """중절치 정렬을 적용합니다."""
+        alignment_result = self._incisor_aligner.calculate_alignment_translation(
+            target_mesh=self.laminate_mesh,
+            source_mesh=lip_mesh
+        )
+        
+        # 이동 적용
+        MeshTransformer.translate_mesh_inplace(lip_mesh, alignment_result.translation_vector)
+        MeshTransformer.translate_mesh_inplace(rotated_face_mesh, alignment_result.translation_vector)
+        
+        # 변환 행렬 누적
+        self.transform_matrix = np.dot(
+            alignment_result.translation_matrix, 
+            self.transform_matrix
+        )
+        
+        return lip_mesh, rotated_face_mesh
+    
+    def _apply_first_icp(self, lip_mesh: Mesh, rotated_face_mesh: Mesh):
+        """첫 번째 ICP 정합을 적용합니다."""
+        icp_result = self._icp_registrator.register(lip_mesh, self.laminate_mesh)
+        
+        # 변환 행렬 누적
+        self.transform_matrix = np.dot(
+            icp_result.transformation_matrix, 
+            self.transform_matrix
+        )
+        
+        # 메쉬에 변환 적용
+        MeshTransformer.apply_rotation_and_translation_inplace(
+            rotated_face_mesh,
+            icp_result.transformation_matrix[:3, :3],
+            icp_result.transformation_matrix[:3, 3]
+        )
+        
+        return icp_result.transformed_mesh, rotated_face_mesh
+    
+    def _apply_second_icp(self, lip_mesh: Mesh, rotated_face_mesh: Mesh):
+        """두 번째 ICP 정합을 적용합니다."""
+        icp_result = self._icp_registrator.register(lip_mesh, self.laminate_mesh)
+        
+        # 변환 행렬 누적
+        self.transform_matrix = np.dot(
+            icp_result.transformation_matrix, 
+            self.transform_matrix
+        )
+        
+        # 페이스 메쉬에 변환 적용
+        MeshTransformer.apply_rotation_and_translation_inplace(
+            rotated_face_mesh,
+            icp_result.transformation_matrix[:3, :3],
+            icp_result.transformation_matrix[:3, 3]
+        )
+        
+        return rotated_face_mesh
 
 
 if __name__ == "__main__":
-    # face_laminate_registration = FaceLaminateRegistration("../../example/data/FaceScan/Smile/Smile.obj", "../../example/data/smile_arch_half.stl", visualization=True)
-    # face_laminate_registration = FaceLaminateRegistration("../../example/data/park1/Smile.obj", "../../example/data/smile_arch_half.stl", visualization=True)
-    face_laminate_registration = FaceLaminateRegistration("../../example/data/ahn/Smile/Smile_Scan.ply", "../../example/data/smile_arch_half.stl", visualization=True)
-    final_transform = face_laminate_registration.run_registration()
+    face_laminate_registration = FaceLaminateRegistration(
+        "../../example/data/ahn/Smile/Smile_Scan.ply",
+        "../../example/data/smile_arch_half.stl", 
+        visualization=True
+    )
+    final_transform, moved_mesh = face_laminate_registration.run_registration()
     print(final_transform)
