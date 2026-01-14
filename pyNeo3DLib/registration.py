@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from pyNeo3DLib.fileLoader.mesh import Mesh
+from pyNeo3DLib.visualization.neovis import visualize_meshes
 
 # Lazy import: 실제 사용 시점에만 import (mediapipe 의존성 회피)
 # from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegistration
@@ -348,7 +349,7 @@ class Neo3DRegistration:
         # IOS Laminate Registration
         try:
             await self.progress_reporter.report_progress("ios_laminate_registration")
-            ios_laminate_result = self.__ios_laminate_registration(visualize=visualize)
+            ios_laminate_result = self.__ios_laminate_registration(visualize=False)
             print(f'✅ ios_laminate_registration 성공')
         except Exception as e:
             print(f'❌ ios_laminate_registration 실패: {str(e)}')
@@ -387,7 +388,7 @@ class Neo3DRegistration:
             except Exception as e:
                 print(f'⚠️ __erase_mouth 실패 (계속 진행): {str(e)}')
             
-            facescan_laminate_result, transformed_face_smile_mesh, type_of_facedata = self.__facescan_laminate_registration(visualize=visualize)
+            facescan_laminate_result, transformed_face_smile_mesh, type_of_facedata = self.__facescan_laminate_registration(visualize=False)
             print(f'✅ facescan_laminate_registration 성공 (type: {type_of_facedata})')
             
             # FacePhoto인 경우 transformed_face_smile_mesh를 반드시 보존
@@ -404,7 +405,7 @@ class Neo3DRegistration:
         if type_of_facedata == "FaceScan":
             try:
                 await self.progress_reporter.report_progress("facescan_rest_registration")
-                facescan_rest_result, facescan_retraction_result = self.__facescan_rest_registration(transformed_face_smile_mesh, facescan_laminate_result, visualize=visualize)
+                facescan_rest_result, facescan_retraction_result = self.__facescan_rest_registration(transformed_face_smile_mesh, facescan_laminate_result, visualize=False)
                 facephoto_meshes = None
                 print(f'✅ facescan_rest_registration 성공')
             except Exception as e:
@@ -434,6 +435,52 @@ class Neo3DRegistration:
         except Exception as e:
             print(f'❌ ios_bow_registration 실패: {str(e)}')
             ios_bow_result = np.array(RegistrationConstants.IDENTITY_MATRIX)
+
+
+
+        # 일단 최종 결과로 스마일 아치, 페이스스캔 띄워보자
+
+        # 스마일 아치 원본 모델 로드
+        smile_arch_path = self.config.get_ios_by_subtype("smileArch").path
+        smile_arch_mesh = Mesh.from_file(smile_arch_path)
+
+        # 페이스스캔 모델 로드
+        facescan_path = self.config.get_facescan_by_subtype("faceSmile").path
+        facescan_mesh = Mesh.from_file(facescan_path)
+
+
+        # 스마일 아치 변환 적용
+        ios_laminate_matrix = np.array(ios_laminate_result)
+        ones = np.ones((len(smile_arch_mesh.vertices), 1))
+        vertices_h = np.hstack([smile_arch_mesh.vertices, ones])
+        smile_arch_mesh.vertices = (ios_laminate_matrix @ vertices_h.T).T[:, :3]
+
+        # 페이스스캔 변환 적용
+        facescan_laminate_matrix = np.array(facescan_laminate_result)
+        ones = np.ones((len(facescan_mesh.vertices), 1))
+        vertices_h = np.hstack([facescan_mesh.vertices, ones])
+        facescan_mesh.vertices = (facescan_laminate_matrix @ vertices_h.T).T[:, :3]
+
+        # 변환 결과 저장 테스트용
+        # # Open3D로 변환하여 저장
+        # import open3d as o3d
+        
+        # # 스마일 아치 STL 저장
+        # smile_arch_o3d = o3d.geometry.TriangleMesh()
+        # smile_arch_o3d.vertices = o3d.utility.Vector3dVector(np.asarray(smile_arch_mesh.vertices, dtype=np.float64))
+        # smile_arch_o3d.triangles = o3d.utility.Vector3iVector(np.asarray(smile_arch_mesh.faces, dtype=np.int32))
+        # smile_arch_o3d.compute_vertex_normals()  # Normal 계산 (STL 파일 유효성을 위해 필요)
+        # o3d.io.write_triangle_mesh("final_smile_arch.stl", smile_arch_o3d, write_ascii=False)
+        
+        # # 페이스스캔 STL 저장
+        # facescan_o3d = o3d.geometry.TriangleMesh()
+        # facescan_o3d.vertices = o3d.utility.Vector3dVector(np.asarray(facescan_mesh.vertices, dtype=np.float64))
+        # facescan_o3d.triangles = o3d.utility.Vector3iVector(np.asarray(facescan_mesh.faces, dtype=np.int32))
+        # facescan_o3d.compute_vertex_normals()  # Normal 계산
+        # o3d.io.write_triangle_mesh("final_facescan.stl", facescan_o3d, write_ascii=False)
+
+        # visualize_meshes([smile_arch_mesh, facescan_mesh], ["final_smile_arch", "final_facescan"])
+
                        
         # SmileArch Outerline Detection (템플릿 검색을 위해 꼭 필요)
         try:

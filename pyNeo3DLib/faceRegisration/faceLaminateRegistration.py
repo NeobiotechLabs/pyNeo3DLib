@@ -118,6 +118,9 @@ class FaceLaminateRegistration:
         
         # 5. 글로벌 좌표계로 변환
         lip_mesh, rotated_face_mesh = self._transform_to_global(lip_mesh, local_coordinate_system)
+        print("transform_to_global transformation matrix:")
+        print(self.transform_matrix)
+        
         
         # 6. 첫 번째 중절치 정렬
         lip_mesh, rotated_face_mesh = self._apply_incisor_alignment(
