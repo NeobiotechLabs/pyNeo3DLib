@@ -50,8 +50,8 @@ class IncisorAligner:
             IncisorAlignmentResult: 정렬 결과 (이동 벡터 및 변환 행렬)
         """
         # 각 메쉬의 중절치 중심점 찾기
-        target_center = self.find_central_incisor_center_point(target_mesh)
-        source_center = self.find_central_incisor_center_point(source_mesh)
+        target_center = self.find_central_incisor_center_point_for_second_icp(target_mesh)
+        source_center = self.find_central_incisor_center_point_for_second_icp(source_mesh)
         
         # 이동 벡터 계산
         translation_vector = target_center - source_center
@@ -65,7 +65,7 @@ class IncisorAligner:
             translation_matrix=translation_matrix
         )
     
-    def find_central_incisor_center_point(self, mesh: Mesh) -> np.ndarray:
+    def find_central_incisor_center_point_for_second_icp(self, mesh: Mesh) -> np.ndarray:
         """
         상악 전치부 중절치 중심점을 추정합니다.
         
@@ -93,7 +93,7 @@ class IncisorAligner:
         min_z_idx = np.argmin(vertices[:, 2])
         center_point = vertices[min_z_idx].copy()
         
-        # x값을 0으로 설정 (중앙 정렬)
+        # x값을 0으로 설정 (중앙 정렬, 중절치 중심점 x축 중앙 정렬을 위함)
         center_point[0] = 0
         
         return center_point
