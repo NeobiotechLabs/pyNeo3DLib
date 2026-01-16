@@ -17,6 +17,9 @@ from pyNeo3DLib.faceRegisration.constants import (
     VisualizationConstants,
     ICPConstants
 )
+from pyNeo3DLib.faceRegisration.mesh_transformer import MeshTransformer
+from pyNeo3DLib.faceRegisration.mesh_converter import MeshConverter
+from pyNeo3DLib.visualization.neovis import visualize_meshes
 
 
 @dataclass
