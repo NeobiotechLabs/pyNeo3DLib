@@ -608,11 +608,10 @@ class Neo3DRegistration:
         
         print(f'ios path: {smile_arch_ios.path}')
         # Lazy import
-        from pyNeo3DLib.iosRegistration.iosLaminateRegistration import IOSLaminateRegistration
+        from pyNeo3DLib.iosRegistration.smileArchAlign.align_to_smileguide import align_to_smileguide
         
         # Now register this file with the laminate model
-        ios_laminate_registration = IOSLaminateRegistration(smile_arch_ios.path, RegistrationConstants.LAMINATE_PATH, visualize)
-        result_matrix = ios_laminate_registration.run_registration()
+        result_matrix = align_to_smileguide(smile_arch_ios.path, RegistrationConstants.LAMINATE_PATH, visualize=visualize, output_dir=None)
         return result_matrix
 
     def __ios_upper_registration(self):
