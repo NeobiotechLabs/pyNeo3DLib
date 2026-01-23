@@ -9,10 +9,8 @@ import argparse
 from pathlib import Path
 import open3d as o3d
 
-try:
-    from .face_lip_extractor import FaceLipExtractor
-except ImportError:
-    from face_lip_extractor import FaceLipExtractor
+from .face_lip_extractor import FaceLipExtractor
+
 
 
 def load_mesh_from_folder(folder_path: str):
