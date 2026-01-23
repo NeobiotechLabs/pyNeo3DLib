@@ -745,13 +745,21 @@ class Neo3DRegistration:
             if facescan["subType"] == "faceSmile":
                 print(f'facescan["path"]: {facescan["path"]}')
                 if facescan["path"].endswith(".obj") or facescan["path"].endswith(".ply"):
-                    # Lazy import
-                    from pyNeo3DLib.faceRegisration.faceLaminateRegistration import FaceLaminateRegistration
+                    # Lazy import                    
+                    # from pyNeo3DLib.faceRegisration.faceLaminateRegistration import FaceLaminateRegistration
                     
-                    # Now register this file with the laminate model
-                    facescan_laminate_registration = FaceLaminateRegistration(facescan["path"], RegistrationConstants.LAMINATE_PATH, visualize)
-                    final_transform, moved_smile_mesh = facescan_laminate_registration.run_registration()
-                    return final_transform, moved_smile_mesh, "FaceScan"
+                    # # Now register this file with the laminate model
+                    # facescan_laminate_registration = FaceLaminateRegistration(facescan["path"], RegistrationConstants.LAMINATE_PATH, visualize)
+                    from pyNeo3DLib.faceRegisration.faceSmileGuideAligner import FaceSmileGuideAligner
+
+                    aligner = FaceSmileGuideAligner()
+                    final_transform = aligner.align(facescan["path"], RegistrationConstants.LAMINATE_PATH, visualize=visualize)
+
+                    # FaceScan 메쉬를 읽어서 final_transform 적용
+                    face_smile_mesh = Mesh.from_file(facescan["path"])
+                    face_smile_mesh.vertices = np.dot(face_smile_mesh.vertices, final_transform[:3, :3].T) + final_transform[:3, 3]
+                    
+                    return final_transform, face_smile_mesh, "FaceScan"
                 elif facescan["path"].endswith(".jpg") or facescan["path"].endswith(".png"):
                     # facephoto_registration = FacePhotoRegistration(facescan["path"], visualize)
                     # M_total_homogeneous, image_plane = facephoto_registration.run_registration()
@@ -765,9 +773,9 @@ class Neo3DRegistration:
                             retraction_path = face["path"]
                     
                     # Lazy import
-                    from pyNeo3DLib.faceRegisration.faceAlign import FaceAlignment3D
+                    from pyNeo3DLib.faceRegisration.facePhotoAlign import FacePhotoAlignment3D
                     
-                    face_aligner = FaceAlignment3D(front_image_path=facescan["path"], right_image_path=rest_path, left_image_path=retraction_path)
+                    face_aligner = FacePhotoAlignment3D(front_image_path=facescan["path"], right_image_path=rest_path, left_image_path=retraction_path)
                     M_total_homogeneous, image_planes = face_aligner.run_registration(visualize=visualize)
                     return M_total_homogeneous, image_planes, "FacePhoto"
                 else:
