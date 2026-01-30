@@ -821,17 +821,11 @@ class Neo3DRegistration:
             if face["subType"] == "faceSmile":
                 facescan_path = face["path"]
                 break
-        
-        # ios 리스트에서 smileArch 경로 찾기
-        smile_arch_path = None
-        for ios in self.parsed_json["ios"]:
-            if ios["subType"] == "smileArch":
-                smile_arch_path = ios["path"]
-                break
+
         
         print(f'dicom_folder path: {self.parsed_json["cbct"]["path"]}')
         print(f'facescan_path path: {facescan_path}')
-        print(f'smile_arch_path path: {smile_arch_path}')
+
 
         
         config = AlignmentConfig()
