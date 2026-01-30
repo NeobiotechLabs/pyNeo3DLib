@@ -388,6 +388,9 @@ class Neo3DRegistration:
                 print(f'⚠️ __erase_mouth 실패 (계속 진행): {str(e)}')
             
             facescan_laminate_result, transformed_face_smile_mesh, type_of_facedata = self.__facescan_laminate_registration(visualize=visualize)
+
+            print(f'facescan_laminate_result: {facescan_laminate_result}')
+
             print(f'✅ facescan_laminate_registration 성공 (type: {type_of_facedata})')
             
             # FacePhoto인 경우 transformed_face_smile_mesh를 반드시 보존
@@ -420,7 +423,7 @@ class Neo3DRegistration:
         # CBCT Registration
         try:
             await self.progress_reporter.report_progress("cbct_registration")
-            cbct_result = self.__cbct_registration()
+            cbct_result = self.__cbct_registration(facescan_laminate_result, visualize=visualize)
             print(f'✅ cbct_registration 성공')
         except Exception as e:
             print(f'❌ cbct_registration 실패: {str(e)}')
@@ -807,10 +810,57 @@ class Neo3DRegistration:
         return result_for_rest, result_for_retraction
 
     
-    def __cbct_registration(self):
+    def __cbct_registration(self, facescan_laminate_result: np.ndarray, visualize=False):
         print("cbct_registration")
-        matrix = np.array(RegistrationConstants.IDENTITY_MATRIX)
-        return matrix
+
+        from pyNeo3DLib.cbctRegistration import CBCTFaceScanAlignmentPipeline, AlignmentConfig
+
+        # facescan 리스트에서 faceSmile 경로 찾기
+        facescan_path = None
+        for face in self.parsed_json["facescan"]:
+            if face["subType"] == "faceSmile":
+                facescan_path = face["path"]
+                break
+        
+        # ios 리스트에서 smileArch 경로 찾기
+        smile_arch_path = None
+        for ios in self.parsed_json["ios"]:
+            if ios["subType"] == "smileArch":
+                smile_arch_path = ios["path"]
+                break
+        
+        print(f'dicom_folder path: {self.parsed_json["cbct"]["path"]}')
+        print(f'facescan_path path: {facescan_path}')
+        print(f'smile_arch_path path: {smile_arch_path}')
+
+        
+        config = AlignmentConfig()
+        pipeline = CBCTFaceScanAlignmentPipeline(
+            config, 
+            random_seed=42,
+            visualize=visualize,  # 시각화 활성화
+            verbose=True     # 상세 출력 활성화
+        )
+
+        
+        # 전체 파이프라인 실행
+        final_transform = pipeline.run(
+            dicom_folder=self.parsed_json["cbct"]["path"],
+            facescan_path=facescan_path,
+            facescan_laminate_result=facescan_laminate_result
+        )
+        return final_transform
+
+
+
+
+
+
+
+
+
+
+
                 
                 
     def __smilearch_outerline_detect(self, visualize=False):
