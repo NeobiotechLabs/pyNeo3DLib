@@ -19,7 +19,7 @@ class TransformManager:
     
     # 각 단계별 변환 행렬
     facescan_to_smilearch: np.ndarray = field(default_factory=lambda: np.eye(4))
-    rai_to_standard: np.ndarray = field(default_factory=lambda: np.eye(4))
+    lps_to_standard: np.ndarray = field(default_factory=lambda: np.eye(4))
     initial_alignment: np.ndarray = field(default_factory=lambda: np.eye(4))
     icp: np.ndarray = field(default_factory=lambda: np.eye(4))
     refinement: np.ndarray = field(default_factory=lambda: np.eye(4))
@@ -45,7 +45,7 @@ class TransformManager:
     
     def get_final_transform(self, include_refinement: bool = True) -> np.ndarray:
         """
-        최종 변환 행렬 계산 (RAI 좌표계 → FaceScan 좌표계)
+        최종 변환 행렬 계산 (LPS 좌표계 → FaceScan 좌표계)
         
         Args:
             include_refinement: 정제 변환 포함 여부
@@ -53,9 +53,9 @@ class TransformManager:
         Returns:
             np.ndarray: 최종 변환 행렬 (4x4)
         """
-        # 전체 변환 순서: RAI→표준 → 초기정렬 → ICP → (정제)
+        # 전체 변환 순서: LPS→표준 → 초기정렬 → ICP → (정제)
         accumulated = self.get_accumulated_transform(include_refinement)
-        return accumulated @ self.rai_to_standard
+        return accumulated @ self.lps_to_standard
     
     def to_dict(self) -> Dict[str, np.ndarray]:
         """
@@ -66,7 +66,7 @@ class TransformManager:
         """
         return {
             "facescan_to_smilearch": self.facescan_to_smilearch,
-            "rai_to_standard": self.rai_to_standard,
+            "lps_to_standard": self.lps_to_standard,
             "initial_alignment": self.initial_alignment,
             "icp": self.icp,
             "refinement": self.refinement,
@@ -90,8 +90,8 @@ class TransformManager:
         print("\n[1단계] FaceScan → SmileArch:")
         print(self.facescan_to_smilearch)
         
-        print("\n[2단계] RAI → 표준 좌표계:")
-        print(self.rai_to_standard)
+        print("\n[2단계] LPS → 표준 좌표계:")
+        print(self.lps_to_standard)
         
         print("\n[3단계] 초기 정렬:")
         print(self.initial_alignment)
@@ -107,7 +107,7 @@ class TransformManager:
         print("누적 변환 행렬:")
         print(self.get_accumulated_transform(include_refinement))
         
-        print("\n최종 변환 행렬 (RAI → FaceScan):")
+        print("\n최종 변환 행렬 (LPS → FaceScan):")
         print(self.get_final_transform(include_refinement))
         print("=" * 60)
 

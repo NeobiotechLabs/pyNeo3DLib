@@ -1,35 +1,38 @@
 """
 CBCT DICOM Loader Module
 
-DICOM 시리즈를 로드하고 RAI 좌표계로 변환하는 모듈
+pydicom을 사용하여 DICOM 메타데이터를 직접 읽고,
+ImagePositionPatient, ImageOrientationPatient를 올바르게 적용하여
+vtk.js와 동일한 좌표계 결과를 얻습니다.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
+import os
 
 import numpy as np
 
 try:
-    import SimpleITK as sitk
+    import pydicom
 except ImportError as e:
-    raise ImportError("SimpleITK가 필요합니다. pip install SimpleITK") from e
+    raise ImportError("pydicom이 필요합니다. pip install pydicom") from e
 
 
 class CBCTDicomLoader:
     """
-    DICOM 시리즈 로더 및 좌표계 변환
+    DICOM 시리즈 로더 (pydicom 기반)
     
     주요 기능:
-    - SimpleITK로 DICOM 시리즈 자동 로드
-    - RAI (Right-Anterior-Inferior) 좌표계로 정렬
-    - 물리 좌표계 정보 (origin, spacing, direction) 관리
+    - pydicom으로 DICOM 메타데이터 직접 읽기
+    - ImagePositionPatient, ImageOrientationPatient 올바르게 적용
+    - vtk.js와 동일한 LPS 좌표계 결과
     
     사용 예제:
     ```python
     loader = CBCTDicomLoader("path/to/dicom")
-    loader.load(orientation="RAI")
+    loader.load()
     
     # NumPy 배열 접근
     hu_volume = loader.get_volume()  # (Z, Y, X)
@@ -54,26 +57,26 @@ class CBCTDicomLoader:
         if not self.dicom_folder.exists():
             raise FileNotFoundError(f"폴더를 찾을 수 없습니다: {self.dicom_folder}")
         
-        # SimpleITK 이미지 (글로벌 좌표계 정보 포함)
-        self._sitk_image: Optional[sitk.Image] = None
-        
         # NumPy 배열 (Z, Y, X)
         self._volume: Optional[np.ndarray] = None
+        
+        # DICOM 좌표 변환 정보
+        self._image_position: Optional[np.ndarray] = None  # 첫 슬라이스 원점 (X, Y, Z)
+        self._row_direction: Optional[np.ndarray] = None   # 행 방향 벡터
+        self._col_direction: Optional[np.ndarray] = None   # 열 방향 벡터
+        self._slice_direction: Optional[np.ndarray] = None # 슬라이스 방향 벡터
         
         # 메타데이터
         self._metadata: Dict[str, Any] = {}
     
-    def load(self, orientation: str = "RAI", verbose: bool = True) -> np.ndarray:
+    def load(self, orientation: str = "LPS", verbose: bool = True) -> np.ndarray:
         """
-        DICOM 시리즈를 로드하고 지정된 좌표계로 정렬
+        DICOM 시리즈를 로드 (pydicom 사용)
         
         Parameters:
         -----------
         orientation : str
-            목표 좌표계 방향 (기본값: "RAI")
-            - R (Right): X축 양의 방향이 환자의 오른쪽
-            - A (Anterior): Y축 양의 방향이 환자의 앞쪽
-            - I (Inferior): Z축 양의 방향이 환자의 아래쪽
+            좌표계 방향 (LPS 기본, vtk.js와 동일)
         verbose : bool
             진행 상황 출력 여부
             
@@ -83,97 +86,134 @@ class CBCTDicomLoader:
             HU 볼륨 (Z, Y, X)
         """
         if verbose:
-            print(f"[SimpleITK] DICOM 시리즈 로딩 중...")
+            print(f"[pydicom] DICOM 시리즈 로딩 중...")
+            print(f"  폴더: {self.dicom_folder}")
         
-        # SimpleITK로 DICOM 로드
-        img, series_id = self._load_dicom_series(self.dicom_folder)
+        # DICOM 파일 목록 가져오기
+        dicom_files = self._get_dicom_files()
         
-        if verbose:
-            print(f"  시리즈 ID: {series_id}")
-            print(f"  원본 크기: {img.GetSize()}")  # (X, Y, Z)
-            print(f"  원본 spacing: {img.GetSpacing()}")  # (X, Y, Z)
-            print(f"  원본 origin: {img.GetOrigin()}")
-            print(f"  원본 direction: {img.GetDirection()}")
-        
-        # ⭐ 핵심: 환자 기준 canonical orientation으로 정렬
-        if verbose:
-            print(f"\n[좌표계 정렬] {orientation} 좌표계로 변환 중...")
-        
-        img = sitk.DICOMOrient(img, orientation)
+        if not dicom_files:
+            raise ValueError(f"DICOM 파일을 찾을 수 없습니다: {self.dicom_folder}")
         
         if verbose:
-            print(f"  정렬 후 크기: {img.GetSize()}")
-            print(f"  정렬 후 spacing: {img.GetSpacing()}")
-            print(f"  정렬 후 origin: {img.GetOrigin()}")
-            print(f"  정렬 후 direction: {img.GetDirection()}")
+            print(f"  파일 수: {len(dicom_files)}")
         
-        # SimpleITK 이미지 저장
-        self._sitk_image = img
+        # 첫 번째 파일에서 메타데이터 읽기
+        first_ds = pydicom.dcmread(dicom_files[0])
         
-        # NumPy 배열로 변환 (Z, Y, X)
-        vol = sitk.GetArrayFromImage(img)
+        # 이미지 크기
+        rows = int(first_ds.Rows)
+        cols = int(first_ds.Columns)
+        
+        # 픽셀 간격 (row, column) -> (Y, X)
+        pixel_spacing = [float(x) for x in first_ds.PixelSpacing]  # [row_spacing, col_spacing]
+        
+        # ImageOrientationPatient: [row_x, row_y, row_z, col_x, col_y, col_z]
+        orientation_patient = [float(x) for x in first_ds.ImageOrientationPatient]
+        self._row_direction = np.array(orientation_patient[0:3])  # 행 방향 (X 증가)
+        self._col_direction = np.array(orientation_patient[3:6])  # 열 방향 (Y 증가)
+        
+        # 슬라이스 방향 = 행 × 열 (외적)
+        self._slice_direction = np.cross(self._row_direction, self._col_direction)
         
         if verbose:
-            print(f"  NumPy 배열 shape: {vol.shape} (Z, Y, X)")
+            print(f"\n[DICOM 좌표 정보]")
+            print(f"  Row Direction (X): {self._row_direction}")
+            print(f"  Col Direction (Y): {self._col_direction}")
+            print(f"  Slice Direction (Z): {self._slice_direction}")
+            print(f"  Pixel Spacing: {pixel_spacing}")
+        
+        # 모든 슬라이스 로드 및 정렬
+        slices_data = []
+        for f in dicom_files:
+            ds = pydicom.dcmread(f)
+            img_pos = [float(x) for x in ds.ImagePositionPatient]
+            slices_data.append({
+                'dataset': ds,
+                'position': np.array(img_pos),
+                'slice_location': np.dot(img_pos, self._slice_direction)  # 슬라이스 방향 투영
+            })
+        
+        # 슬라이스 위치로 정렬
+        slices_data.sort(key=lambda x: x['slice_location'])
+        
+        # 첫 번째 슬라이스 위치 (원점)
+        self._image_position = slices_data[0]['position']
+        
+        # 슬라이스 간격 계산
+        if len(slices_data) > 1:
+            slice_spacing = abs(slices_data[1]['slice_location'] - slices_data[0]['slice_location'])
+        else:
+            slice_spacing = float(first_ds.get('SliceThickness', 1.0))
+        
+        if verbose:
+            print(f"  Image Position (Origin): {self._image_position}")
+            print(f"  Slice Spacing: {slice_spacing}")
+        
+        # 볼륨 배열 생성
+        num_slices = len(slices_data)
+        volume = np.zeros((num_slices, rows, cols), dtype=np.float32)
+        
+        # Rescale Slope/Intercept
+        rescale_slope = float(first_ds.get('RescaleSlope', 1.0))
+        rescale_intercept = float(first_ds.get('RescaleIntercept', 0.0))
+        
+        # 슬라이스 데이터 채우기
+        for i, slice_info in enumerate(slices_data):
+            ds = slice_info['dataset']
+            pixel_array = ds.pixel_array.astype(np.float32)
+            # HU 변환
+            volume[i, :, :] = pixel_array * rescale_slope + rescale_intercept
+        
+        self._volume = volume
         
         # 메타데이터 저장
-        spacing = img.GetSpacing()  # (X, Y, Z)
+        # 주의: spacing은 (X, Y, Z) 순서 = (col_spacing, row_spacing, slice_spacing)
         self._metadata = {
-            "patient_name": "Unknown",
-            "study_date": "Unknown",
-            "modality": "CT",
-            "rows": int(img.GetSize()[1]),      # Y
-            "columns": int(img.GetSize()[0]),   # X
-            "pixel_spacing": [spacing[1], spacing[0]],  # [row(Y), col(X)]
-            "slice_thickness": float(spacing[2]),       # Z
-            "spacing_xyz": spacing,  # (X, Y, Z)
-            "origin_xyz": img.GetOrigin(),  # (X, Y, Z)
-            "direction": img.GetDirection(),
-            "orientation": orientation,
-            "rescale_slope": 1.0,
-            "rescale_intercept": 0.0,
+            "patient_name": str(first_ds.get('PatientName', 'Unknown')),
+            "study_date": str(first_ds.get('StudyDate', 'Unknown')),
+            "modality": str(first_ds.get('Modality', 'CT')),
+            "rows": rows,
+            "columns": cols,
+            "slices": num_slices,
+            "pixel_spacing": pixel_spacing,  # [row, col] = [Y, X]
+            "slice_thickness": slice_spacing,
+            "spacing_xyz": (pixel_spacing[1], pixel_spacing[0], slice_spacing),  # (X, Y, Z)
+            "origin_xyz": tuple(self._image_position),  # (X, Y, Z)
+            "orientation": "LPS",
+            "row_direction": self._row_direction,
+            "col_direction": self._col_direction,
+            "slice_direction": self._slice_direction,
+            "rescale_slope": rescale_slope,
+            "rescale_intercept": rescale_intercept,
         }
         
-        # HU 변환 (SimpleITK는 이미 HU로 변환됨)
-        self._volume = vol.astype(np.float32)
-        
         if verbose:
-            print(f"\n[완료] 볼륨 로딩 및 좌표계 정렬 완료")
-            print(f"  HU 범위: {self._volume.min():.1f} ~ {self._volume.max():.1f}")
+            print(f"\n[완료] 볼륨 로딩 완료")
+            print(f"  Shape: {volume.shape} (Z, Y, X)")
+            print(f"  Spacing (X, Y, Z): {self._metadata['spacing_xyz']}")
+            print(f"  Origin (X, Y, Z): {self._metadata['origin_xyz']}")
+            print(f"  HU 범위: {volume.min():.1f} ~ {volume.max():.1f}")
         
         return self._volume
     
-    def _load_dicom_series(self, dicom_dir: Path) -> Tuple[sitk.Image, str]:
-        """
-        SimpleITK로 DICOM 시리즈 로딩
+    def _get_dicom_files(self) -> List[Path]:
+        """DICOM 파일 목록 가져오기"""
+        dicom_files = []
         
-        Returns:
-        --------
-        img : sitk.Image
-            로드된 DICOM 이미지
-        series_id : str
-            시리즈 UID
-        """
-        reader = sitk.ImageSeriesReader()
-        series_ids = reader.GetGDCMSeriesIDs(str(dicom_dir))
+        for f in self.dicom_folder.iterdir():
+            if f.is_file():
+                # .dcm 확장자 또는 확장자 없는 파일
+                if f.suffix.lower() == '.dcm' or f.suffix == '':
+                    try:
+                        # DICOM 파일인지 확인
+                        ds = pydicom.dcmread(f, stop_before_pixels=True)
+                        if hasattr(ds, 'PixelData') or hasattr(ds, 'Rows'):
+                            dicom_files.append(f)
+                    except:
+                        pass
         
-        if not series_ids:
-            raise ValueError(f"DICOM 시리즈를 찾을 수 없습니다: {dicom_dir}")
-        
-        # 첫 번째 시리즈 사용 (여러 시리즈가 있을 경우)
-        series_id = series_ids[0]
-        dicom_names = reader.GetGDCMSeriesFileNames(str(dicom_dir), series_id)
-        
-        if not dicom_names:
-            raise ValueError(f"시리즈 {series_id}에 파일이 없습니다")
-        
-        reader.SetFileNames(dicom_names)
-        reader.MetaDataDictionaryArrayUpdateOn()
-        reader.LoadPrivateTagsOn()
-        
-        img = reader.Execute()
-        
-        return img, series_id
+        return sorted(dicom_files)
     
     # ----------------------------
     # Getters
@@ -184,12 +224,6 @@ class CBCTDicomLoader:
             raise RuntimeError("load()를 먼저 실행하세요")
         return self._volume
     
-    def get_sitk_image(self) -> sitk.Image:
-        """SimpleITK 이미지 객체 반환"""
-        if self._sitk_image is None:
-            raise RuntimeError("load()를 먼저 실행하세요")
-        return self._sitk_image
-    
     def get_metadata(self) -> Dict[str, Any]:
         """메타데이터 딕셔너리 반환"""
         if not self._metadata:
@@ -199,40 +233,40 @@ class CBCTDicomLoader:
     def get_spacing(self) -> Tuple[float, float, float]:
         """
         Spacing 반환 (X, Y, Z) in mm
-        
-        Returns:
-        --------
-        Tuple[float, float, float]
-            (X spacing, Y spacing, Z spacing)
         """
         return self._metadata["spacing_xyz"]
     
     def get_origin(self) -> Tuple[float, float, float]:
         """
         Origin 반환 (X, Y, Z) in mm
-        
-        Returns:
-        --------
-        Tuple[float, float, float]
-            (X origin, Y origin, Z origin)
         """
         return self._metadata["origin_xyz"]
     
     def get_orientation(self) -> str:
-        """좌표계 방향 반환 (예: "RAI")"""
-        return self._metadata.get("orientation", "Unknown")
+        """좌표계 방향 반환 (LPS)"""
+        return self._metadata.get("orientation", "LPS")
     
     # ----------------------------
-    # 좌표 변환
+    # 좌표 변환 (vtk.js와 동일)
     # ----------------------------
-    def index_to_physical(self, idx_zyx: np.ndarray) -> np.ndarray:
+    def index_to_physical(self, idx_zyx: np.ndarray, use_origin: bool = False) -> np.ndarray:
         """
         볼륨 인덱스 (Z, Y, X)를 물리 좌표 (X, Y, Z) mm로 변환
+        
+        vtk.js 호환 (use_origin=False, 기본값):
+        - Origin을 무시하고 (0,0,0)에서 시작
+        - P = col*colSpacing*rowDir + row*rowSpacing*colDir + slice*sliceSpacing*sliceDir
+        
+        표준 DICOM (use_origin=True):
+        - ImagePositionPatient(Origin) 적용
+        - P = Origin + col*colSpacing*rowDir + row*rowSpacing*colDir + slice*sliceSpacing*sliceDir
         
         Parameters:
         -----------
         idx_zyx : np.ndarray (N, 3)
-            볼륨 인덱스 배열 [(z, y, x), ...]
+            볼륨 인덱스 배열 [(z, y, x), ...]  = [(slice, row, col), ...]
+        use_origin : bool
+            Origin 적용 여부 (vtk.js 호환을 위해 기본값 False)
             
         Returns:
         --------
@@ -242,69 +276,104 @@ class CBCTDicomLoader:
         if self._volume is None:
             raise RuntimeError("load()를 먼저 실행하세요")
         
+        spacing = self._metadata["spacing_xyz"]  # (X, Y, Z) = (col, row, slice)
+        col_spacing = spacing[0]
+        row_spacing = spacing[1]
+        slice_spacing = spacing[2]
+        
+        # 인덱스 분리
+        slice_idx = idx_zyx[:, 0].astype(np.float64)  # Z
+        row_idx = idx_zyx[:, 1].astype(np.float64)    # Y
+        col_idx = idx_zyx[:, 2].astype(np.float64)    # X
+        
+        # vtk.js 호환: Origin 무시
+        origin = self._image_position if use_origin else np.zeros(3)
+        
+        # 물리 좌표 계산
+        N = len(idx_zyx)
+        physical_coords = np.zeros((N, 3), dtype=np.float64)
+        
+        for i in range(N):
+            physical_coords[i] = (
+                origin +
+                col_idx[i] * col_spacing * self._row_direction +
+                row_idx[i] * row_spacing * self._col_direction +
+                slice_idx[i] * slice_spacing * self._slice_direction
+            )
+        
+        return physical_coords
+    
+    def index_to_physical_vectorized(self, idx_zyx: np.ndarray, use_origin: bool = False) -> np.ndarray:
+        """
+        벡터화된 버전 (빠른 처리)
+        
+        vtk.js 호환: use_origin=False (기본값)
+        - vtk.js는 Origin을 무시하고 (0,0,0)에서 시작
+        - index * spacing만 사용
+        
+        표준 DICOM: use_origin=True
+        - ImagePositionPatient(Origin) 적용
+        """
+        if self._volume is None:
+            raise RuntimeError("load()를 먼저 실행하세요")
+        
         spacing = self._metadata["spacing_xyz"]
-        origin = self._metadata["origin_xyz"]
+        col_spacing = spacing[0]
+        row_spacing = spacing[1]
+        slice_spacing = spacing[2]
         
-        x_spacing = float(spacing[0])
-        y_spacing = float(spacing[1])
-        z_spacing = float(spacing[2])
+        slice_idx = idx_zyx[:, 0:1].astype(np.float64)
+        row_idx = idx_zyx[:, 1:2].astype(np.float64)
+        col_idx = idx_zyx[:, 2:3].astype(np.float64)
         
-        # NumPy 배열은 (Z, Y, X) 순서이므로 인덱스 변환
-        z = idx_zyx[:, 0].astype(np.float32) * z_spacing
-        y = idx_zyx[:, 1].astype(np.float32) * y_spacing
-        x = idx_zyx[:, 2].astype(np.float32) * x_spacing
+        # 방향 벡터들을 (1, 3) 형태로
+        row_dir = self._row_direction.reshape(1, 3)
+        col_dir = self._col_direction.reshape(1, 3)
+        slice_dir = self._slice_direction.reshape(1, 3)
         
-        # 원점 오프셋 적용 (글로벌 좌표계)
-        x += origin[0]
-        y += origin[1]
-        z += origin[2]
+        # vtk.js 호환: Origin 무시 (0, 0, 0)에서 시작
+        if use_origin:
+            origin = self._image_position.reshape(1, 3)
+        else:
+            origin = np.zeros((1, 3))
         
-        return np.stack([x, y, z], axis=1)
+        # 브로드캐스팅으로 계산
+        physical_coords = (
+            origin +
+            (col_idx * col_spacing) * row_dir +
+            (row_idx * row_spacing) * col_dir +
+            (slice_idx * slice_spacing) * slice_dir
+        )
+        
+        return physical_coords
     
     def physical_to_index(self, pts_xyz: np.ndarray) -> np.ndarray:
         """
         물리 좌표 (X, Y, Z) mm를 볼륨 인덱스 (Z, Y, X)로 변환
-        
-        Parameters:
-        -----------
-        pts_xyz : np.ndarray (N, 3)
-            물리 좌표 배열 [(x, y, z), ...] in mm
-            
-        Returns:
-        --------
-        np.ndarray (N, 3)
-            볼륨 인덱스 배열 [(z, y, x), ...]
         """
         if self._volume is None:
             raise RuntimeError("load()를 먼저 실행하세요")
         
         spacing = self._metadata["spacing_xyz"]
-        origin = self._metadata["origin_xyz"]
+        col_spacing = spacing[0]
+        row_spacing = spacing[1]
+        slice_spacing = spacing[2]
         
-        x_spacing = float(spacing[0])
-        y_spacing = float(spacing[1])
-        z_spacing = float(spacing[2])
+        # 원점에서 상대 위치
+        relative = pts_xyz - self._image_position
         
-        # 원점 오프셋 제거
-        x = (pts_xyz[:, 0] - origin[0]) / x_spacing
-        y = (pts_xyz[:, 1] - origin[1]) / y_spacing
-        z = (pts_xyz[:, 2] - origin[2]) / z_spacing
+        # 각 방향으로 투영
+        col_idx = np.dot(relative, self._row_direction) / col_spacing
+        row_idx = np.dot(relative, self._col_direction) / row_spacing
+        slice_idx = np.dot(relative, self._slice_direction) / slice_spacing
         
-        # (Z, Y, X) 순서로 반환
-        return np.stack([z, y, x], axis=1)
+        return np.stack([slice_idx, row_idx, col_idx], axis=1)
     
     # ----------------------------
     # 통계
     # ----------------------------
     def get_statistics(self) -> Dict[str, float]:
-        """
-        HU 통계 반환
-        
-        Returns:
-        --------
-        Dict[str, float]
-            min, max, mean, std, median
-        """
+        """HU 통계 반환"""
         if self._volume is None:
             raise RuntimeError("load()를 먼저 실행하세요")
         
@@ -327,5 +396,3 @@ class CBCTDicomLoader:
             f"CBCTDicomLoader('{self.dicom_folder}', "
             f"shape={shape}, orientation='{orientation}')"
         )
-
-

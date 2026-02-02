@@ -119,14 +119,6 @@ class SurfaceRotationOptimizer:
                 best_angle, best_rmse, len(rmse_history), total_time
             )
         
-        # 시각화
-        if visualize:
-            self._visualize_results(
-                pcd_cbct_full, facescan_mesh, pcd_facescan_surface,
-                best_transform, best_angle, best_rmse,
-                distance_threshold, rmse_history
-            )
-        
         return best_transform, best_angle, best_rmse
     
     def _downsample_cbct(

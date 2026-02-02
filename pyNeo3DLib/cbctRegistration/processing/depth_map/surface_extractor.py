@@ -51,7 +51,7 @@ class CBCTSurfaceExtractor:
     
     # DICOM 로드
     loader = CBCTDicomLoader("path/to/dicom")
-    loader.load(orientation="RAI")
+    loader.load(orientation="LPS")
     
     # 1. 원본 CBCT 전체 볼륨 추출
     extractor = CBCTSurfaceExtractor(loader)
@@ -512,8 +512,8 @@ class CBCTSurfaceExtractor:
         
         # 9. Z crop (포인트 레벨에서 적용)
         Z_orig = hu_volume.shape[0]  # 원본 Z 크기
-        z_min = int(Z_orig * z_crop_top_ratio)
-        z_max = int(Z_orig * (1.0 - z_crop_bottom_ratio))
+        z_min = int(Z_orig * z_crop_bottom_ratio)
+        z_max = int(Z_orig * (1.0 - z_crop_top_ratio))
         
         if z_crop_top_ratio > 0 or z_crop_bottom_ratio > 0:
             # idx는 원본 스케일로 복원된 상태

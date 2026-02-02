@@ -67,8 +67,18 @@ class VisualizationConfig:
 @dataclass
 class CoordinateTransformConfig:
     """좌표계 변환 설정"""
-    # RAI 좌표계 -> 표준 좌표계 변환 행렬 (Y축 기준 180도 회전)
-    # X → -X, Y → Y, Z → -Z
+    # LPS 좌표계 그대로 사용 (vtk.js와 동일)
+    # pydicom으로 직접 좌표 계산하므로 변환 불필요
+    @staticmethod
+    def get_lps_to_standard_matrix() -> np.ndarray:
+        return np.array([
+            [-1,  0,  0,  0],  # X 반전
+            [ 0, -1,  0,  0],  # Y 반전
+            [ 0,  0,  1,  0],  # Z 유지
+            [ 0,  0,  0,  1]
+        ])
+    
+    # 하위 호환성을 위해 유지 (RAI 사용 시)
     @staticmethod
     def get_rai_to_standard_matrix() -> np.ndarray:
         return np.array([

@@ -28,7 +28,7 @@ setup(
         "keras==2.12.0",
         "scikit-image==0.22.0",
         "qdrant-client==1.15.1",
-        "simpleitk==2.5.3",
+        "pydicom==3.0.1",
         "psutil",
         "single_template_maker_lib @ git+ssh://git@github.com/NeobiotechLabs/Single_template_maker.git",
         "teeth-template-editor @ git+ssh://git@github.com/NeobiotechLabs/TeethTemplateEditor.git"
