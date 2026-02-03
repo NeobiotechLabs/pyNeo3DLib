@@ -11,6 +11,8 @@ class CBCTExtractionConfig:
     """CBCT 표면 추출 설정"""
     z_crop_top_ratio: float = 0.1  # 상부 제거 비율 (머리 윗부분)
     z_crop_bottom_ratio: float = 0.4  # 하부 제거 비율 (턱/목 아래)
+    x_crop_ratio_start: float = 0.35  # X축 좌측 제거 비율 (코 중심 추출과 동일)
+    x_crop_ratio_end: float = 0.65  # X축 우측 제거 비율 (코 중심 추출과 동일)
     downsample_factor: int = 4  # 각 축 원본 해상도
 
 

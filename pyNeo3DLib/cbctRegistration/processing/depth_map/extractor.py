@@ -60,14 +60,12 @@ class CBCTDepthMapExtractor:
         self,
         pts_face: np.ndarray,
         grid_center: np.ndarray | list,
-        grid_width_mm: float = 80.0,
-        grid_height_mm: float = 100.0,
+        grid_width_mm: float,
+        grid_height_mm: float,
         grid_resolution: Tuple[int, int] = (50, 50),
         ray_direction: np.ndarray | list = [0, -1, 0],
         ray_start_offset_mm: float = 150.0,
         search_radius_mm: float = 3.0,
-        grid_axis_u: Optional[np.ndarray | list] = None,
-        grid_axis_v: Optional[np.ndarray | list] = None,
     ):
         """
         Parameters:
@@ -123,8 +121,6 @@ class CBCTDepthMapExtractor:
             grid_resolution=grid_resolution,
             ray_direction=ray_direction,
             ray_start_offset_mm=ray_start_offset_mm,
-            grid_axis_u=grid_axis_u,
-            grid_axis_v=grid_axis_v,
         )
         
         self.ray_caster = RayCaster(
@@ -209,51 +205,6 @@ class CBCTDepthMapExtractor:
         hit_points = depth_result["hit_points"]
         valid_mask = depth_result["valid_mask"]
         return hit_points[valid_mask]
-    
-    @staticmethod
-    def estimate_nose_center(
-        pts_face: np.ndarray,
-        x_center_ratio_start: float = 0.35,
-        x_center_ratio_end: float = 0.65,
-    ) -> np.ndarray:
-        """
-        얼굴 포인트클라우드에서 코 중심 위치를 추정합니다.
-        
-        알고리즘:
-        1. X축(좌우) 기준으로 중앙 영역만 추출 (기본: 35%~65%)
-        2. 추출된 영역에서 Y값이 가장 큰 상위 포인트들의 평균을 코 끝으로 사용
-        
-        Parameters:
-        -----------
-        pts_face : np.ndarray
-            얼굴 표면 포인트클라우드 (N, 3) 배열
-        x_center_ratio_start : float
-            X축 중앙 영역 시작 비율 (0~1)
-        x_center_ratio_end : float
-            X축 중앙 영역 종료 비율 (0~1)
-        
-        Returns:
-        --------
-        np.ndarray
-            추정된 코 중심 좌표 [x, y, z]
-        
-        Example:
-        --------
-        >>> pts_face = np.array([[...], [...], ...])  # (N, 3)
-        >>> nose_center = CBCTDepthMapExtractor.estimate_nose_center(pts_face)
-        >>> print(f"코 중심: {nose_center}")
-        """
-        # x축(좌우) 기준으로 정렬하고 중간 영역 추출
-        sorted_indices = pts_face[:, 0].argsort()
-        start_idx = int(len(pts_face) * x_center_ratio_start)
-        end_idx = int(len(pts_face) * x_center_ratio_end)
-        pts_face_nose_center = pts_face[sorted_indices[start_idx:end_idx]]
-        
-        # y값이 최대인 포인트를 코 중심으로 사용
-        max_y_idx = pts_face_nose_center[:, 1].argmax()
-        center = pts_face_nose_center[max_y_idx]
-        
-        return center
     
     def get_result(self) -> Dict[str, Any]:
         """

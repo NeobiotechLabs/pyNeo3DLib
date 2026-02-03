@@ -7,14 +7,12 @@
 from .icp_registration import ICPRegistration, ICPResult
 from .coordinate_transformer import CoordinateTransformer
 from .transform_manager import TransformManager
-from .surface_rotation_optimizer import SurfaceRotationOptimizer
 
 __all__ = [
     "ICPRegistration",
     "ICPResult",
     "CoordinateTransformer",
     "TransformManager",
-    "SurfaceRotationOptimizer",
 ]
 
 

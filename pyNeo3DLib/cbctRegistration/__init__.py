@@ -80,7 +80,6 @@ from .registration import (
     ICPResult,
     CoordinateTransformer,
     TransformManager,
-    SurfaceRotationOptimizer,
 )
 from .visualization import AlignmentVisualizer
 
@@ -121,13 +120,12 @@ __all__ = [
     
     # 프로세서
     "CBCTProcessor",
-    "GeometryProcessor",
+    "GeometryProcessor",  
     "AlignmentVisualizer",
     "ICPRegistration",
     "ICPResult",
     "CoordinateTransformer",
     "TransformManager",
-    "SurfaceRotationOptimizer",
     
     # 유틸리티
     "np_to_pcd",

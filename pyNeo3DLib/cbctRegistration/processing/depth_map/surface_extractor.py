@@ -429,6 +429,8 @@ class CBCTSurfaceExtractor:
         hu_volume: np.ndarray,
         z_crop_top_ratio: float = 0.0,
         z_crop_bottom_ratio: float = 0.0,
+        x_crop_ratio_start: float = 0.0,
+        x_crop_ratio_end: float = 1.0,
         downsample_factor: int = 2,
         verbose: bool = True,
     ) -> Tuple[np.ndarray, np.ndarray]:
@@ -436,7 +438,7 @@ class CBCTSurfaceExtractor:
         피부/연조직 표면 포인트클라우드 추출
         
         Morphology 연산(closing/erosion)을 전체 볼륨에서 수행한 후,
-        Z crop을 포인트 레벨에서 적용하여 경계 품질 향상
+        Z crop과 X crop을 포인트 레벨에서 적용하여 경계 품질 향상
         
         Parameters:
         -----------
@@ -446,6 +448,10 @@ class CBCTSurfaceExtractor:
             Z축 상부 제거 비율 (0.0~1.0)
         z_crop_bottom_ratio : float
             Z축 하부 제거 비율 (0.0~1.0)
+        x_crop_ratio_start : float
+            X축 좌측 시작 비율 (0.0~1.0), 이 비율 이전 제거
+        x_crop_ratio_end : float
+            X축 우측 종료 비율 (0.0~1.0), 이 비율 이후 제거
         downsample_factor : int
             다운샘플링 배율 (1=원본, 2=각 축 1/2, 연산량 1/8)
         verbose : bool
@@ -454,8 +460,8 @@ class CBCTSurfaceExtractor:
         Returns:
         --------
         Tuple[np.ndarray, np.ndarray]
-            - pts_cropped: Z crop 적용된 표면 포인트클라우드 (N, 3) - (X, Y, Z) in mm
-            - pts_full: Z crop 전 전체 표면 포인트클라우드 (M, 3) - (X, Y, Z) in mm
+            - pts_cropped: Z/X crop 적용된 표면 포인트클라우드 (N, 3) - (X, Y, Z) in mm
+            - pts_full: crop 전 전체 표면 포인트클라우드 (M, 3) - (X, Y, Z) in mm
         """
         # 내부 기본 설정
         THRESHOLD_OFFSET = -50.0
@@ -510,19 +516,35 @@ class CBCTSurfaceExtractor:
         if verbose:
             print(f"  전체 표면: {pts_full.shape[0]:,}개 포인트")
         
-        # 9. Z crop (포인트 레벨에서 적용)
+        # 9. Z crop + X crop (포인트 레벨에서 적용)
         Z_orig = hu_volume.shape[0]  # 원본 Z 크기
+        X_orig = hu_volume.shape[2]  # 원본 X 크기 (볼륨은 Z, Y, X 순서)
+        
         z_min = int(Z_orig * z_crop_bottom_ratio)
         z_max = int(Z_orig * (1.0 - z_crop_top_ratio))
+        x_min = int(X_orig * x_crop_ratio_start)
+        x_max = int(X_orig * x_crop_ratio_end)
         
-        if z_crop_top_ratio > 0 or z_crop_bottom_ratio > 0:
-            # idx는 원본 스케일로 복원된 상태
-            mask = (idx[:, 0] >= z_min) & (idx[:, 0] < z_max)
-            idx_cropped = idx[mask]
+        do_z_crop = z_crop_top_ratio > 0 or z_crop_bottom_ratio > 0
+        do_x_crop = x_crop_ratio_start > 0 or x_crop_ratio_end < 1.0
+        
+        if do_z_crop or do_x_crop:
+            # idx는 원본 스케일로 복원된 상태 (z, y, x 순서)
+            mask = np.ones(idx.shape[0], dtype=bool)
             
-            if verbose:
-                print(f"  Z crop (포인트): {z_min}~{z_max} / {Z_orig} "
-                      f"(상부 {z_crop_top_ratio*100:.0f}% 제거, 하부 {z_crop_bottom_ratio*100:.0f}% 제거)")
+            if do_z_crop:
+                mask &= (idx[:, 0] >= z_min) & (idx[:, 0] < z_max)
+                if verbose:
+                    print(f"  Z crop (포인트): {z_min}~{z_max} / {Z_orig} "
+                          f"(상부 {z_crop_top_ratio*100:.0f}% 제거, 하부 {z_crop_bottom_ratio*100:.0f}% 제거)")
+            
+            if do_x_crop:
+                mask &= (idx[:, 2] >= x_min) & (idx[:, 2] < x_max)
+                if verbose:
+                    print(f"  X crop (포인트): {x_min}~{x_max} / {X_orig} "
+                          f"(좌측 {x_crop_ratio_start*100:.0f}%~우측 {x_crop_ratio_end*100:.0f}% 유지)")
+            
+            idx_cropped = idx[mask]
             
             # crop된 포인트 물리 좌표 변환
             pts_cropped = self.loader.index_to_physical(idx_cropped)
@@ -535,6 +557,167 @@ class CBCTSurfaceExtractor:
             print(f"[표면 추출 완료] crop 후: {pts_cropped.shape[0]:,}개, 전체: {pts_full.shape[0]:,}개 포인트")
 
         return pts_cropped, pts_full
+    
+    def extract_full_surface_points(
+        self,
+        hu_volume: np.ndarray,
+        downsample_factor: int = 2,
+        verbose: bool = True,
+    ) -> np.ndarray:
+        """
+        전체 표면 포인트클라우드 추출 (crop 없음)
+        
+        단일 책임: 전체 표면 포인트 추출
+        crop이 필요하면 crop_points_to_region() 메서드를 별도로 호출
+        
+        Parameters:
+        -----------
+        hu_volume : np.ndarray
+            원본 HU 볼륨
+        downsample_factor : int
+            다운샘플링 배율
+        verbose : bool
+            진행 상황 출력 여부
+            
+        Returns:
+        --------
+        np.ndarray
+            전체 표면 포인트클라우드 (N, 3) - (X, Y, Z) in mm
+        """
+        # 내부 기본 설정
+        THRESHOLD_OFFSET = -50.0
+        CLOSING_ITER = 1
+        EROSION_ITER = 1
+        MAX_POINTS = 300_000
+        BINS_FOR_SKIN = 256
+        USE_FAST_MODE = True
+        
+        # 1. Threshold 계산
+        threshold = self._compute_threshold(None, THRESHOLD_OFFSET, BINS_FOR_SKIN)
+        
+        if verbose:
+            print(f"\n[전체 표면 추출 시작]")
+            print(f"  Threshold: {threshold:.1f} HU")
+        
+        # 2. 다운샘플링
+        if downsample_factor > 1:
+            hu_use = hu_volume[::downsample_factor, ::downsample_factor, ::downsample_factor]
+            if verbose:
+                print(f"  다운샘플링: {downsample_factor}배 ({hu_volume.shape} → {hu_use.shape})")
+        else:
+            hu_use = hu_volume
+            if verbose:
+                print(f"  다운샘플링: 미적용 (downsample_factor={downsample_factor})")
+        
+        # 3. Binary 마스크 생성
+        binary = self._create_binary_mask(hu_use, threshold)
+        
+        # 4. Morphology closing
+        binary = self._apply_closing(binary, CLOSING_ITER, USE_FAST_MODE, verbose)
+        
+        # 5. 표면 추출
+        surface = self._extract_surface_mask(binary, EROSION_ITER, verbose)
+        
+        # 6. 포인트 추출
+        idx = np.argwhere(surface)
+        
+        if idx.shape[0] < 2000:
+            raise RuntimeError(
+                "표면 포인트가 너무 적습니다. threshold_offset을 조정하세요."
+            )
+        
+        # 7. 원본 스케일 복원
+        if downsample_factor > 1:
+            idx = idx * downsample_factor
+        
+        # 8. 물리 좌표 변환
+        pts_full = self.loader.index_to_physical(idx)
+        pts_full = self._limit_point_count(pts_full, MAX_POINTS, verbose)
+        
+        if verbose:
+            print(f"[전체 표면 추출 완료] {pts_full.shape[0]:,}개 포인트")
+
+        return pts_full
+    
+    def crop_points_to_region(
+        self,
+        pts: np.ndarray,
+        hu_volume_shape: Tuple[int, int, int],
+        z_crop_top_ratio: float = 0.0,
+        z_crop_bottom_ratio: float = 0.0,
+        x_crop_ratio_start: float = 0.0,
+        x_crop_ratio_end: float = 1.0,
+        verbose: bool = True,
+    ) -> np.ndarray:
+        """
+        이미 추출된 포인트에서 특정 영역만 필터링
+        
+        단일 책임: 포인트 영역 필터링
+        
+        Parameters:
+        -----------
+        pts : np.ndarray
+            입력 포인트클라우드 (N, 3) - (X, Y, Z) in mm
+        hu_volume_shape : Tuple[int, int, int]
+            원본 볼륨 shape (Z, Y, X)
+        z_crop_top_ratio : float
+            Z축 상부 제거 비율 (0.0~1.0)
+        z_crop_bottom_ratio : float
+            Z축 하부 제거 비율 (0.0~1.0)
+        x_crop_ratio_start : float
+            X축 좌측 시작 비율 (0.0~1.0)
+        x_crop_ratio_end : float
+            X축 우측 종료 비율 (0.0~1.0)
+        verbose : bool
+            진행 상황 출력 여부
+            
+        Returns:
+        --------
+        np.ndarray
+            필터링된 포인트클라우드 (M, 3) - (X, Y, Z) in mm
+        """
+        if pts.shape[0] == 0:
+            return pts
+        
+        # 물리 좌표 범위 계산
+        x_min_phys, x_max_phys = pts[:, 0].min(), pts[:, 0].max()
+        z_min_phys, z_max_phys = pts[:, 2].min(), pts[:, 2].max()
+        
+        x_range = x_max_phys - x_min_phys
+        z_range = z_max_phys - z_min_phys
+        
+        # crop 경계 계산 (물리 좌표)
+        z_crop_min = z_min_phys + z_range * z_crop_bottom_ratio
+        z_crop_max = z_max_phys - z_range * z_crop_top_ratio
+        x_crop_min = x_min_phys + x_range * x_crop_ratio_start
+        x_crop_max = x_min_phys + x_range * x_crop_ratio_end
+        
+        do_z_crop = z_crop_top_ratio > 0 or z_crop_bottom_ratio > 0
+        do_x_crop = x_crop_ratio_start > 0 or x_crop_ratio_end < 1.0
+        
+        if not do_z_crop and not do_x_crop:
+            return pts
+        
+        mask = np.ones(pts.shape[0], dtype=bool)
+        
+        if do_z_crop:
+            mask &= (pts[:, 2] >= z_crop_min) & (pts[:, 2] <= z_crop_max)
+            if verbose:
+                print(f"  Z crop: {z_crop_min:.1f}~{z_crop_max:.1f} mm "
+                      f"(상부 {z_crop_top_ratio*100:.0f}% 제거, 하부 {z_crop_bottom_ratio*100:.0f}% 제거)")
+        
+        if do_x_crop:
+            mask &= (pts[:, 0] >= x_crop_min) & (pts[:, 0] <= x_crop_max)
+            if verbose:
+                print(f"  X crop: {x_crop_min:.1f}~{x_crop_max:.1f} mm "
+                      f"(좌측 {x_crop_ratio_start*100:.0f}%~우측 {x_crop_ratio_end*100:.0f}% 유지)")
+        
+        pts_cropped = pts[mask]
+        
+        if verbose:
+            print(f"  Crop 결과: {pts.shape[0]:,} → {pts_cropped.shape[0]:,}개 포인트")
+        
+        return pts_cropped
     
     
 

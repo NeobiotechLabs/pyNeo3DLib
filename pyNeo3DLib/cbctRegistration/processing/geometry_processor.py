@@ -81,10 +81,6 @@ class GeometryProcessor:
         max_y_idx = np.argmax(points[:, 1])
         top_point = points[max_y_idx]
         
-        if verbose:
-            print(f"샘플링된 포인트 개수: {len(points)}")
-            print(f"추정된 코 끝 포인트 (Y 최대값): {top_point}")
-        
         return pcd, top_point
     
     @staticmethod

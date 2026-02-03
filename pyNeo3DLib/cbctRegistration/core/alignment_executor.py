@@ -217,8 +217,6 @@ class AlignmentExecutor:
         self,
         source_pcd: o3d.geometry.PointCloud,
         target_pcd: o3d.geometry.PointCloud,
-        z_search_range: Tuple[int, int] = (-10, 10),
-        z_search_step: int = 1,
         verbose: bool = True
     ) -> Tuple[AlignmentStepResult, ICPAlignmentResult]:
         """
@@ -245,9 +243,7 @@ class AlignmentExecutor:
         icp_result = self.perform_icp_registration(
             initial_result.aligned_pcd,
             target_pcd,
-            z_search_range,
-            z_search_step,
-            verbose
+            verbose=verbose
         )
         
         return initial_result, icp_result

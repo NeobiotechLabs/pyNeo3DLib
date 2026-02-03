@@ -42,53 +42,142 @@ class CBCTProcessor:
         self.config = config if config is not None else AlignmentConfig()
         self.lps_to_standard_matrix = self.config.coordinate_transform.get_lps_to_standard_matrix()
     
-    def extract_surface(
+    def load_dicom(
         self,
         dicom_folder: str,
         verbose: bool = True
-    ) -> Tuple[o3d.geometry.PointCloud, o3d.geometry.PointCloud]:
+    ) -> CBCTDicomLoader:
         """
-        CBCT에서 피부 표면 포인트 클라우드 추출 (LPS 좌표계)
+        DICOM 폴더에서 CBCT 데이터 로드
         
         Args:
             dicom_folder: DICOM 폴더 경로
             verbose: 상세 출력 여부
         
         Returns:
-            Tuple[pcd_cropped, pcd_full]:
-                - pcd_cropped: Z축 Crop된 표면 포인트 클라우드 (얼굴 영역)
-                - pcd_full: 전체 표면 포인트 클라우드
+            CBCTDicomLoader: 로드된 DICOM 로더
         """
         if verbose:
-            print("\n[CBCT 표면 추출] (LPS 좌표계)")
+            print("\n[DICOM 로드]")
             print("-" * 50)
         
-        # DICOM 로드
         loader = CBCTDicomLoader(dicom_folder)
         loader.load(orientation="LPS", verbose=verbose)
+        return loader
+    
+    def extract_full_surface_from_loader(
+        self,
+        loader: CBCTDicomLoader,
+        verbose: bool = True
+    ) -> o3d.geometry.PointCloud:
+        """
+        로드된 DICOM에서 전체 표면 포인트 클라우드 추출 (LPS 좌표계)
+        
+        단일 책임: 전체 표면 추출
+        영역 필터링이 필요하면 crop_surface_to_face_region() 별도 호출
+        
+        Args:
+            loader: 로드된 DICOM 로더
+            verbose: 상세 출력 여부
+        
+        Returns:
+            o3d.geometry.PointCloud: 전체 표면 포인트 클라우드
+        """
+        if verbose:
+            print("\n[CBCT 전체 표면 추출] (LPS 좌표계)")
+            print("-" * 50)
+        
         hu_volume = loader.get_volume()
         
         # 표면 추출
         extractor = CBCTSurfaceExtractor(loader)
         cfg = self.config.cbct_extraction
-        pts_cropped, pts_full = extractor.extract_surface_points(
+        pts_full = extractor.extract_full_surface_points(
             hu_volume=hu_volume,
-            z_crop_top_ratio=cfg.z_crop_top_ratio,
-            z_crop_bottom_ratio=cfg.z_crop_bottom_ratio,
             downsample_factor=cfg.downsample_factor,
             verbose=verbose,
         )
         
         # numpy → o3d.PointCloud 변환
-        pcd_cropped = np_to_pcd(pts_cropped)
         pcd_full = np_to_pcd(pts_full)
         
         if verbose:
-            print(f"\n결과:")
-            print(f"  Cropped 포인트 수: {len(pcd_cropped.points):,}")
-            print(f"  Full 포인트 수: {len(pcd_full.points):,}")
+            print(f"\n결과: Full 포인트 수: {len(pcd_full.points):,}")
         
-        return pcd_cropped, pcd_full
+        return pcd_full
+    
+    def crop_surface_to_face_region(
+        self,
+        pcd: o3d.geometry.PointCloud,
+        verbose: bool = True
+    ) -> o3d.geometry.PointCloud:
+        """
+        포인트 클라우드에서 얼굴 영역만 필터링
+        
+        단일 책임: 영역 필터링 (crop)
+        
+        Args:
+            pcd: 전체 표면 포인트 클라우드
+            verbose: 상세 출력 여부
+        
+        Returns:
+            o3d.geometry.PointCloud: 얼굴 영역만 포함된 포인트 클라우드
+        """
+        if verbose:
+            print("\n[얼굴 영역 필터링]")
+            print("-" * 50)
+        
+        pts = pcd_to_np(pcd)
+        cfg = self.config.cbct_extraction
+        
+        # 물리 좌표 범위 계산
+        x_min, x_max = pts[:, 0].min(), pts[:, 0].max()
+        z_min, z_max = pts[:, 2].min(), pts[:, 2].max()
+        
+        x_range = x_max - x_min
+        z_range = z_max - z_min
+        
+        # crop 경계 계산
+        z_crop_min = z_min + z_range * cfg.z_crop_bottom_ratio
+        z_crop_max = z_max - z_range * cfg.z_crop_top_ratio
+        x_crop_min = x_min + x_range * cfg.x_crop_ratio_start
+        x_crop_max = x_min + x_range * cfg.x_crop_ratio_end
+        
+        # 마스크 적용
+        mask = (
+            (pts[:, 2] >= z_crop_min) & (pts[:, 2] <= z_crop_max) &
+            (pts[:, 0] >= x_crop_min) & (pts[:, 0] <= x_crop_max)
+        )
+        
+        pts_cropped = pts[mask]
+        pcd_cropped = np_to_pcd(pts_cropped)
+        
+        if verbose:
+            print(f"  Z crop: {z_crop_min:.1f}~{z_crop_max:.1f} mm")
+            print(f"  X crop: {x_crop_min:.1f}~{x_crop_max:.1f} mm")
+            print(f"  결과: {len(pts):,} → {len(pts_cropped):,}개 포인트")
+        
+        return pcd_cropped
+    
+    def extract_full_surface(
+        self,
+        dicom_folder: str,
+        verbose: bool = True
+    ) -> o3d.geometry.PointCloud:
+        """
+        CBCT에서 전체 표면 포인트 클라우드 추출 (LPS 좌표계)
+        
+        편의 메서드: load_dicom + extract_full_surface_from_loader 조합
+        
+        Args:
+            dicom_folder: DICOM 폴더 경로
+            verbose: 상세 출력 여부
+        
+        Returns:
+            o3d.geometry.PointCloud: 전체 표면 포인트 클라우드
+        """
+        loader = self.load_dicom(dicom_folder, verbose)
+        return self.extract_full_surface_from_loader(loader, verbose)
     
     def estimate_nose_center(
         self,
@@ -109,50 +198,76 @@ class CBCTProcessor:
             print("\n[코 중심 추정]")
             print("-" * 50)
         
-        pts = pcd_to_np(pcd)
+        pts_face = pcd_to_np(pcd)
+
+        # y값이 큰 순서대로 정렬하고 상위 5% 포인트 추출
+        sorted_indices = pts_face[:, 1].argsort()[::-1]  # y값 내림차순 정렬
+        top_5_percent_count = max(1, int(len(pts_face) * 0.05))
+        top_points = pts_face[sorted_indices[:top_5_percent_count]]
         
-        nose_cfg = self.config.nose_estimation
-        nose_center = CBCTDepthMapExtractor.estimate_nose_center(
-            pts,
-            x_center_ratio_start=nose_cfg.x_center_ratio_start,
-            x_center_ratio_end=nose_cfg.x_center_ratio_end,
-        )
+        # 상위 5% 포인트의 중앙값 위치 계산 후 y값만 최댓값으로 대체
+        # 중앙값은 이상치(outlier)에 강건하여 더 안정적인 중심 추정 가능
+        nose_center = np.median(top_points, axis=0)
+        nose_center[1] = pts_face[:, 1].max()
         
         if verbose:
-            print(f"추정된 코 중심: {nose_center}")
+            print(f"estimated nose center: {nose_center}")
         
         return nose_center
     
     def extract_nose_region(
         self,
         pcd: o3d.geometry.PointCloud,
-        nose_center: np.ndarray,
         verbose: bool = True
     ) -> o3d.geometry.PointCloud:
         """
-        코 중심 기준으로 Depth Map 레이캐스팅을 통해 코 주변 영역 추출
+        포인트 클라우드의 실제 범위를 기반으로 Depth Map 레이캐스팅을 통해 표면 영역 추출
+        
+        격자 중심은 입력 포인트 클라우드의 범위에서 자동 계산:
+        - X, Z: 범위의 중심
+        - Y: 최대값 (가장 앞쪽, 레이캐스팅 시작점)
         
         Args:
             pcd: 얼굴 표면 포인트 클라우드
-            nose_center: 코 중심 좌표
             verbose: 상세 출력 여부
         
         Returns:
-            o3d.geometry.PointCloud: 코 주변 표면 포인트 클라우드
+            o3d.geometry.PointCloud: 표면 포인트 클라우드
         """
         if verbose:
-            print("\n[코 주변 영역 추출] (Depth Map)")
+            print("\n[표면 영역 추출] (Depth Map)")
             print("-" * 50)
         
         pts = pcd_to_np(pcd)
+        
+        # pts의 실제 X, Y, Z 범위 계산
+        x_min, x_max = pts[:, 0].min(), pts[:, 0].max()
+        y_min, y_max = pts[:, 1].min(), pts[:, 1].max()
+        z_min, z_max = pts[:, 2].min(), pts[:, 2].max()
+        
+        # 격자 크기: pts의 실제 범위 사용
+        grid_width_mm = x_max - x_min
+        grid_height_mm = z_max - z_min
+        
+        # 격자 중심: X, Z는 범위의 중심, Y는 최대값 (가장 앞쪽)
+        grid_center = np.array([
+            (x_min + x_max) / 2,
+            y_max,  # 가장 앞쪽 (레이캐스팅 시작점)
+            (z_min + z_max) / 2
+        ])
+        
+        if verbose:
+            print(f"pts 범위 - X: [{x_min:.1f}, {x_max:.1f}], Y: [{y_min:.1f}, {y_max:.1f}], Z: [{z_min:.1f}, {z_max:.1f}]")
+            print(f"격자 크기: {grid_width_mm:.1f}mm x {grid_height_mm:.1f}mm")
+            print(f"격자 중심: {grid_center}")
         
         # Depth Map 추출
         depth_cfg = self.config.depth_map
         depth_extractor = CBCTDepthMapExtractor(
             pts_face=pts,
-            grid_center=nose_center,
-            grid_width_mm=depth_cfg.grid_width_mm,
-            grid_height_mm=depth_cfg.grid_height_mm,
+            grid_center=grid_center,
+            grid_width_mm=grid_width_mm,
+            grid_height_mm=grid_height_mm,
             grid_resolution=depth_cfg.grid_resolution,
             ray_direction=list(depth_cfg.ray_direction),
             ray_start_offset_mm=depth_cfg.ray_start_offset_mm,
@@ -227,18 +342,18 @@ class CBCTProcessor:
         self,
         pcd: o3d.geometry.PointCloud,
         verbose: bool = True
-    ) -> Tuple[o3d.geometry.PointCloud, np.ndarray]:
+    ) -> o3d.geometry.PointCloud:
         """
         LPS 좌표계 포인트 클라우드를 표준 좌표계로 회전 변환만 적용 (원점 이동 없음)
+        
+        변환 행렬은 get_lps_to_standard_matrix() 메서드로 별도 접근 가능
         
         Args:
             pcd: 입력 포인트 클라우드 (LPS 좌표계)
             verbose: 상세 출력 여부
         
         Returns:
-            Tuple[pcd_standard, lps_to_standard_matrix]:
-                - pcd_standard: 표준 좌표계로 변환된 포인트 클라우드
-                - lps_to_standard_matrix: LPS→표준 변환 행렬
+            o3d.geometry.PointCloud: 표준 좌표계로 변환된 포인트 클라우드
         """
         if verbose:
             print("\n[LPS → 표준 좌표계 회전 변환]")
@@ -249,7 +364,16 @@ class CBCTProcessor:
         if verbose:
             print(f"변환 후 포인트 수: {len(pcd_standard.points):,}")
         
-        return pcd_standard, self.lps_to_standard_matrix
+        return pcd_standard
+    
+    def get_lps_to_standard_matrix(self) -> np.ndarray:
+        """
+        LPS → 표준 좌표계 변환 행렬 반환
+        
+        Returns:
+            np.ndarray: 4x4 변환 행렬
+        """
+        return self.lps_to_standard_matrix
     
     def generate_mesh_from_volume(
         self,
@@ -343,110 +467,3 @@ class CBCTProcessor:
             print(f"  바운딩 박스: {bbox.min_bound} ~ {bbox.max_bound}")
         
         return mesh
-
-    def process(
-        self,
-        dicom_folder: str,
-        verbose: bool = True,
-        generate_mesh: bool = False,
-        mesh_hu_threshold: float = -200.0,
-        mesh_step_size: int = 4
-    ) -> Tuple[np.ndarray, o3d.geometry.PointCloud, o3d.geometry.PointCloud, np.ndarray, Optional[o3d.geometry.TriangleMesh]]:
-        """
-        CBCT 데이터 전체 처리 파이프라인 (LPS 좌표계 데이터 반환)
-        
-        처리 순서:
-        1. 표면 추출 (LPS 좌표계)
-        2. 좌표계 변환 (LPS → 표준) - 코 중심 추정용
-        3. 코 중심 추정 (표준 좌표계에서)
-        4. 코 주변 영역 추출 (표준 좌표계에서)
-        5. LPS 좌표계로 역변환하여 반환
-        6. (옵션) 마칭큐브로 메쉬 생성
-        
-        Args:
-            dicom_folder: DICOM 폴더 경로
-            verbose: 상세 출력 여부
-            generate_mesh: 마칭큐브 메쉬 생성 여부
-            mesh_hu_threshold: 메쉬 생성 HU 임계값 (기본값: -200)
-            mesh_step_size: 마칭큐브 스텝 사이즈 (기본값: 4)
-        
-        Returns:
-            Tuple[nose_center_lps, pcd_nose_region_lps, pcd_full_lps, lps_to_standard_transform, mesh_lps]:
-                - nose_center_lps: 코 중심 좌표 (LPS 좌표계)
-                - pcd_nose_region_lps: 코 주변 영역 (LPS 좌표계)
-                - pcd_full_lps: 전체 볼륨 (LPS 좌표계)
-                - lps_to_standard_transform: LPS → 표준 변환 행렬 (코 중심 원점이동 포함)
-                - mesh_lps: 마칭큐브 메쉬 (LPS 좌표계, generate_mesh=False면 None)
-        """
-        # DICOM 로드
-        if verbose:
-            print("\n[CBCT 표면 추출] (LPS 좌표계)")
-            print("-" * 50)
-        
-        loader = CBCTDicomLoader(dicom_folder)
-        loader.load(orientation="LPS", verbose=verbose)
-        hu_volume = loader.get_volume()
-        
-        # 표면 추출
-        extractor = CBCTSurfaceExtractor(loader)
-        cfg = self.config.cbct_extraction
-        pts_cropped, pts_full = extractor.extract_surface_points(
-            hu_volume=hu_volume,
-            z_crop_top_ratio=cfg.z_crop_top_ratio,
-            z_crop_bottom_ratio=cfg.z_crop_bottom_ratio,
-            downsample_factor=cfg.downsample_factor,
-            verbose=verbose,
-        )
-        
-        # numpy → o3d.PointCloud 변환
-        pcd_cropped_lps = np_to_pcd(pts_cropped)
-        pcd_full_lps = np_to_pcd(pts_full)
-        
-        if verbose:
-            print(f"\n결과:")
-            print(f"  Cropped 포인트 수: {len(pcd_cropped_lps.points):,}")
-            print(f"  Full 포인트 수: {len(pcd_full_lps.points):,}")
-        
-        # 2. 좌표계 변환 (LPS → 표준) - 코 중심 추정용
-        pcd_cropped_std, lps_matrix = self.transform_to_standard_coordinate_simple(pcd_cropped_lps, verbose)
-        
-        # 3. 코 중심 추정 (표준 좌표계에서)
-        nose_center_std = self.estimate_nose_center(pcd_cropped_std, verbose)
-
-        # 4. 코 주변 영역 추출 (표준 좌표계에서)
-        nose_region_std = self.extract_nose_region(pcd_cropped_std, nose_center_std, verbose)
-        
-        # 5. 코 중심을 원점으로 이동하는 변환 행렬 생성
-        translation_matrix = compute_translation_matrix(-nose_center_std)
-        combined_transform = translation_matrix @ lps_matrix
-        
-        # 6. 코 중심을 LPS 좌표계로 역변환
-        lps_matrix_inv = np.linalg.inv(lps_matrix)
-        nose_center_lps_h = lps_matrix_inv @ np.append(nose_center_std, 1)
-        nose_center_lps = nose_center_lps_h[:3]
-        
-        # 7. 코 주변 영역을 LPS 좌표계로 역변환
-        pcd_nose_region_lps = apply_transform(nose_region_std, lps_matrix_inv)
-        
-        if verbose:
-            print(f"\n[LPS 좌표계 데이터 반환]")
-            print("-" * 50)
-            print(f"코 중심 (표준): {nose_center_std}")
-            print(f"코 중심 (LPS): {nose_center_lps}")
-            print(f"코 주변 영역 포인트 수: {len(pcd_nose_region_lps.points):,}")
-            print(f"전체 볼륨 포인트 수: {len(pcd_full_lps.points):,}")
-            print(f"\nLPS → 표준 변환 행렬 (코 중심 원점이동 포함):")
-            print(combined_transform)
-        
-        # 8. 마칭큐브 메쉬 생성 (옵션)
-        mesh_lps = None
-        if generate_mesh:
-            mesh_lps = self.generate_mesh_from_volume(
-                loader=loader,
-                hu_threshold=mesh_hu_threshold,
-                step_size=mesh_step_size,
-                verbose=verbose
-            )
-        
-        return nose_center_lps, pcd_nose_region_lps, pcd_full_lps, combined_transform, mesh_lps
-

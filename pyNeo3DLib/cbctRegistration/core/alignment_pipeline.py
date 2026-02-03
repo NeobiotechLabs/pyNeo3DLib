@@ -32,7 +32,7 @@ from ..utils import apply_transform, compute_translation_matrix, apply_transform
 from ..processing import CBCTProcessor, GeometryProcessor
 from .alignment_executor import AlignmentExecutor
 from ..visualization import AlignmentVisualizer
-from ..registration import SurfaceRotationOptimizer, TransformManager
+from ..registration import TransformManager
 from ..types import (
     PipelineResult,
     FaceScanProcessResult,
@@ -94,10 +94,6 @@ class CBCTFaceScanAlignmentPipeline:
         self.alignment_executor = AlignmentExecutor(self.config)
         self.visualizer = AlignmentVisualizer(self.config.visualization, visualize, verbose)
         self.geometry_processor = GeometryProcessor()
-        self.rotation_optimizer = SurfaceRotationOptimizer(
-            visualizer=self.visualizer,
-            geometry_processor=self.geometry_processor
-        )
     
     # ==========================================================================
     # 유틸리티 메서드
@@ -221,55 +217,7 @@ class CBCTFaceScanAlignmentPipeline:
             facescan_transform=transform_matrix
         )
     
-    # ==========================================================================
-    # Step 9: SDF 기반 표면 정제 (Z축 회전 탐색)
-    # ==========================================================================
-    
-    def _refine_with_surface_rotation_search(
-        self,
-        pcd_cbct_full: o3d.geometry.PointCloud,
-        facescan_mesh: o3d.geometry.TriangleMesh,
-        facescan_nose_point: np.ndarray,
-        distance_threshold: float = 5.0,
-        rotation_range: Tuple[float, float] = (-15, 15),
-        rotation_step: float = 1.0,
-        downsample_voxel_size: float = 2.0,
-        visualize: bool = False,
-        verbose: bool = True
-    ) -> Tuple[np.ndarray, float, float]:
-        """
-        SDF 기반 표면 필터링 + Z축 회전 탐색으로 최적 정합 찾기
-        
-        이 메서드는 SurfaceRotationOptimizer 모듈에 위임합니다.
-        
-        Args:
-            pcd_cbct_full: CBCT 전체 포인트 클라우드
-            facescan_mesh: FaceScan 메쉬
-            facescan_nose_point: FaceScan 코 중심점 (회전 중심)
-            distance_threshold: 표면 필터링 거리 임계값 (mm)
-            rotation_range: Z축 회전 탐색 범위 (도 단위)
-            rotation_step: 회전 탐색 간격 (도 단위)
-            downsample_voxel_size: 다운샘플링 복셀 크기 (mm, 0이면 다운샘플링 안 함)
-            visualize: 시각화 여부
-            verbose: 상세 출력 여부
-        
-        Returns:
-            Tuple[transform_matrix, best_angle, best_rmse]:
-                - transform_matrix: 최적 회전 변환 행렬 (4x4)
-                - best_angle: 최적 회전 각도 (도)
-                - best_rmse: 최소 RMSE 값
-        """
-        return self.rotation_optimizer.optimize_rotation(
-            pcd_cbct_full=pcd_cbct_full,
-            facescan_mesh=facescan_mesh,
-            facescan_nose_point=facescan_nose_point,
-            distance_threshold=distance_threshold,
-            rotation_range=rotation_range,
-            rotation_step=rotation_step,
-            downsample_voxel_size=downsample_voxel_size,
-            visualize=visualize,
-            verbose=verbose
-        )
+
 
     # ==========================================================================
     # 파이프라인 단계별 실행 메서드
@@ -286,8 +234,14 @@ class CBCTFaceScanAlignmentPipeline:
         """
         CBCT 데이터 처리 단계 (LPS 좌표계 데이터 반환)
         
-        lps_transform 적용 전의 LPS 좌표계 데이터를 반환합니다.
-        lps_transform은 호출하는 쪽에서 필요에 따라 적용합니다.
+        처리 순서:
+        1. DICOM 로드
+        2. 표면 추출 (LPS 좌표계)
+        3. 좌표계 변환 (LPS → 표준) - 코 중심 추정용
+        4. 코 중심 추정 (표준 좌표계에서)
+        5. 코 주변 영역 추출 (표준 좌표계에서)
+        6. LPS 좌표계로 역변환하여 반환
+        7. (옵션) 마칭큐브로 메쉬 생성
         
         Args:
             dicom_folder: DICOM 폴더 경로
@@ -319,24 +273,62 @@ class CBCTFaceScanAlignmentPipeline:
             raise ValueError(f"유효한 폴더가 아닙니다: {dicom_folder}")
         
         try:
-            nose_center_lps, pcd_nose_region_lps, pcd_full_lps, lps_transform, mesh_lps = (
-                self.cbct_processor.process(
-                    dicom_folder,
-                    verbose=verbose,
-                    generate_mesh=generate_mesh,
-                    mesh_hu_threshold=mesh_hu_threshold,
-                    mesh_step_size=mesh_step_size
-                )
+            # 1. DICOM 로드
+            dicom_loader = self.cbct_processor.load_dicom(dicom_folder, verbose)
+            
+            # 2. 전체 표면 추출 (LPS 좌표계) - 한 번만 수행
+            pcd_cbct_full_lps = self.cbct_processor.extract_full_surface_from_loader(
+                dicom_loader, verbose
             )
             
-            # 결과 검증
-            self._validate_point_cloud(pcd_nose_region_lps, "CBCT 코 주변 영역 (LPS)")
-            self._validate_point_cloud(pcd_full_lps, "CBCT 전체 포인트 클라우드 (LPS)")
+            # 3. 얼굴 영역 필터링 (crop) - 별도 단계
+            pcd_face_surface_lps = self.cbct_processor.crop_surface_to_face_region(
+                pcd_cbct_full_lps, verbose
+            )
             
-            if not self._is_valid_transform(lps_transform):
+            # 4. 좌표계 변환 (LPS → 표준) - 코 중심 추정용
+            pcd_face_surface_standard = self.cbct_processor.transform_to_standard_coordinate_simple(
+                pcd_face_surface_lps, verbose
+            )
+            lps_to_standard_matrix = self.cbct_processor.get_lps_to_standard_matrix()
+            
+            # 5. 표면 영역 추출 (Depth Map 레이캐스팅)
+            pcd_nose_region_standard = self.cbct_processor.extract_nose_region(
+                pcd_face_surface_standard, verbose
+            )
+
+            # 6. 코 중심 추정 (표준 좌표계에서) - 원점 이동용
+            nose_center_in_standard = self.cbct_processor.estimate_nose_center(pcd_face_surface_standard, verbose)
+            
+            # 7. 변환 행렬 계산: 코 중심을 원점으로 이동
+            nose_to_origin_translation = compute_translation_matrix(-nose_center_in_standard)
+            lps_to_standard_nose_centered = nose_to_origin_translation @ lps_to_standard_matrix
+            
+            # 8. 코 중심을 LPS 좌표계로 역변환
+            standard_to_lps_matrix = np.linalg.inv(lps_to_standard_matrix)
+            nose_center_in_lps = (standard_to_lps_matrix @ np.append(nose_center_in_standard, 1))[:3]
+            
+            # 9. 코 주변 영역을 LPS 좌표계로 역변환
+            pcd_nose_region_in_lps = apply_transform(pcd_nose_region_standard, standard_to_lps_matrix)
+            
+            # 10. 마칭큐브 메쉬 생성 (옵션)
+            cbct_mesh_lps = None
+            if generate_mesh:
+                cbct_mesh_lps = self.cbct_processor.generate_mesh_from_volume(
+                    loader=dicom_loader,
+                    hu_threshold=mesh_hu_threshold,
+                    step_size=mesh_step_size,
+                    verbose=verbose
+                )
+            
+            # 결과 검증
+            self._validate_point_cloud(pcd_nose_region_in_lps, "CBCT 코 주변 영역 (LPS)")
+            self._validate_point_cloud(pcd_cbct_full_lps, "CBCT 전체 포인트 클라우드 (LPS)")
+            
+            if not self._is_valid_transform(lps_to_standard_nose_centered):
                 raise ValueError("유효하지 않은 LPS 변환 행렬")
             
-            return nose_center_lps, pcd_nose_region_lps, pcd_full_lps, lps_transform, mesh_lps
+            return nose_center_in_lps, pcd_nose_region_in_lps, pcd_cbct_full_lps, lps_to_standard_nose_centered, cbct_mesh_lps
             
         except Exception as e:
             raise ValueError(f"CBCT 처리 중 오류 발생: {e}") from e
@@ -398,7 +390,7 @@ class CBCTFaceScanAlignmentPipeline:
         정합 단계 (초기 정렬 + ICP)
         
         Args:
-            pcd_cbct: CBCT 포인트 클라우드
+            pcd_cbct: 코 주변 CBCT 포인트 클라우드
             pcd_facescan: FaceScan 포인트 클라우드
             verbose: 상세 출력 여부
         
@@ -430,64 +422,7 @@ class CBCTFaceScanAlignmentPipeline:
             
         except Exception as e:
             raise ValueError(f"정합 중 오류 발생: {e}") from e
-    
-    def _execute_refinement(
-        self,
-        pcd_cbct_full: o3d.geometry.PointCloud,
-        facescan_mesh: o3d.geometry.TriangleMesh,
-        facescan_nose_point: np.ndarray,
-        visualize: bool,
-        verbose: bool
-    ) -> RefinementResult:
-        """
-        SDF 기반 표면 정제 단계
-        
-        Args:
-            pcd_cbct_full: CBCT 전체 포인트 클라우드
-            facescan_mesh: FaceScan 메쉬
-            facescan_nose_point: FaceScan 코 중심점
-            visualize: 시각화 여부
-            verbose: 상세 출력 여부
-        
-        Returns:
-            RefinementResult: 정제 결과
-        
-        Raises:
-            ValueError: 정제 중 오류 발생 시
-        """
-        if verbose:
-            print("\n[Step 9] SDF 기반 표면 정제 (Z축 회전 탐색)")
-        
-        # 입력 검증
-        self._validate_point_cloud(pcd_cbct_full, "CBCT 전체 포인트 클라우드", min_points=1000)
-        
-        if facescan_mesh is None or not facescan_mesh.has_triangles():
-            raise ValueError("유효한 FaceScan 메쉬가 필요합니다.")
-        
-        try:
-            refinement_transform, best_angle, best_rmse = self._refine_with_surface_rotation_search(
-                pcd_cbct_full=pcd_cbct_full,
-                facescan_mesh=facescan_mesh,
-                facescan_nose_point=facescan_nose_point,
-                distance_threshold=1.0,
-                rotation_range=(-5, 5),
-                rotation_step=0.2,
-                visualize=visualize,
-                verbose=verbose
-            )
-            
-            # 결과 검증
-            if not self._is_valid_transform(refinement_transform):
-                raise ValueError("유효하지 않은 정제 변환 행렬")
-            
-            return RefinementResult(
-                transform_matrix=refinement_transform,
-                best_angle=best_angle,
-                best_rmse=best_rmse
-            )
-            
-        except Exception as e:
-            raise ValueError(f"정제 중 오류 발생: {e}") from e
+
     
     def _build_pipeline_result(
         self,
@@ -569,7 +504,7 @@ class CBCTFaceScanAlignmentPipeline:
         # Step 2-4: CBCT 데이터 처리 (LPS 좌표계 데이터 반환)
         # ----------------------------------------------------------------------
         
-        nose_center_lps, pcd_cbct_nose_lps, pcd_cbct_full_lps, lps_transform, cbct_mesh_lps = (
+        nose_center_in_lps, pcd_nose_region_in_lps, pcd_cbct_full_lps, lps_to_standard_nose_centered, cbct_mesh_lps = (
             self._execute_cbct_processing(
                 dicom_folder,
                 verbose,
@@ -581,27 +516,27 @@ class CBCTFaceScanAlignmentPipeline:
         
         if verbose:
             print(f"\n[LPS 좌표계 데이터 확인]")
-            print(f"  코 중심 (LPS): {nose_center_lps}")
-            print(f"  코 주변 영역 포인트 수: {len(pcd_cbct_nose_lps.points):,}")
+            print(f"  코 중심 (LPS): {nose_center_in_lps}")
+            print(f"  코 주변 영역 포인트 수: {len(pcd_nose_region_in_lps.points):,}")
             print(f"  전체 볼륨 포인트 수: {len(pcd_cbct_full_lps.points):,}")
         
         # ----------------------------------------------------------------------
         # LPS → 표준 좌표계 변환 적용
         # ----------------------------------------------------------------------
-        pcd_cbct_standard = apply_transform(pcd_cbct_nose_lps, lps_transform)
-        pcd_cbct_full_std = apply_transform(pcd_cbct_full_lps, lps_transform)
+        pcd_cbct_nose_standard = apply_transform(pcd_nose_region_in_lps, lps_to_standard_nose_centered)
+        pcd_cbct_full_standard = apply_transform(pcd_cbct_full_lps, lps_to_standard_nose_centered)
         
         # 코 중심도 표준 좌표계로 변환 (원점이 됨)
-        nose_center_standard = np.zeros(3)  # lps_transform에 원점이동이 포함되어 있음
+        nose_center_in_standard = np.zeros(3)  # lps_to_standard_nose_centered에 원점이동이 포함되어 있음
         
         if verbose:
             print(f"\n[표준 좌표계 변환 완료]")
-            print(f"  코 중심 (표준): {nose_center_standard}")
-            print(f"  코 주변 영역 포인트 수: {len(pcd_cbct_standard.points):,}")
-            print(f"  전체 볼륨 포인트 수: {len(pcd_cbct_full_std.points):,}")
+            print(f"  코 중심 (표준): {nose_center_in_standard}")
+            print(f"  코 주변 영역 포인트 수: {len(pcd_cbct_nose_standard.points):,}")
+            print(f"  전체 볼륨 포인트 수: {len(pcd_cbct_full_standard.points):,}")
 
         # CBCT LPS 메쉬 처리 (시각화 활성화 + 메쉬 생성된 경우에만)
-        cbct_mesh_std = None
+        cbct_mesh_standard = None
         if visualize and cbct_mesh_lps is not None:
             # 원점 좌표축 생성 (x: 빨강, y: 초록, z: 파랑)
             coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
@@ -609,17 +544,17 @@ class CBCTFaceScanAlignmentPipeline:
                 origin=[0, 0, 0]  # 원점
             )
             
-            cbct_mesh_std = apply_transform(cbct_mesh_lps, lps_transform)
-            cbct_mesh_std.compute_vertex_normals()  # 조명 효과를 위한 법선 계산
-            cbct_mesh_std.paint_uniform_color([0.3, 0.6, 0.9])  # 연한 파란색으로 구분
+            cbct_mesh_standard = apply_transform(cbct_mesh_lps, lps_to_standard_nose_centered)
+            cbct_mesh_standard.compute_vertex_normals()  # 조명 효과를 위한 법선 계산
+            cbct_mesh_standard.paint_uniform_color([0.3, 0.6, 0.9])  # 연한 파란색으로 구분
             
             # CBCT 메쉬, 포인트 클라우드, 좌표축 시각화
             o3d.visualization.draw_geometries(
-                [cbct_mesh_std, pcd_cbct_standard, coord_frame],
+                [cbct_mesh_standard, pcd_cbct_nose_standard, coord_frame],
                 window_name="CBCT 표준 좌표계 변환 결과"
             )
 
-        transform_manager.lps_to_standard = lps_transform
+        transform_manager.lps_to_standard = lps_to_standard_nose_centered
         
         # ----------------------------------------------------------------------
         # Step 5-6: FaceScan 데이터 처리
@@ -627,15 +562,15 @@ class CBCTFaceScanAlignmentPipeline:
         facescan_result = self._execute_facescan_processing(
             facescan_path,
             facescan_laminate_result,
-            pcd_cbct_standard,
+            pcd_cbct_nose_standard,
             verbose
         )
         
         # 시각화: CBCT 메쉬 + FaceScan 비교 (메쉬가 있는 경우)
-        if visualize and cbct_mesh_std is not None:
+        if visualize and cbct_mesh_standard is not None:
             coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=50.0, origin=[0, 0, 0])
             o3d.visualization.draw_geometries(
-                [cbct_mesh_std, pcd_cbct_standard, facescan_result.pcd_filtered, coord_frame],
+                [cbct_mesh_standard, pcd_cbct_nose_standard, facescan_result.pcd_filtered, coord_frame],
                 window_name="CBCT + FaceScan 비교 (정합 전)"
             )
         
@@ -643,7 +578,7 @@ class CBCTFaceScanAlignmentPipeline:
         # Step 7-8: 정합 실행 (초기 정렬 + ICP)
         # ----------------------------------------------------------------------
         initial_result, icp_result = self._execute_alignment(
-            pcd_cbct_standard,
+            pcd_cbct_nose_standard,
             facescan_result.pcd_filtered,
             verbose
         )
@@ -651,12 +586,12 @@ class CBCTFaceScanAlignmentPipeline:
         transform_manager.initial_alignment = initial_result.transform_matrix
         transform_manager.icp = icp_result.transform_matrix
 
-        # 시각화: 초기 정렬 + ICP 결과 (메쉬가 있는 경우)
-        if visualize and cbct_mesh_std is not None:
+        # 시각화: 초기 정렬(타겟, 소스 포인트 클라우드의 중심점 기반) + ICP 결과
+        if visualize and cbct_mesh_standard is not None:
             coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=50.0, origin=[0, 0, 0])
             
             # 초기 정렬 결과 시각화
-            cbct_mesh_aligned = apply_transform(cbct_mesh_std, initial_result.transform_matrix)
+            cbct_mesh_aligned = apply_transform(cbct_mesh_standard, initial_result.transform_matrix)
             o3d.visualization.draw_geometries(
                 [cbct_mesh_aligned, facescan_result.pcd_filtered, coord_frame],
                 window_name="초기 정렬 후"
@@ -674,59 +609,21 @@ class CBCTFaceScanAlignmentPipeline:
         # 중간 결과: 정제 전 전체 볼륨 변환
         # ----------------------------------------------------------------------
 
-        accumulated_transform = icp_result.transform_matrix @ initial_result.transform_matrix @ lps_transform
+        accumulated_transform = icp_result.transform_matrix @ initial_result.transform_matrix @ lps_to_standard_nose_centered
         pcd_cbct_full_aligned = apply_transform(pcd_cbct_full_lps, accumulated_transform)
 
-
+        # facescan_result.mesh normal calculation
+        facescan_result.mesh.compute_vertex_normals()
+        facescan_result.mesh.paint_uniform_color([0.3, 0.6, 0.9])
 
         if visualize:
             o3d.visualization.draw_geometries(
                 [pcd_cbct_full_aligned, facescan_result.mesh],
-                window_name=" 조정 전 결과"
+                window_name=" ICP 정합 후 결과"
             )
         
-        # ----------------------------------------------------------------------
-        # Step 9: SDF 기반 표면 세부 조정
-        # ----------------------------------------------------------------------
-        refinement_result = self._execute_refinement(
-            pcd_cbct_full_aligned,
-            facescan_result.mesh,
-            facescan_result.nose_point,
-            visualize,
-            verbose
-        )
-        
-        transform_manager.refinement = refinement_result.transform_matrix
-        
-        # 전체 볼륨에 정제 변환 적용
-        accumulated_transform = refinement_result.transform_matrix @ icp_result.transform_matrix @ initial_result.transform_matrix @ lps_transform
-        pcd_cbct_full_refined = apply_transform(pcd_cbct_full_lps, accumulated_transform)
-        
-        if visualize:
-            o3d.visualization.draw_geometries(
-                [pcd_cbct_full_refined, facescan_result.mesh],
-                window_name="조정 후 결과"
-            )
-        
-        # ----------------------------------------------------------------------
-        # 최종 결과 출력
-        # ----------------------------------------------------------------------
-        if verbose:
-            print("\n" + "=" * 60)
-            print("정합 완료 (SDF 기반 Z축 회전 정제 포함)")
-            print("=" * 60)
-            print(f"최적 회전 각도: {refinement_result.best_angle:+.1f}°")
-            print(f"최소 RMSE: {refinement_result.best_rmse:.3f} mm")
-            print("=" * 60)
-            
-            # 변환 행렬 요약 출력
-            transform_manager.print_summary(include_refinement=True)
-        
-        # ----------------------------------------------------------------------
+
         # 최종 변환 행렬 반환
-        
-
-
         final_transform = accumulated_transform
         
         if verbose:
@@ -749,7 +646,7 @@ class CBCTFaceScanAlignmentPipeline:
                 coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=50.0, origin=[0, 0, 0])
                 o3d.visualization.draw_geometries(
                     [cbct_mesh_final, facescan_result.mesh, coord_frame],
-                    window_name="최종 결과"
+                    window_name="ICP 정합 후 최종 정합 결과"
                 )
         
 
