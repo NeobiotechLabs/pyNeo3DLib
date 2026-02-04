@@ -143,7 +143,7 @@ class ICPRegistration:
         verbose: bool = True
     ) -> ICPResult:
         """
-        Point-to-Point와 Point-to-Plane ICP를 모두 실행하고 더 나은 결과를 반환
+        Point-to-Plane ICP를 사용하여 정합 수행
         
         Args:
             source_pcd: 소스 포인트 클라우드 (정합될 대상, CBCT)
@@ -157,10 +157,8 @@ class ICPRegistration:
             print("\n[ICP 정밀 정합 실행]")
             print("-" * 40)
         
-        
         # Point-to-Plane ICP
         icp_p2plane = self._point_to_plane_icp(source_pcd, target_pcd, verbose)
-        
         
         if verbose:
             print(f"최종 Fitness: {icp_p2plane.fitness:.6f}")

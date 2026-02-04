@@ -200,12 +200,13 @@ class CBCTProcessor:
         
         pts_face = pcd_to_np(pcd)
 
-        # y값이 큰 순서대로 정렬하고 상위 5% 포인트 추출
+        # y값이 큰 순서대로 정렬하고 상위 포인트 추출
+        cfg = self.config.nose_estimation
         sorted_indices = pts_face[:, 1].argsort()[::-1]  # y값 내림차순 정렬
-        top_5_percent_count = max(1, int(len(pts_face) * 0.05))
-        top_points = pts_face[sorted_indices[:top_5_percent_count]]
+        top_percent_count = max(1, int(len(pts_face) * cfg.top_y_percent))
+        top_points = pts_face[sorted_indices[:top_percent_count]]
         
-        # 상위 5% 포인트의 중앙값 위치 계산 후 y값만 최댓값으로 대체
+        # 상위 포인트의 중앙값 위치 계산 후 y값만 최댓값으로 대체
         # 중앙값은 이상치(outlier)에 강건하여 더 안정적인 중심 추정 가능
         nose_center = np.median(top_points, axis=0)
         nose_center[1] = pts_face[:, 1].max()

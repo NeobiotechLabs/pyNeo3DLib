@@ -1,7 +1,7 @@
 """
 CBCT-FaceScan 정합 설정 관리
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Tuple
 import numpy as np
 
@@ -21,6 +21,7 @@ class NoseEstimationConfig:
     """코 중심 추정 설정"""
     x_center_ratio_start: float = 0.35
     x_center_ratio_end: float = 0.65
+    top_y_percent: float = 0.05  # 상위 Y값 포인트 비율 (코 중심 추정용)
 
 
 @dataclass
@@ -94,29 +95,12 @@ class CoordinateTransformConfig:
 @dataclass
 class AlignmentConfig:
     """전체 정합 파이프라인 설정"""
-    cbct_extraction: CBCTExtractionConfig = None
-    nose_estimation: NoseEstimationConfig = None
-    depth_map: DepthMapConfig = None
-    mesh_sampling: MeshSamplingConfig = None
-    icp: ICPConfig = None
-    visualization: VisualizationConfig = None
-    coordinate_transform: CoordinateTransformConfig = None
-    
-    def __post_init__(self):
-        """기본값 초기화"""
-        if self.cbct_extraction is None:
-            self.cbct_extraction = CBCTExtractionConfig()
-        if self.nose_estimation is None:
-            self.nose_estimation = NoseEstimationConfig()
-        if self.depth_map is None:
-            self.depth_map = DepthMapConfig()
-        if self.mesh_sampling is None:
-            self.mesh_sampling = MeshSamplingConfig()
-        if self.icp is None:
-            self.icp = ICPConfig()
-        if self.visualization is None:
-            self.visualization = VisualizationConfig()
-        if self.coordinate_transform is None:
-            self.coordinate_transform = CoordinateTransformConfig()
+    cbct_extraction: CBCTExtractionConfig = field(default_factory=CBCTExtractionConfig)
+    nose_estimation: NoseEstimationConfig = field(default_factory=NoseEstimationConfig)
+    depth_map: DepthMapConfig = field(default_factory=DepthMapConfig)
+    mesh_sampling: MeshSamplingConfig = field(default_factory=MeshSamplingConfig)
+    icp: ICPConfig = field(default_factory=ICPConfig)
+    visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
+    coordinate_transform: CoordinateTransformConfig = field(default_factory=CoordinateTransformConfig)
 
 

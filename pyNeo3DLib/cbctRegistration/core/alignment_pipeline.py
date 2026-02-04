@@ -481,7 +481,7 @@ class CBCTFaceScanAlignmentPipeline:
             facescan_laminate_result: FaceScan 정렬 변환 행렬
         
         Returns:
-            np.ndarray: 최종 변환 행렬 (4x4) - CBCT RAI 좌표계 → FaceScan 좌표계
+            np.ndarray: 최종 변환 행렬 (4x4) - CBCT LPS 좌표계 → FaceScan 좌표계
         
         Note:
             시각화와 verbose 설정은 __init__에서 설정한 값을 사용합니다.
@@ -628,7 +628,7 @@ class CBCTFaceScanAlignmentPipeline:
         
         if verbose:
             print("\n" + "=" * 60)
-            print("최종 변환 행렬 (CBCT RAI → FaceScan 좌표계)")
+            print("최종 변환 행렬 (CBCT LPS → FaceScan 좌표계)")
             print("=" * 60)
             print(final_transform)
             print("=" * 60)

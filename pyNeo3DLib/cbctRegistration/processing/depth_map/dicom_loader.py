@@ -253,6 +253,8 @@ class CBCTDicomLoader:
         """
         볼륨 인덱스 (Z, Y, X)를 물리 좌표 (X, Y, Z) mm로 변환
         
+        NumPy 브로드캐스팅을 사용한 벡터화된 구현으로 빠른 처리 성능을 제공합니다.
+        
         vtk.js 호환 (use_origin=False, 기본값):
         - Origin을 무시하고 (0,0,0)에서 시작
         - P = col*colSpacing*rowDir + row*rowSpacing*colDir + slice*sliceSpacing*sliceDir
@@ -281,50 +283,10 @@ class CBCTDicomLoader:
         row_spacing = spacing[1]
         slice_spacing = spacing[2]
         
-        # 인덱스 분리
-        slice_idx = idx_zyx[:, 0].astype(np.float64)  # Z
-        row_idx = idx_zyx[:, 1].astype(np.float64)    # Y
-        col_idx = idx_zyx[:, 2].astype(np.float64)    # X
-        
-        # vtk.js 호환: Origin 무시
-        origin = self._image_position if use_origin else np.zeros(3)
-        
-        # 물리 좌표 계산
-        N = len(idx_zyx)
-        physical_coords = np.zeros((N, 3), dtype=np.float64)
-        
-        for i in range(N):
-            physical_coords[i] = (
-                origin +
-                col_idx[i] * col_spacing * self._row_direction +
-                row_idx[i] * row_spacing * self._col_direction +
-                slice_idx[i] * slice_spacing * self._slice_direction
-            )
-        
-        return physical_coords
-    
-    def index_to_physical_vectorized(self, idx_zyx: np.ndarray, use_origin: bool = False) -> np.ndarray:
-        """
-        벡터화된 버전 (빠른 처리)
-        
-        vtk.js 호환: use_origin=False (기본값)
-        - vtk.js는 Origin을 무시하고 (0,0,0)에서 시작
-        - index * spacing만 사용
-        
-        표준 DICOM: use_origin=True
-        - ImagePositionPatient(Origin) 적용
-        """
-        if self._volume is None:
-            raise RuntimeError("load()를 먼저 실행하세요")
-        
-        spacing = self._metadata["spacing_xyz"]
-        col_spacing = spacing[0]
-        row_spacing = spacing[1]
-        slice_spacing = spacing[2]
-        
-        slice_idx = idx_zyx[:, 0:1].astype(np.float64)
-        row_idx = idx_zyx[:, 1:2].astype(np.float64)
-        col_idx = idx_zyx[:, 2:3].astype(np.float64)
+        # 인덱스 분리 (브로드캐스팅을 위해 (N, 1) 형태로 유지)
+        slice_idx = idx_zyx[:, 0:1].astype(np.float64)  # Z
+        row_idx = idx_zyx[:, 1:2].astype(np.float64)    # Y
+        col_idx = idx_zyx[:, 2:3].astype(np.float64)    # X
         
         # 방향 벡터들을 (1, 3) 형태로
         row_dir = self._row_direction.reshape(1, 3)
@@ -337,7 +299,7 @@ class CBCTDicomLoader:
         else:
             origin = np.zeros((1, 3))
         
-        # 브로드캐스팅으로 계산
+        # 브로드캐스팅으로 벡터화된 계산
         physical_coords = (
             origin +
             (col_idx * col_spacing) * row_dir +
