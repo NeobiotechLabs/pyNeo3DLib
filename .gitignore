@@ -176,3 +176,9 @@ cython_debug/
 example/output/*
 config.json
 example/data/exports/*
+
+# Patient data & local artifacts (never commit)
+cbctdata/
+output/
+pyNeo3DLib-landmarks_model*
+연구노트 작성 가이드.png
