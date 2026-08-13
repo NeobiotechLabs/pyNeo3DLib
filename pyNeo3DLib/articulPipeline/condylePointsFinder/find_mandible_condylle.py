@@ -1,11 +1,15 @@
 """하악골(mandible) 메쉬에서 LCo/RCo(과두점)를 추정하는 CLI.
 
 사용 예:
-    python find_mandible_condylle.py --input mandible.stl --output condyles.mrk.json
-    python find_mandible_condylle.py -i mandible.stl -o condyles.mrk.json -v
+    python find_mandible_condylle.py --input case01_mandible.stl --output condyles.mrk.json
+    python find_mandible_condylle.py -i ./results -o condyles.mrk.json -v
+
+하악골 메쉬 이름은 ``articulPipeline/structure_names.json`` 의 공통 규약을
+따릅니다 (``{케이스이름}_mandible.stl``). ``--input`` 을 폴더로 지정하면
+폴더 안에서 규약 이름의 하악골 메쉬를 자동으로 찾아 로드합니다.
 
 동작:
-1. --input 하악골 메쉬 로드
+1. --input 하악골 메쉬 로드 (폴더 지정 시 ``*_mandible.stl`` 탐색)
 2. +x 최대 정점 -> LCo, -x 최소 정점 -> RCo
 3. --output 경로에 과두점을 3D Slicer Markups(fiducial) JSON 형식으로 저장
 4. --visualize 지정 시 하악골 + LCo/RCo 마커만 PyVista 창으로 표시
@@ -19,6 +23,8 @@ from pathlib import Path
 
 import numpy as np
 import pyvista as pv
+
+from structure_names import MANDIBLE, mesh_stem_suffix
 
 MANDIBLE_COLOR = "#c8d6e5"
 CONDYLE_COLOR = "lime"
@@ -53,6 +59,23 @@ class Condyles:
     @property
     def distance(self) -> float:
         return float(np.linalg.norm(self.left - self.right))
+
+
+def resolve_input_path(input_path: Path) -> Path:
+    """입력 경로를 하악골 메쉬 파일로 해석.
+
+    폴더를 지정하면 공통 이름 규약(``structure_names.json``)에 맞는
+    ``*_{mandible}.stl`` 파일을 폴더 안에서 찾아 반환합니다.
+    """
+    if input_path.is_dir():
+        pattern = f"*{mesh_stem_suffix(MANDIBLE)}.stl"
+        candidates = sorted(input_path.glob(pattern))
+        if not candidates:
+            raise FileNotFoundError(
+                f"폴더에 하악골 메쉬({pattern})가 없습니다: {input_path}"
+            )
+        return candidates[0]
+    return input_path
 
 
 def load_mandible(path: Path) -> pv.PolyData:
@@ -131,7 +154,7 @@ def visualize(mandible: pv.PolyData, condyles: Condyles) -> None:
         color=MANDIBLE_COLOR,
         opacity=1.0,
         smooth_shading=True,
-        name="mandible",
+        name=MANDIBLE,
     )
     for label, position in (
         ("LCo (+x max)", condyles.left),
@@ -171,7 +194,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--input",
         type=Path,
         required=True,
-        help="하악골 메쉬 경로 (STL 등 PyVista가 읽을 수 있는 형식)",
+        help=(
+            "하악골 메쉬 경로 (STL 등 PyVista가 읽을 수 있는 형식). "
+            "폴더를 지정하면 공통 이름 규약(structure_names.json)의 "
+            f"*{mesh_stem_suffix(MANDIBLE)}.stl 파일을 자동 탐색"
+        ),
     )
     parser.add_argument(
         "-o",
@@ -191,11 +218,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
-    mandible = load_mandible(args.input)
+    input_path = resolve_input_path(args.input)
+    mandible = load_mandible(input_path)
     condyles = Condyles.from_mesh(mandible)
-    print_summary(args.input, mandible, condyles)
+    print_summary(input_path, mandible, condyles)
 
-    output = resolve_output_path(args.output, args.input)
+    output = resolve_output_path(args.output, input_path)
     saved = save_condyles(condyles, output=output)
     print(f"과두점 저장: {saved}")
 
