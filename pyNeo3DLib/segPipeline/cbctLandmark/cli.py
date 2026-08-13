@@ -6,7 +6,6 @@ import argparse
 import os
 
 from .landmarks import LABELS
-from .model_registry import default_landmark_registry_path
 from .pipeline import predict
 
 _DEFAULT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -64,11 +63,6 @@ def build_parser(default_root: str | None = None) -> argparse.ArgumentParser:
         help="모델 폴더 (기본: models/)",
     )
     parser.add_argument(
-        "--landmark-registry",
-        default=default_landmark_registry_path(),
-        help="랜드마크 레지스트리 JSON (기본: 패키지 내 landmark_model_registry.json)",
-    )
-    parser.add_argument(
         "--save-grouped",
         action="store_true",
         help="(선택) CB/L/U 그룹별 _lm_Pred_*.mrk.json 도 함께 저장",
@@ -97,7 +91,6 @@ def main(argv: list[str] | None = None) -> int:
         models_dir=args.models_dir,
         landmarks=args.landmarks,
         output_dir=args.output_dir,
-        landmark_registry=args.landmark_registry,
         save_grouped=args.save_grouped,
     )
 

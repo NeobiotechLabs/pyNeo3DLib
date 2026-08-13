@@ -13,11 +13,7 @@ import torch
 from .config import PredictConfig
 from .inference import run_predict_pipeline
 from .markups import spacing_to_scale_key, volume_output_dir_name, volume_stem
-from .model_registry import (
-    get_brain_for_landmarks,
-    load_landmark_to_pack,
-    validate_models,
-)
+from .model_registry import get_brain_for_landmarks, validate_models
 from .preprocessing import build_patients_dict
 from . import constants as GV
 from .types import PredictResult
@@ -36,7 +32,6 @@ def predict(
     spawn_radius: int = 10,
     focus_radius: int = 4,
     network: str = "DNet",
-    landmark_registry: Optional[str] = None,
     temp_dir: Optional[str] = None,
     clear_temp: bool = True,
     device: Optional[Union[str, torch.device]] = None,
@@ -68,7 +63,6 @@ def predict(
         spawn_radius=spawn_radius,
         focus_radius=focus_radius,
         network=network,
-        landmark_registry=landmark_registry,
         temp_dir=temp_dir,
         clear_temp=clear_temp,
         verbose=verbose,
@@ -100,13 +94,7 @@ def predict(
     temp_fold = os.path.join(temp_root, "temp")
     os.makedirs(temp_fold, exist_ok=True)
 
-    pack_hint: Dict[str, str] = {}
-    if cfg.landmark_registry:
-        pack_hint = load_landmark_to_pack(os.path.abspath(cfg.landmark_registry))
-
-    brain_dic, _ = get_brain_for_landmarks(
-        models_root, landmarks, scale_keys, pack_hint
-    )
+    brain_dic, _ = get_brain_for_landmarks(models_root, landmarks, scale_keys)
     validate_models(brain_dic, landmarks, scale_keys)
 
     patients = build_patients_dict(vol, cfg.spacing, scale_keys, temp_fold)

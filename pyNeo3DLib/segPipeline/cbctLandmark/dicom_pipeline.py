@@ -34,7 +34,6 @@ from __future__ import annotations
 import logging
 import os
 
-from .model_registry import default_landmark_registry_path
 from .pipeline import predict
 
 logger = logging.getLogger(__name__)
@@ -50,7 +49,6 @@ def predict_landmarks_from_dicom(
     work_dir: str | None = None,
     series_uid: str | None = None,
     patient_origin: bool = True,
-    landmark_registry: str | None = None,
     device: str | None = None,
     verbose: bool = True,
 ) -> dict[str, dict[str, float]]:
@@ -73,8 +71,6 @@ def predict_landmarks_from_dicom(
     patient_origin : bool
         True(기본): NIfTI 원점을 DICOM ImagePositionPatient로 → 환자 LPS 좌표.
         False: 원점 (0,0,0) → 볼륨 상대 좌표.
-    landmark_registry : str, optional
-        랜드마크→팩 매핑 JSON. None이면 패키지 내 기본 레지스트리 사용.
     device : str, optional
         추론 장치 ("cpu" / "cuda"). None이면 자동 선택.
     verbose : bool
@@ -123,7 +119,6 @@ def predict_landmarks_from_dicom(
         models_dir=models_dir,
         landmarks=landmarks,
         output_dir=output_dir,
-        landmark_registry=landmark_registry or default_landmark_registry_path(),
         device=device,
         verbose=verbose,
     )

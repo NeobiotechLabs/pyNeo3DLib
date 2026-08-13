@@ -18,7 +18,6 @@ class PredictConfig:
     strict: bool = False
     """True이면 하나라도 랜드마크 탐색 실패 시 RuntimeError."""
 
-    landmark_registry: Optional[str] = None
     temp_dir: Optional[str] = None
     output_dir: Optional[str] = None
     save_grouped: bool = False

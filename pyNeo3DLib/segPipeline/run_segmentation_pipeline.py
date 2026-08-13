@@ -5,8 +5,11 @@ DICOM 시리즈 → NIfTI 변환 → CBCT 세그멘테이션 통합 파이프라
 입력:
     1. DCM 시리즈 폴더 경로 — ``.dcm`` 이 바로 들어 있는 폴더(단일 케이스) 또는
        케이스 폴더들이 들어 있는 루트(배치).
-    2. 가중치 모델 경로 — nnU-Net 번들 루트 폴더. 바로 아래에 ``dataset.json`` 이
-       없으면 ``others_seg_model`` 등 하위 폴더에서 자동 탐색합니다.
+    2. 가중치 모델 경로 — ``--model`` 로 지정. 미지정 시 파이프라인 폴더 안
+       ``model/`` (``segPipeline/model``)을 기본으로 사용하며, nnU-Net 번들
+       폴더 또는 그 상위 폴더에서 ``dataset.json`` 을 자동 탐색합니다
+       (바로 없으면 ``others_seg_model`` 등 하위 폴더). 같은 루트에서 랜드마크
+       가중치(``landmarks_model``)도 함께 찾습니다.
     3. 최종 결과 저장 경로.
 
 동작:
@@ -16,9 +19,10 @@ DICOM 시리즈 → NIfTI 변환 → CBCT 세그멘테이션 통합 파이프라
            폴더는 바로 삭제됩니다.
     2단계  ``cbctLandmark`` 로 nii.gz 생성 직후 랜드마크(기본 ANS,PNS,N) 좌표
            추정 (케이스별 서브프로세스 — 모델/GPU 메모리 반환). 가중치 폴더는
-           파이프라인 옆 ``model/`` 폴더(``landmarks_model`` 우선)에서 자동
-           탐색하고 ``--landmark-models`` 로 변경할 수 있습니다. 가중치를 찾지
-           못하면 건너뛰며 ``--no-landmarks`` 로 생략할 수 있습니다.
+           파이프라인 폴더 안 ``model/`` (없으면 그 형제 ``model/``)에서
+           ``landmarks_model`` 우선으로 자동 탐색하고 ``--landmark-models`` 로
+           변경할 수 있습니다. 가중치를 찾지 못하면 건너뛰며
+           ``--no-landmarks`` 로 생략할 수 있습니다.
     3단계  ``cbctSeg`` 세그멘테이션 (``pipeline_batch`` 워커)으로 라벨맵·센터라인·
            STL 메쉬 생성.
     결과물을 지정한 저장 경로에 **바로** 저장 — nii.gz 이름의 하위 폴더를
@@ -34,9 +38,9 @@ DICOM 시리즈 → NIfTI 변환 → CBCT 세그멘테이션 통합 파이프라
 
 예::
 
-    python run_segmentation_pipeline.py --input D:\\data\\case01 --model D:\\models\\nnunet --output D:\\results
+    # model/ 을 지정하지 않으면 segPipeline/model 에서 세그멘테이션·랜드마크 가중치를 자동 탐색
+    python run_segmentation_pipeline.py --input D:\\data\\case01 --output D:\\results
     python run_segmentation_pipeline.py -i ./cases -m ./model -o ./out -v
-    (랜드마크 가중치는 파이프라인 옆 model/ 폴더에서 자동 탐색)
 """
 
 from __future__ import annotations
@@ -53,8 +57,11 @@ from pathlib import Path
 PIPELINE_ROOT = Path(__file__).resolve().parent
 DCM2NII_SCRIPT = PIPELINE_ROOT / "dcm2nii" / "batch_dicom_folders_to_nifti.py"
 SEG_LIB_DIR = PIPELINE_ROOT / "cbctSeg" / "dental_anatomy_segmentation_lib"
-# 파이프라인 폴더의 형제 폴더인 model/ (예: segPipeline/../model)
-DEFAULT_LANDMARK_ROOT = PIPELINE_ROOT.parent / "model"
+# 가중치 기본 루트: 파이프라인 폴더 안 model/ (세그멘테이션 others_seg_model +
+# 랜드마크 landmarks_model 이 함께 들어 있는 폴더)
+DEFAULT_MODEL_ROOT = PIPELINE_ROOT / "model"
+# 랜드마크 가중치 탐색 순서: 1) 파이프라인 폴더 안 model/  2) 그 형제 model/
+DEFAULT_LANDMARK_ROOTS = [DEFAULT_MODEL_ROOT, PIPELINE_ROOT.parent / "model"]
 
 
 def _safe_stem(name: str) -> str:
@@ -347,10 +354,11 @@ def main() -> int:
         "--model",
         "-m",
         type=Path,
-        required=True,
+        default=None,
         metavar="DIR",
         help=(
-            "가중치 모델 경로 — nnU-Net 번들 폴더 또는 그 상위 폴더. "
+            f"가중치 모델 경로 — 미지정 시 {DEFAULT_MODEL_ROOT} 사용. "
+            "nnU-Net 번들 폴더 또는 그 상위 폴더. "
             "dataset.json 이 바로 없으면 others_seg_model 등 하위에서 자동 탐색"
         ),
     )
@@ -368,9 +376,10 @@ def main() -> int:
         default=None,
         metavar="DIR",
         help=(
-            f"cbctLandmark 가중치 폴더 — 미지정 시 {DEFAULT_LANDMARK_ROOT} 에서 "
-            "자동 탐색(landmarks_model 우선). 찾으면 nii.gz 생성 후 랜드마크를 찾아 "
-            "저장 경로에 {케이스}_merged.mrk.json 저장"
+            "cbctLandmark 가중치 폴더 — 미지정 시 --model 루트(기본 "
+            f"{DEFAULT_MODEL_ROOT}) 에서 자동 탐색(landmarks_model 우선). "
+            "찾으면 nii.gz 생성 후 랜드마크를 찾아 저장 경로에 "
+            "{케이스}_merged.mrk.json 저장"
         ),
     )
     p.add_argument(
@@ -421,17 +430,22 @@ def main() -> int:
     args = p.parse_args()
 
     dcm_dir = args.input.expanduser().resolve()
-    model_dir = args.model.expanduser().resolve()
+    # 가중치 루트 (--model 미지정 시 segPipeline/model 기본)
+    model_root = (
+        args.model.expanduser().resolve()
+        if args.model is not None
+        else DEFAULT_MODEL_ROOT
+    )
     output_dir = args.output.expanduser().resolve()
 
     if not dcm_dir.is_dir():
         print(f"오류: DCM 시리즈 폴더가 아닙니다: {dcm_dir}", file=sys.stderr)
         return 2
-    if not model_dir.is_dir():
-        print(f"오류: 모델 폴더가 아닙니다: {model_dir}", file=sys.stderr)
+    if not model_root.is_dir():
+        print(f"오류: 모델 폴더가 아닙니다: {model_root}", file=sys.stderr)
         return 2
     try:
-        model_dir = resolve_model_dir(model_dir)
+        model_dir = resolve_model_dir(model_root)
     except FileNotFoundError as e:
         print(f"오류: {e}", file=sys.stderr)
         return 2
@@ -469,13 +483,20 @@ def main() -> int:
         if args.no_landmarks:
             print("[2/3] --no-landmarks — 랜드마크 단계 건너뜀", flush=True)
         else:
-            lm_root = (
-                args.landmark_models.expanduser().resolve()
-                if args.landmark_models is not None
-                else DEFAULT_LANDMARK_ROOT
-            )
+            if args.landmark_models is not None:
+                lm_roots = [args.landmark_models.expanduser().resolve()]
+            else:
+                # 세그멘테이션 가중치 루트(--model 또는 기본 segPipeline/model)를
+                # 우선 탐색하고, 이어서 기본 후보 폴더들을 순서대로 탐색
+                lm_roots = [model_root] + [
+                    r for r in DEFAULT_LANDMARK_ROOTS if r != model_root
+                ]
             lm_names = [s.strip() for s in args.landmarks.split(",") if s.strip()]
-            lm_dir = resolve_landmark_models_dir(lm_root, lm_names)
+            lm_dir = None
+            for lm_root in lm_roots:
+                lm_dir = resolve_landmark_models_dir(lm_root, lm_names)
+                if lm_dir is not None:
+                    break
             if lm_dir is not None:
                 print(
                     f"[2/3] 랜드마크 탐색 ({args.landmarks}) → {output_dir}\n"
@@ -491,8 +512,9 @@ def main() -> int:
                     verbose=args.verbose,
                 )
             else:
+                roots_str = ", ".join(str(r) for r in lm_roots)
                 print(
-                    f"경고: {lm_root} 아래에서 랜드마크({args.landmarks}) 가중치를 "
+                    f"경고: {roots_str} 아래에서 랜드마크({args.landmarks}) 가중치를 "
                     f"찾지 못해 랜드마크 단계를 건너뜁니다",
                     file=sys.stderr,
                     flush=True,

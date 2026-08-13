@@ -1,0 +1,14 @@
+{
+    "channel_names": {
+        "0": "CBCT"
+    },
+    "labels": {
+        "background": 0,
+        "maxillary_sinus": 1,
+        "nerve_canal": 2,
+        "mandible": 3,
+        "maxilla": 4
+    },
+    "numTraining": 638,
+    "file_ending": ".nii.gz"
+}
