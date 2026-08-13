@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "labelmap-nifti-to-stl"
+version = "0.1.0"
+description = "Labelmap NIfTI to STL/OBJ/PLY (standalone; no nnU-Net)"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26,<3",
+    "itk>=5.4",
+    "trimesh>=4.0",
+    "vtk>=9.3",
+    "pyvista>=0.44",
+]
+
+# 이 폴더만 복사한 뒤 여기서 ``pip install -e .`` 하면 import ``labelmap_nifti_to_stl`` 사용 가능.
+[tool.setuptools]
+packages = ["labelmap_nifti_to_stl"]
+
+[tool.setuptools.package-dir]
+labelmap_nifti_to_stl = "."

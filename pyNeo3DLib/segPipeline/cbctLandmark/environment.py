@@ -4,7 +4,7 @@ import os
 import numpy as np
 import SimpleITK as sitk
 import torch
-from monai.transforms import AddChannel, BorderPad, Compose, ScaleIntensity, SpatialCrop
+from monai.transforms import BorderPad, Compose, Lambda, ScaleIntensity, SpatialCrop
 
 from .landmarks import LABEL_GROUPES
 from .markups import (
@@ -31,8 +31,9 @@ class Environment:
         self.padding = padding.astype(np.int16)
         self.device = device
         self.verbose = verbose
+        # AddChannel 은 MONAI 1.3 에서 제거됨 — Lambda 로 채널 축 추가
         self.transform = Compose(
-            [AddChannel(), BorderPad(spatial_border=self.padding.tolist())]
+            [Lambda(lambda x: x[None]), BorderPad(spatial_border=self.padding.tolist())]
         )
         self.scale_nbr = 0
         self.available_lm = []
@@ -46,7 +47,8 @@ class Environment:
             img = sitk.ReadImage(path)
             self._reference_images[scale_id] = img
             img_ar = sitk.GetArrayFromImage(img)
-            data["image"] = torch.from_numpy(self.transform(img_ar)).type(torch.int16)
+            # MONAI 변환 결과가 MetaTensor 가 될 수 있어 as_tensor 사용
+            data["image"] = torch.as_tensor(self.transform(img_ar)).type(torch.int16)
             data["spacing"] = np.array(img.GetSpacing())
             origin = img.GetOrigin()
             data["origin"] = np.array([origin[2], origin[1], origin[0]])
