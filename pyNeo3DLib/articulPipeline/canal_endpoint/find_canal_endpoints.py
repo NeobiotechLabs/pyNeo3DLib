@@ -1,15 +1,17 @@
 """하악 신경관 STL에서 LMeF/RMeF 랜드마크를 추정해 저장하는 CLI.
 
 사용 예:
-    python find_canal_endpoints.py --input Mandibular_canal.stl --output mef.mrk.json
-    python find_canal_endpoints.py -i Mandibular_canal.stl -o ./results/
-    python find_canal_endpoints.py -i ./case_folder -o mef.mrk.json   (폴더: 신경관 STL 자동 탐색)
+    python find_canal_endpoints.py --input case01_nerve_canal.stl --output case01_nerve_canal_mef.mrk.json
+    python find_canal_endpoints.py -i case01_nerve_canal.stl -o ./results/   (폴더 출력: case01_nerve_canal_mef.mrk.json)
+    python find_canal_endpoints.py -i ./case_folder -o ./results/   (폴더: 신경관 STL 자동 탐색)
     python -m canal_endpoint.canal_core -i canal.stl -o mef.mrk.json   (articulPipeline 폴더에서)
 
 동작:
 1. --input 신경관 STL 로드 (폴더 지정 시 신경관 이름 패턴 자동 탐색)
 2. 좌·우 신경관 분리 → 각쪽 끝점 쌍 추정 후 MeF(정신공) 끝점 선택 (y 최소)
 3. --output 경로에 LMeF/RMeF 를 3D Slicer Markups(fiducial) JSON 형식으로 저장
+   (폴더 지정 시 ``articulPipeline/mrk_output_names.json`` 공통 규약 이름
+   ``{케이스}_nerve_canal_mef.mrk.json`` 사용)
 
 랜드마크 이름은 ``articulPipeline/shared/constants.py`` 의 ``MEF_LANDMARKS``
 공통 정의를 사용합니다.
@@ -33,6 +35,7 @@ from canal_endpoint.canal_core.cli_args import add_basic_canal_args
 from canal_endpoint.canal_core.factory import CanalPipelineConfigFactory
 from canal_endpoint.canal_core.mef_estimator import MandibularMefEstimator
 from shared.constants import MEF_LANDMARKS
+from shared.mrk_output_names import mrk_filename
 
 SLICER_MARKUPS_SCHEMA = (
     "https://raw.githubusercontent.com/slicer/slicer/master/"
@@ -70,9 +73,13 @@ def resolve_input_path(input_path: Path) -> Path:
 
 def resolve_output_path(output: str, input_path: Path) -> Path:
     """디렉터리(''/'\\'로 끝나거나 이미 존재하는 폴더)면 그 안에
-    <입력파일명>_mef.mrk.json 으로 저장."""
+    {케이스}_nerve_canal_mef.mrk.json 으로 저장.
+
+    케이스 이름은 입력 STL stem 에서 ``_nerve_canal`` 접미어를 떼어 만들고
+    (``mrk_output_names.json`` 공통 규약), 접미어가 없으면 stem 그대로 사용.
+    """
     if output.endswith(("/", "\\")) or Path(output).is_dir():
-        return Path(output) / f"{input_path.stem}_mef.mrk.json"
+        return Path(output) / mrk_filename(input_path.stem, "nerve_canal_mef")
     return Path(output)
 
 
@@ -153,8 +160,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         required=True,
         help=(
-            "랜드마크 저장 경로 (3D Slicer Markups JSON 형식, 예: mef.mrk.json). "
-            "폴더('/'로 끝나거나 존재하는 폴더)면 그 안에 <입력명>_mef.mrk.json 으로 저장"
+            "랜드마크 저장 경로 (3D Slicer Markups JSON 형식, 예: "
+            "case01_nerve_canal_mef.mrk.json). 폴더('/'로 끝나거나 존재하는 "
+            "폴더)면 그 안에 {케이스}_nerve_canal_mef.mrk.json 으로 저장"
         ),
     )
     add_basic_canal_args(parser)

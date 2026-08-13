@@ -6,6 +6,7 @@ NIfTI 볼륨 → nnU-Net → 라벨맵 + 신경관 복원 → 메쉬(STL) 익스
 
 from __future__ import annotations
 
+import json
 import shutil
 import tempfile
 from pathlib import Path
@@ -23,13 +24,37 @@ from ..postprocess_labelmap import (
 from ..restore_mandibular.config import RestoreConfig
 from ..restore_mandibular.io_nifti import load_label, save_label, spacing_from_affine
 
-#: 라벨 정수 값 → 메쉬 파일 이름 (dataset.json 없이 사용할 이름 매핑)
-MESH_LABEL_FILENAMES: dict[int, str] = {
-    1: "maxillary_skull",  # 상악두개골
-    2: "mandible_body",    # 하악골
-    3: "neural_canal",     # 신경관
+#: 이름을 바꾸려면 이 파일이 아니라 ``articulPipeline/structure_names.json`` 을 수정하세요.
+_STRUCTURE_NAMES_JSON = "structure_names.json"
+
+#: ``structure_names.json`` 이 없을 때 사용할 기본 이름 (JSON과 동일한 규약)
+_DEFAULT_MESH_LABEL_FILENAMES: dict[int, str] = {
+    1: "maxilla",          # 상악
+    2: "mandible",         # 하악골
+    3: "nerve_canal",      # 신경관
     4: "maxillary_sinus",  # 상악동
 }
+
+
+def _load_mesh_label_filenames() -> dict[int, str]:
+    """``articulPipeline/structure_names.json`` 에서 라벨 → 구조 이름 매핑을 로드.
+
+    이 파일에서 상위 폴더를 거슬러 올라가며 공통 정의 JSON을 찾아 읽습니다.
+    파일이 없거나 읽지 못하면 기본 이름(``_DEFAULT_MESH_LABEL_FILENAMES``)을 사용합니다.
+    """
+    for parent in Path(__file__).resolve().parents:
+        cfg = parent / _STRUCTURE_NAMES_JSON
+        if cfg.is_file():
+            try:
+                data = json.loads(cfg.read_text(encoding="utf-8"))
+                return {int(label): str(name) for name, label in data.items()}
+            except (OSError, ValueError):
+                break
+    return dict(_DEFAULT_MESH_LABEL_FILENAMES)
+
+
+#: 라벨 정수 값 → 메쉬 파일 이름 (``structure_names.json`` 에서 로드, dataset.json 없이 사용)
+MESH_LABEL_FILENAMES: dict[int, str] = _load_mesh_label_filenames()
 
 #: 기본 메쉬 변환 라벨 — 볼륨에 없는 라벨은 건너뜀
 DEFAULT_MESH_LABEL_IDS: List[int] = [1, 2, 3, 4]
@@ -59,9 +84,10 @@ def export_final_labelmap_meshes(
     최종 라벨맵 NIfTI를 ``labelmap_nifti_to_stl`` 로 라벨별 메시(STL)로 변환합니다.
 
     파일은 ``out_dir/{stem}_{라벨이름}.{format}`` 로 저장됩니다
-    (예: ``case_maxillary_skull.stl``).
+    (예: ``case_maxilla.stl``).
 
-    - 라벨 이름: ``MESH_LABEL_FILENAMES`` 매핑 사용.
+    - 라벨 이름: ``MESH_LABEL_FILENAMES`` 매핑 사용
+      (``articulPipeline/structure_names.json`` 에서 로드).
     - 후처리: 3D Slicer 방식 (DecimatePro 단순화 + WindowedSinc 스무딩).
       스무딩 반복 횟수는 ``smoothing_factor`` 로부터 자동 계산됩니다.
     """

@@ -2,7 +2,8 @@
 
 사용 예::
 
-    python -m canal_endpoint.canal_core --input Mandibular_canal.stl --output mef.mrk.json
+    python -m canal_endpoint.canal_core --input case01_nerve_canal.stl --output case01_nerve_canal_mef.mrk.json
+    (또는 폴더 지정: -o ./results/ → case01_nerve_canal_mef.mrk.json 으로 저장)
 """
 
 import sys

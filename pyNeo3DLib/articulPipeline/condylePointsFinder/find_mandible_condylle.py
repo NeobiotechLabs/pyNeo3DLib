@@ -1,8 +1,8 @@
 """하악골(mandible) 메쉬에서 LCo/RCo(과두점)를 추정하는 CLI.
 
 사용 예:
-    python find_mandible_condylle.py --input case01_mandible.stl --output condyles.mrk.json
-    python find_mandible_condylle.py -i ./results -o condyles.mrk.json -v
+    python find_mandible_condylle.py --input case01_mandible.stl --output case01_mandible_condyles.mrk.json
+    python find_mandible_condylle.py -i ./results -o ./results/ -v   (폴더 출력: case01_mandible_condyles.mrk.json)
 
 하악골 메쉬 이름은 ``articulPipeline/structure_names.json`` 의 공통 규약을
 따릅니다 (``{케이스이름}_mandible.stl``). ``--input`` 을 폴더로 지정하면
@@ -12,6 +12,8 @@
 1. --input 하악골 메쉬 로드 (폴더 지정 시 ``*_mandible.stl`` 탐색)
 2. +x 최대 정점 -> LCo, -x 최소 정점 -> RCo
 3. --output 경로에 과두점을 3D Slicer Markups(fiducial) JSON 형식으로 저장
+   (폴더 지정 시 ``articulPipeline/mrk_output_names.json`` 공통 규약 이름
+   ``{케이스}_mandible_condyles.mrk.json`` 사용)
 4. --visualize 지정 시 하악골 + LCo/RCo 마커만 PyVista 창으로 표시
 """
 from __future__ import annotations
@@ -24,6 +26,7 @@ from pathlib import Path
 import numpy as np
 import pyvista as pv
 
+from mrk_output_names import mrk_filename
 from structure_names import MANDIBLE, mesh_stem_suffix
 
 MANDIBLE_COLOR = "#c8d6e5"
@@ -90,9 +93,13 @@ def mesh_diagonal(mesh: pv.PolyData) -> float:
 
 
 def resolve_output_path(output: Path, input_path: Path) -> Path:
-    """디렉터리로 지정되면 그 안에 <입력파일명>_condyles.mrk.json 으로 저장."""
+    """디렉터리로 지정되면 그 안에 {케이스}_mandible_condyles.mrk.json 으로 저장.
+
+    케이스 이름은 입력 메쉬 stem 에서 ``_mandible`` 접미어를 떼어 만들고
+    (``mrk_output_names.json`` 공통 규약), 접미어가 없으면 stem 그대로 사용.
+    """
     if output.is_dir() or str(output).endswith(("/", "\\")):
-        return output / f"{input_path.stem}_condyles.mrk.json"
+        return output / mrk_filename(input_path.stem, "mandible_condyles")
     return output
 
 
@@ -205,7 +212,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         type=Path,
         required=True,
-        help="과두점 저장 경로 (3D Slicer Markups JSON 형식, 예: condyles.mrk.json)",
+        help=(
+            "과두점 저장 경로 (3D Slicer Markups JSON 형식, 예: "
+            "case01_mandible_condyles.mrk.json). 폴더로 지정하면 그 안에 "
+            "{케이스}_mandible_condyles.mrk.json 으로 저장"
+        ),
     )
     parser.add_argument(
         "-v",

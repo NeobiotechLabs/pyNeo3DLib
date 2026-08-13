@@ -1,0 +1,6 @@
+{
+    "landmark_inference": "_merged.mrk.json",
+    "mandible_condyles": "_mandible_condyles.mrk.json",
+    "nerve_canal_mef": "_nerve_canal_mef.mrk.json",
+    "landmark_merge": "_landmarks.mrk.json"
+}

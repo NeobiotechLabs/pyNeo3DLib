@@ -14,6 +14,7 @@ from .markups import (
     write_merged_mrk_json,
     write_mrk_json,
 )
+from .output_names import LANDMARK_MRK_SUFFIX
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ class Environment:
         *,
         save_grouped: bool = False,
         save_merged: bool = True,
-        merged_suffix: str = "_merged.mrk.json",
+        merged_suffix: str = LANDMARK_MRK_SUFFIX,
     ):
         logger.info(
             "Saving predicted landmarks for %s at scale %s",

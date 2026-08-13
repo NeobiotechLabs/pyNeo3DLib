@@ -34,7 +34,10 @@ DICOM 시리즈 → NIfTI 변환 → CBCT 세그멘테이션 통합 파이프라
     - ``{케이스}_merged.mrk.json``   랜드마크 좌표 (Slicer 마크업, LPS mm — --landmark-models 지정 시)
     - ``{케이스}_pred.nii.gz``       세그멘테이션 라벨맵
     - ``{케이스}_centerline.json``   좌/우 신경관 중심선 (--no-restore-mandibular 시 생략)
-    - ``{케이스}_{라벨}.stl``        메쉬 (--no-export-meshes 시 생략)
+    - ``{케이스}_{구조이름}.stl``    메쉬 (--no-export-meshes 시 생략). 구조 이름은
+      ``articulPipeline/structure_names.json`` 공통 규약 사용:
+      ``{케이스}_maxilla.stl``, ``{케이스}_mandible.stl``,
+      ``{케이스}_nerve_canal.stl``, ``{케이스}_maxillary_sinus.stl``
 
 예::
 
