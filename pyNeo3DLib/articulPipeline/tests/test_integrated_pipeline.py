@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 # ── 임포트 준비 ────────────────────────────────────────────────────────
-_ARTICUL_DIR = Path(__file__).resolve().parent
+_ARTICUL_DIR = Path(__file__).resolve().parent.parent  # .../articulPipeline/
 if str(_ARTICUL_DIR) not in sys.path:
     sys.path.insert(0, str(_ARTICUL_DIR))
 
@@ -175,11 +175,16 @@ class TestCheckCaseInputs:
     def test_all_present(self, tmp_path: Path):
         _make_case_files(tmp_path, "c1", add_condyles=True, add_mef=True)
         r = check_case_inputs("c1", tmp_path)
-        assert r == {"mandible_stl": True, "canal_stl": True, "merged_mrk": True}
+        assert all(v for k, v in r.items() if k != "landmarks_mrk")  # mandible/canal/merged 는 모두 True
+        assert r["mandible_stl"] is True
+        assert r["canal_stl"] is True
+        assert r["merged_mrk"] is True
 
     def test_all_missing(self, tmp_path: Path):
         r = check_case_inputs("no_such", tmp_path)
-        assert r == {"mandible_stl": False, "canal_stl": False, "merged_mrk": False}
+        assert r["mandible_stl"] is False
+        assert r["canal_stl"] is False
+        assert r["merged_mrk"] is False
 
     def test_partial(self, tmp_path: Path):
         _make_case_files(tmp_path, "c2")  # mandible + canal + merged
@@ -335,7 +340,7 @@ class TestRunPipelineHappyPath:
             dcm_dir, tmp_path, skip_seg=True, runner=runner,
         )
         assert exit_code == 0
-        assert failures == {"seg": [], "condyle": [], "canal": [], "merge": []}
+        assert failures == {"seg": [], "condyle": [], "canal": [], "merge": [], "plane": []}
         cmds_str = " ".join(" ".join(c) for c in history)
         assert CONDYLE_SCRIPT.name in cmds_str
         assert CANAL_SCRIPT.name in cmds_str
@@ -458,7 +463,7 @@ class TestCleanupInPipeline:
             dcm_dir, tmp_path, skip_seg=True, runner=runner,
         )
         assert exit_code == 0
-        assert failures == {"seg": [], "condyle": [], "canal": [], "merge": []}
+        assert failures == {"seg": [], "condyle": [], "canal": [], "merge": [], "plane": []}
         # 원본 3개가 삭제되어야 함
         assert not (tmp_path / "case01_merged.mrk.json").is_file()
         assert not (tmp_path / "case01_mandible_condyles.mrk.json").is_file()
@@ -475,7 +480,7 @@ class TestCleanupInPipeline:
             dcm_dir, tmp_path, skip_seg=True, runner=runner, cleanup=False,
         )
         assert exit_code == 0
-        assert failures == {"seg": [], "condyle": [], "canal": [], "merge": []}
+        assert failures == {"seg": [], "condyle": [], "canal": [], "merge": [], "plane": []}
         # 원본들이 남아있어야 함
         assert (tmp_path / "case01_merged.mrk.json").is_file()
         assert (tmp_path / "case01_mandible_condyles.mrk.json").is_file()

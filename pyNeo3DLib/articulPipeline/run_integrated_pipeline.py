@@ -1,4 +1,4 @@
-"""통합 파이프라인 오케스트레이터 — DICOM → 분할 + 랜드마크 통합.
+"""통합 파이프라인 오케스트레이터 — DICOM → 분할 + 랜드마크 → 평면 계산.
 
 사용 예:
     python run_integrated_pipeline.py \
@@ -11,17 +11,22 @@
         --input ./dcm_series/ --output ./results/ --dry-run -v  (미리 명령어 확인)
 
 동작:
-1. segPipeline: DICOM → NIfTI 변환, 랜드마크 추론(ANS/PNS/N), 분할(seg), STL 메쉬 추출
+1. segPipeline: DICOM → NIfTI 변환, 랜드마크 추론 (ANS/PNS/N), 분할 (seg), STL 메쉬 추출
 2. condylePointsFinder: mandible STL → LCo/RCo
 3. canal_endpoint: nerve canal STL → LMeF/RMeF
-4. merge_landmarks: 3개 mrk.json → {case}_landmarks.mrk.json (7개 포인트 전체)
+4. merge_landmarks: 3 개 mrk.json → {case}_landmarks.mrk.json (7 개 포인트 전체)
+5. occlusal_plane: {case}_landmarks.mrk.json → MSP · 교합평면 계산
 
-케이스별 실패 시 다른 케이스는 계속 진행되며, 마지막에 요약이 출력됩니다.
-이미 완료가 된 파일은 건너뛰며(--force 플래그 없으면) 재실행(resume) 가능합니다.
+예외 처리:
+- 각 단계에서 입력 데이터가 누락되면 해당 케이스만 건너뛰고 다음 케이스 계속 진행
+- plane 계산 시 랜드마크 중 하나라도 누락 → 모든 평면을 NaN 표기 (computed=false)
+- 단일 케이스 실패는 다른 케이스와 전체 파이프라인 영향 X
+- 이미 완료가 된 파일은 건너뛰며 (--force 플래그 없으면) 재실행 (resume) 가능
 """
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -35,6 +40,7 @@ SEG_SCRIPT     = PIPELINE_ROOT / "segPipeline" / "run_segmentation_pipeline.py"
 CONDYLE_SCRIPT = PIPELINE_ROOT / "condylePointsFinder" / "find_mandible_condylle.py"
 CANAL_SCRIPT   = PIPELINE_ROOT / "canal_endpoint" / "find_canal_endpoints.py"
 MERGE_SCRIPT   = PIPELINE_ROOT / "merge_landmarks.py"
+PLANES_SCRIPT  = PIPELINE_ROOT / "occlusal_plane" / "run_planes.py"
 
 MANDIBLE_STL_SUFFIX   = "_mandible.stl"
 CANAL_STL_SUFFIX      = "_nerve_canal.stl"
@@ -42,6 +48,7 @@ MERGED_MRK_SUFFIX     = "_merged.mrk.json"
 CONDYLES_MRK_SUFFIX   = "_mandible_condyles.mrk.json"
 MEF_MRK_SUFFIX        = "_nerve_canal_mef.mrk.json"
 LANDMARKS_MRK_SUFFIX  = "_landmarks.mrk.json"
+PLANES_JSON_SUFFIX    = "_planes.json"
 
 #: 각 단계의 인자 전달을 막아야 하는 segPipeline 옵션 목록
 _FORBIDDEN_SEG_FLAGS = ("--no-export-meshes", "--no-landmarks", "--no-restore-mandibular")
@@ -80,17 +87,18 @@ def discover_case_stems(output_dir: Path) -> list[str]:
 def check_case_inputs(case_stem: str, output_dir: Path) -> dict[str, bool]:
     """케이스별 필수 입력 파일 존재 여부를 반환.
 
-    Returns: {"mandible_stl": bool, "canal_stl": bool, "merged_mrk": bool}
+    Returns: {"mandible_stl": bool, "canal_stl": bool, "merged_mrk": bool, "landmarks_mrk": bool}
     """
     return {
         "mandible_stl": (output_dir / f"{case_stem}{MANDIBLE_STL_SUFFIX}").is_file(),
         "canal_stl": (output_dir / f"{case_stem}{CANAL_STL_SUFFIX}").is_file(),
         "merged_mrk": (output_dir / f"{case_stem}{MERGED_MRK_SUFFIX}").is_file(),
+        "landmarks_mrk": (output_dir / f"{case_stem}{LANDMARKS_MRK_SUFFIX}").is_file(),
     }
 
 
 def should_run_condyle(case_stem: str, output_dir: Path, *, force: bool = False) -> bool:
-    """mandible STL 이 있고, 출력이 없을 때(True) 또는 force=True 일 때 True."""
+    """mandible STL 이 있고, 출력이 없을 때 (True) 또는 force=True 일 때 True."""
     inputs = check_case_inputs(case_stem, output_dir)
     if not inputs["mandible_stl"]:
         return False
@@ -100,7 +108,7 @@ def should_run_condyle(case_stem: str, output_dir: Path, *, force: bool = False)
 
 
 def should_run_canal(case_stem: str, output_dir: Path, *, force: bool = False) -> bool:
-    """nerve canal STL 이 있고, 출력이 없을 때(True) 또는 force=True 일 때 True."""
+    """nerve canal STL 이 있고, 출력이 없을 때 (True) 또는 force=True 일 때 True."""
     inputs = check_case_inputs(case_stem, output_dir)
     if not inputs["canal_stl"]:
         return False
@@ -110,7 +118,7 @@ def should_run_canal(case_stem: str, output_dir: Path, *, force: bool = False) -
 
 
 def should_run_merge(case_stem: str, output_dir: Path, *, force: bool = False) -> bool:
-    """3개 mrk 가 모두 있고, merged 출력이 없을 때(True) 또는 force=True 일 때 True."""
+    """3 개 mrk 가 모두 있고, merged 출력이 없을 때 (True) 또는 force=True 일 때 True."""
     merged_already_done = (output_dir / f"{case_stem}{LANDMARKS_MRK_SUFFIX}").is_file()
     if force:
         # force 는 이미 완료된 것도 재실행
@@ -127,6 +135,22 @@ def should_run_merge(case_stem: str, output_dir: Path, *, force: bool = False) -
         output_dir / f"{case_stem}{MEF_MRK_SUFFIX}",
     ])
     return outputs_present
+
+
+def should_run_planes(case_stem: str, output_dir: Path, *, force: bool = False) -> bool:
+    """landmarks 마크업이 있고, plane 결과가 없을 때 (True) 또는 force=True 일 때 True.
+
+    plane 계산은 다음과 같은 예외 처리 로직을 가짐:
+    - landmarks_mrk.json 없음 → 입력 불가 → 건너뛰기
+    - plane 계산 중 랜드마크 누락 → computed=false, 모든 평면 NaN 표기 → failure 에 추가
+    """
+    landmarks_exists = (output_dir / f"{case_stem}{LANDMARKS_MRK_SUFFIX}").is_file()
+    planes_exists = (output_dir / f"{case_stem}{PLANES_JSON_SUFFIX}").is_file()
+
+    if force:
+        return landmarks_exists
+
+    return landmarks_exists and not planes_exists
 
 
 # ── Command Builders (pure) ────────────────────────────────────────────
@@ -190,6 +214,14 @@ def build_merge_command(case_stem: str, output_dir: Path) -> list[str]:
     return cmd
 
 
+def build_planes_command(case_stem: str, output_dir: Path) -> list[str]:
+    """plane 계산 커맨드 빌드."""
+    cmd = [sys.executable, str(PLANES_SCRIPT)]
+    cmd.extend(["-i", str(output_dir / f"{case_stem}{LANDMARKS_MRK_SUFFIX}")])
+    cmd.extend(["-o", str(output_dir / f"{case_stem}{PLANES_JSON_SUFFIX}")])
+    return cmd
+
+
 # ── Execution ───────────────────────────────────────────────────────────
 
 def _print(stage: str, case_stem: str, message: str, indent: int = 2) -> None:
@@ -218,18 +250,20 @@ def run_pipeline(
     patient_origin: bool = False,
     verbose: bool = False,
     cleanup: bool = True,
+    skip_planes: bool = False,
     runner: Optional[Callable[[list[str], bool], int]] = None,
 ) -> tuple[int, dict[str, list[str]]]:
     """파이프라인 단계를 순서대로 실행.
 
     Args:
-        runner: 주입 가능한 실행기. 테스트용 mock Runner가 subprocess 대신 호출됨.
+        runner: 주입 가능한 실행기. 테스트용 mock Runner 가 subprocess 대신 호출됨.
                 sig: ``runner(cmd: list[str], verbose: bool) -> exit_code``
-                None이면 기본 subprocess 사용.
-        cleanup: 병합 완료 후 원본 3개 mrk.json 파일을 삭제할지 여부 (기본 True).
+                None 이면 기본 subprocess 사용.
+        cleanup: 병합 완료 후 원본 3 개 mrk.json 파일을 삭제할지 여부 (기본 True).
+        skip_planes: Plane 계산 단계 생략 (기본 False).
 
     Returns:
-        (exit_code, failures). failures 는 {"seg"|condyle|canal|merge": [케이스명...]}.
+        (exit_code, failures). failures 는 {"seg"|condyle|canal|merge|plane": [케이스명...]}.
     """
     _runner = runner if runner is not None else run_subprocess
 
@@ -240,6 +274,7 @@ def run_pipeline(
         "condyle": [],
         "canal": [],
         "merge": [],
+        "plane": [],
     }
     total_cleaned = 0
 
@@ -257,7 +292,7 @@ def run_pipeline(
         rc = _runner(seg_cmd, verbose=verbose)
         if rc != 0:
             print(f"[ERROR] segPipeline exited {rc}. 파이프라인을 중단합니다.", file=sys.stderr, flush=True)
-            return 2, {"seg": ["seg_failed"], "condyle": [], "canal": [], "merge": []}
+            return 2, {"seg": ["seg_failed"], "condyle": [], "canal": [], "merge": [], "plane": []}
         print("[OK] Segmentation 완료.", flush=True)
     else:
         print("═══ Stage 1: Skip Segmentation (--skip-seg) ═══", flush=True)
@@ -351,6 +386,47 @@ def run_pipeline(
                 n_removed = len(cleanup_mrk_files(stem, output_dir))
                 total_cleaned += n_removed
 
+    # ── Stage 5: Occlusal Plane (MSP + Occlusal) ────────────────────────
+    if not skip_planes:
+        print("\n═══ Stage 5: Occlusal Plane Calculation ═══", flush=True)
+
+        for stem in case_stems:
+            if not should_run_planes(stem, output_dir, force=force):
+                continue
+
+            landmarks_path = output_dir / f"{stem}{LANDMARKS_MRK_SUFFIX}"
+
+            # Check if landmarks file exists (graceful degradation)
+            if not landmarks_path.is_file():
+                print(f"[경고] {stem}: 랜드마크 파일 없음 — Plane 계산 건너뜀", flush=True)
+                failures["plane"].append(stem)
+                continue
+
+            print(f"\n═══ Planes: {stem} ═══", flush=True)
+            planes_cmd = build_planes_command(stem, output_dir)
+            rc = _runner(planes_cmd, verbose=verbose)
+
+            # plane 계산 결과는 JSON 으로 parsed 하여 checked
+            planes_json_path = output_dir / f"{stem}{PLANES_JSON_SUFFIX}"
+            if rc == 0 and planes_json_path.is_file():
+                try:
+                    planes_data = json.loads(planes_json_path.read_text(encoding="utf-8"))
+                    if planes_data.get("computed", False):
+                        _print("planes", stem, "완료 (computed=true)", 1)
+                    else:
+                        # 랜드마크 일부 누락 → NaN 처리 되었지만 파이프라인은 계속
+                        missing = planes_data.get("missing", [])
+                        _print("planes", stem, f"부분 실패 (missing: {', '.join(missing)}) → NaN 표기", 1)
+                        failures["plane"].append(stem)
+                except (json.JSONDecodeError, KeyError) as e:
+                    _print("planes", stem, f"파싱 오류 ({e}) → 실패", 1)
+                    failures["plane"].append(stem)
+            else:
+                failures["plane"].append(stem)
+                _print("planes", stem, f"실패 (exit {rc})", 1)
+    else:
+        print("\n═══ Stage 5: Skip Plane Calculation (--skip-planes) ═══", flush=True)
+
     # ── Summary ────────────────────────────────────────────────────────
     _print_summary(failures, total_cleaned=total_cleaned)
 
@@ -361,7 +437,7 @@ def run_pipeline(
 
 
 def cleanup_mrk_files(stem: str, output_dir: Path) -> list[Path]:
-    """랜드마크 병합 후 원본 3개 mrk.json 파일을 삭제.
+    """랜드마크 병합 후 원본 3 개 mrk.json 파일을 삭제.
 
     Returns: 실제로 삭제한 Path 리스트
     """
@@ -379,7 +455,8 @@ def _print_summary(failures: dict[str, list[str]], total_cleaned: int = 0) -> No
     print(f"\n{'='*50}", flush=True)
     print("═══ 실행 요약 ═══", flush=True)
     stages = [("seg", "Segmentation"), ("condyle", "Condyle Points"),
-              ("canal", "Canal Endpoints"), ("merge", "Merge Landmarks")]
+              ("canal", "Canal Endpoints"), ("merge", "Merge Landmarks"),
+              ("plane", "Plane Calculation")]
     for key, label in stages:
         items = failures.get(key, [])
         status = f"{len(items)}개 실패" if items else "모두 성공"
@@ -393,7 +470,7 @@ def _print_summary(failures: dict[str, list[str]], total_cleaned: int = 0) -> No
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="통합 파이프라인: DICOM → 분할 + 랜드마크(STL) → 통합 mrk.json"
+        description="통합 파이프라인: DICOM → 분할 + 랜드마크(STL) → 병합 → MSP · 교합평면"
     )
     parser.add_argument(
         "-i", "--input", type=Path, required=True,
@@ -424,6 +501,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--skip-seg", action="store_true", default=False,
         help="segmentation 단계 생략 (output 폴더 기존 산출물만 사용)"
+    )
+    parser.add_argument(
+        "--skip-planes", action="store_true", default=False,
+        help="평면 계산 단계 생략 (merge 까지만)"
     )
     parser.add_argument(
         "--force", action="store_true", default=False,
@@ -463,6 +544,7 @@ def main(argv: list[str] | None = None) -> int:
             patient_origin=args.patient_origin,
             verbose=args.verbose,
             cleanup=not args.no_cleanup,
+            skip_planes=args.skip_planes,
         )
         return exit_code
     except Exception as exc:
