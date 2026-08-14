@@ -119,12 +119,16 @@ def _plane_from_three_points(p1: np.ndarray, p2: np.ndarray, p3: np.ndarray) -> 
 def compute_msp(cranial: dict[str, np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
     """두개골 랜드마크 (N, ANS, PNS) 로 MSP 계산.
 
+    원본(core/occlusal_plane/plane_algorithms.MidSagittalPlaneCalculator)과
+    동일한 외적 순서 cross(ANS-PNS, N-PNS) 를 사용해 법선 방향을 일치시킨다.
+    이 법선이 교합평면 ANS 회전의 축으로 쓰이므로 방향(부호)이 중요하다.
+
     Returns: (center, unit_normal)
     """
     n = cranial["N"]
     ans = cranial["ANS"]
     pns = cranial["PNS"]
-    centroid, normal = _plane_from_three_points(n, ans, pns)
+    centroid, normal = _plane_from_three_points(pns, ans, n)
     return centroid, normal
 
 
@@ -153,8 +157,9 @@ def point_along_normal(origin: np.ndarray, normal: np.ndarray, *, signed_offset_
     return np.asarray(origin, dtype=np.float64) + n * float(signed_offset_mm)
 
 
-OCCLUSAL_ANS_HEIGHT_OFFSET_MM = 5.0  # 기본값 (config 와 일치하도록 조정 가능)
-OCCLUSAL_MEF_HEIGHT_OFFSET_MM = 5.0
+# 원본 core/occlusal_plane/algorithm_config.py 상수와 반드시 동일하게 유지
+OCCLUSAL_ANS_HEIGHT_OFFSET_MM = 29.2
+OCCLUSAL_MEF_HEIGHT_OFFSET_MM = 22.4
 
 ANS_ROTATION_DEG = -6.0
 PNS_NORMAL_OFFSET_MM = 10.0
