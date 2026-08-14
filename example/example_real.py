@@ -17,5 +17,11 @@ async def main():
     result = await reg.run_registration(visualize=True)
     print(result)
 
+    # 정합 완료 후 백그라운드로 시작된 통합 파이프라인(articulPipeline) 대기
+    # --input: cbct.path / --output: pipeline_results.path 로 실행되며,
+    # 완료되면 교합평면·시상정중면(MSP) 중심/법선 벡터가 프린팅된다.
+    if getattr(reg, "articul_pipeline_task", None) is not None:
+        await reg.articul_pipeline_task
+
 if __name__ == "__main__":
     asyncio.run(main())
