@@ -324,9 +324,21 @@ class Neo3DRegistration:
         
         self.websocket = websocket
         self.progress_reporter = ProgressReporter(websocket)
-    
-    
-    async def run_registration(self, visualize=False):       
+
+        # 정합 완료 후 백그라운드로 실행되는 통합 파이프라인 태스크
+        self.articul_pipeline_task = None
+
+        # stdout 이 cp949 등 비-UTF-8 인 경우(리다이렉트 시) 장식 문자/이모지
+        # 출력에서 UnicodeEncodeError 가 나지 않도록 UTF-8 로 전환.
+        # (run_integrated_pipeline._configure_stdio_utf8 와 동일한 처리)
+        try:
+            from pyNeo3DLib.articulPipeline.run_integrated_pipeline import _configure_stdio_utf8
+            _configure_stdio_utf8()
+        except Exception:
+            pass
+
+
+    async def run_registration(self, visualize=False):
         # 설정이 이미 검증되었으므로 별도 검증 불필요
         
         # 기본값 초기화 (에러 발생 시 사용)
@@ -462,20 +474,112 @@ class Neo3DRegistration:
         # 결과 JSON 생성 (부분 결과라도 반환)
         try:
             result = self.__make_result_json(
-                ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(), 
-                facescan_laminate_result.tolist(), facephoto_meshes, 
-                facescan_rest_result.tolist(), facescan_retraction_result.tolist(), 
-                cbct_result.tolist(), ios_bow_result.tolist(), 
-                # condyle_result, golden_proportion_result, 
+                ios_laminate_result.tolist(), ios_upper_result.tolist(), ios_lower_result.tolist(),
+                facescan_laminate_result.tolist(), facephoto_meshes,
+                facescan_rest_result.tolist(), facescan_retraction_result.tolist(),
+                cbct_result.tolist(), ios_bow_result.tolist(),
+                # condyle_result, golden_proportion_result,
                 smilearch_outerline_result
             )
-            
+
+            # 정합 완료 → 통합 파이프라인(articulPipeline) 백그라운드 시작
+            #   --input  : cbct.path (DICOM 폴더)
+            #   --output : pipeline_results.path
+            # 정합 결과 반환을 막지 않도록 백그라운드 태스크로 실행하며,
+            # 완료 시 최종 산출물(생성 메쉬 STL · 통합 랜드마크 · 평면 JSON
+            # 경로)과 교합평면·시상정중면 중심/법선을 프린팅 + WebSocket 전송.
+            self.articul_pipeline_task = asyncio.create_task(self.__run_articul_pipeline())
+
             await self.progress_reporter.report_completion(result)
             return result
         except Exception as e:
             print(f'❌ __make_result_json 실패: {str(e)}')
             # 결과 생성 실패 시에도 에러를 상위로 전달
             raise
+
+    async def __run_articul_pipeline(self):
+        """정합 완료 후 통합 파이프라인 실행 및 최종 산출물 보고.
+
+        입력 JSON 의 cbct.path 를 --input, pipeline_results.path 를 --output 으로
+        run_integrated_pipeline.py 를 실행하고, 완료 후 케이스별 최종 산출물을
+        프린팅 + WebSocket 으로 외부에 전송한다:
+
+        - 생성 메쉬 STL 경로 (상악동/상악골/하악골/신경관)
+        - 통합 랜드마크 경로 (*_landmarks.mrk.json)
+        - 평면 결과 JSON 경로 (*_planes.json — 시상정중면 · 교합평면 중심/법선)
+        """
+        # Lazy import: stdlib-only 브리지 모듈
+        try:
+            from pyNeo3DLib.articulPipeline import registration_bridge as bridge
+        except Exception as e:
+            print(f'❌ 통합 파이프라인 브리지 모듈 임포트 실패: {str(e)}', flush=True)
+            return
+
+        cbct_path = (self.parsed_json.get("cbct") or {}).get("path")
+        results_dir = (self.parsed_json.get("pipeline_results") or {}).get("path")
+
+        if not cbct_path or not Path(cbct_path).is_dir():
+            print(f'⚠️ 통합 파이프라인 건너뜀 — cbct 경로가 없거나 디렉토리가 아님: {cbct_path!r}')
+            return
+
+        # pipeline_results.path 가 입력 JSON 에 없으면 환자 폴더 규약에서 자동 추정:
+        # cbct.path = <환자폴더>/ct/dicom 이므로 <환자폴더>/additional 를 사용.
+        if not results_dir:
+            candidate = Path(cbct_path).resolve().parent.parent / "additional"
+            if candidate.is_dir():
+                results_dir = str(candidate)
+                print(f'ℹ️ 입력 JSON 에 pipeline_results.path 가 없어 자동 추정: {results_dir}', flush=True)
+            else:
+                print('⚠️ 통합 파이프라인 건너뜀 — 입력 JSON 에 pipeline_results.path 가 없고 '
+                      f'자동 추정 경로({candidate})도 없습니다.')
+                return
+
+        print('═══ 정합 완료 → 통합 파이프라인(articulPipeline) 시작 ═══', flush=True)
+        exit_code = -1
+        try:
+            # 세그멘테이션 등 장기 실행 서브프로세스 → 워커 스레드에서 대기
+            exit_code = await asyncio.to_thread(
+                bridge.run_articul_pipeline, cbct_path, results_dir
+            )
+
+            artifacts = bridge.collect_case_artifacts(results_dir)
+            planes = bridge.collect_plane_results(results_dir)
+            bridge.print_case_artifacts(artifacts)
+            bridge.print_plane_results(planes)
+
+            if artifacts:
+                computed = [p for p in planes if p.get("computed")]
+                print(
+                    f'✅ 통합 파이프라인 완료 — 산출물 {len(artifacts)} 케이스, '
+                    f'평면 계산 {len(computed)}/{len(planes)} 케이스',
+                    flush=True,
+                )
+                await self.__send_articul_message(
+                    bridge.plane_success_message(planes, results_dir, artifacts)
+                )
+            else:
+                print(f'❌ 통합 파이프라인 산출물 없음 (exit_code={exit_code})', flush=True)
+                await self.__send_articul_message(
+                    bridge.plane_failure_message(
+                        f"생성된 세그멘테이션 산출물 없음 (exit_code={exit_code})",
+                        results_dir,
+                        exit_code,
+                    )
+                )
+        except Exception as e:
+            print(f'❌ 통합 파이프라인 실행 중 오류: {str(e)}', flush=True)
+            await self.__send_articul_message(
+                bridge.plane_failure_message(e, results_dir, exit_code)
+            )
+
+    async def __send_articul_message(self, message):
+        """통합 파이프라인 결과의 WebSocket 전송 (실패해도 파이프라인은 계속)."""
+        if self.websocket is None:
+            return
+        try:
+            await self.websocket.send_json(message)
+        except Exception as e:
+            print(f'⚠️ 통합 파이프라인 결과 WebSocket 전송 실패: {str(e)}', flush=True)
 
     def __make_result_json(self, ios_laminate_result, 
                             ios_upper_result, 
