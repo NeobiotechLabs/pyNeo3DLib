@@ -2,7 +2,8 @@
 
 registration.py 의 __run_articul_pipeline 이 하는 일과 동일하게
 bridge.run_articul_pipeline(cbct.path, pipeline_results.path) 를 실행하고
-*_planes.json 에서 교합평면·시상정중면 중심/법선을 프린팅한다.
+케이스별 최종 산출물(생성 메쉬 STL · 통합 랜드마크 · 평면 JSON 경로)과
+교합평면·시상정중면 중심/법선을 프린팅한다.
 """
 import json
 import sys
@@ -28,12 +29,16 @@ print(f"--output : {results_dir}")
 rc = bridge.run_articul_pipeline(cbct_dir, results_dir)
 print(f"\nexit_code = {rc}")
 
+artifacts = bridge.collect_case_artifacts(results_dir)
+bridge.print_case_artifacts(artifacts)
+assert artifacts, "생성된 세그멘테이션 산출물(STL)이 없습니다"
+
 planes = bridge.collect_plane_results(results_dir)
 bridge.print_plane_results(planes)
 
-summary = bridge.planes_summary(planes)
-json.dumps(summary, allow_nan=False)  # 외부 전송 직렬화 가능 확인
-print(json.dumps(summary, indent=2, ensure_ascii=False))
+message = bridge.plane_success_message(planes, results_dir, artifacts)
+json.dumps(message, allow_nan=False)  # 외부 전송 직렬화 가능 확인
+print(json.dumps(message["artifacts"], indent=2, ensure_ascii=False))
 
 computed = [p for p in planes if p.get("computed")]
 assert computed, "computed 평면 결과가 없습니다"
