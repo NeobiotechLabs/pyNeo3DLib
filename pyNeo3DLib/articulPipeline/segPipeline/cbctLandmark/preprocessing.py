@@ -163,9 +163,20 @@ def build_patient_scans(
 
 
 def build_patients_dict(
-    vol: str, spacing: List[float], scale_keys: List[str], temp_fold: str
+    vol: str,
+    spacing: List[float],
+    scale_keys: List[str],
+    temp_fold: str,
+    *,
+    patient_key: str | None = None,
 ) -> dict:
-    basename = os.path.basename(vol)
+    """볼륨 경로 ``vol`` 로 환자 dict 구성.
+
+    ``patient_key`` 는 출력 파일명 기준이 되는 케이스 이름으로, 볼륨을
+    ASCII 임시 경로에 스테이징해 읽을 때(원본 이름은 한글 유지) 원본
+    파일명을 그대로 넘겨주는 데 사용합니다. 미지정 시 ``vol`` 의 basename.
+    """
+    basename = patient_key or os.path.basename(vol)
     return {
         basename: {
             "scan": vol,

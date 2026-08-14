@@ -259,12 +259,13 @@ class TestBuildSegCommand:
         cmd = build_seg_command(Path("/dcm"), Path("/out"))
         assert cmd[0] == sys.executable
         assert str(SEG_SCRIPT) in cmd
-        assert "-i" in cmd and "/dcm" in cmd
-        assert "-o" in cmd and "/out" in cmd
+        # Windows 에서는 Path("/dcm") 가 "\\dcm" 으로 변환되므로 str(Path) 로 비교
+        assert "-i" in cmd and str(Path("/dcm")) in cmd
+        assert "-o" in cmd and str(Path("/out")) in cmd
 
     def test_model_dir(self):
         cmd = build_seg_command(Path("/dcm"), Path("/out"), model_dir=Path("/models"))
-        assert "-m" in cmd and "/models" in cmd
+        assert "-m" in cmd and str(Path("/models")) in cmd
 
     def test_verbose_flag(self):
         cmd = build_seg_command(Path("/dcm"), Path("/out"), verbose=True)

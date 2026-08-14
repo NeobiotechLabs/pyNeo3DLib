@@ -214,7 +214,10 @@ def _flatten_landmark_outputs(vol: Path, output_dir: Path) -> None:
     if not sub_dir.is_dir():
         return
     for mrk in sorted(sub_dir.glob("*.mrk.json")):
-        shutil.move(str(mrk), str(output_dir / mrk.name))
+        dst = output_dir / mrk.name
+        if dst.is_file():
+            dst.unlink()
+        shutil.move(str(mrk), str(dst))
     shutil.rmtree(sub_dir, ignore_errors=True)
 
 
@@ -306,10 +309,19 @@ def run_segmentation(
 
     load_env_file(env_file)
 
+    # 세그멘테이션 추론은 GPU 전용 — GPU 가 안 보이면 CPU 폴백 없이 즉시 중단.
     n_gpu = cuda_device_count()
-    dev = "cuda:0" if n_gpu > 0 else None
+    if n_gpu == 0:
+        raise RuntimeError(
+            "CUDA 디바이스를 찾지 못했습니다. 세그멘테이션은 GPU 전용입니다.\n"
+            "CUDA 지원 torch 가 설치되어 있는지, CUDA_VISIBLE_DEVICES 가 GPU 를\n"
+            "숨기고 있지 않은지 확인하세요. (CPU 전용 빌드 재설치:\n"
+            "pip install torch==2.11.0 torchvision "
+            "--index-url https://download.pytorch.org/whl/cu128)"
+        )
+    dev = "cuda:0"
     print(
-        f"세그멘테이션: 케이스 {len(volumes)}건 | device={dev or 'cpu'}\n"
+        f"세그멘테이션: 케이스 {len(volumes)}건 | device={dev}\n"
         f"  모델: {model_dir}\n"
         f"  출력: {output_dir}  (하위 폴더 없이 바로 저장)",
         flush=True,
@@ -432,6 +444,29 @@ def main() -> int:
     p.add_argument("-v", "--verbose", action="store_true", help="진행 메시지 출력")
     args = p.parse_args()
 
+    # 구버전 패키지 임포트로 CUDA_VISIBLE_DEVICES='-1' 이 상속된 경우 정리.
+    # torch 임포트 전에 호출해야 GPU 가 다시 보인다.
+    if os.environ.get("CUDA_VISIBLE_DEVICES", "").strip() in ("-1", "") and "CUDA_VISIBLE_DEVICES" in os.environ:
+        os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+
+    # GPU 사전 점검: 랜드마크·세그멘테이션 추론은 GPU 전용.
+    # CPU 전용 torch 빌드면 변환 작업을 시작하기 전에 즉시 중단한다.
+    try:
+        import torch
+        cuda_ok = torch.cuda.is_available()
+    except ImportError:
+        cuda_ok = False
+    if not cuda_ok:
+        print(
+            "오류: CUDA 지원 torch 가 설치되어 있지 않습니다 (CPU 전용 빌드 감지).\n"
+            "GPU 버전으로 재설치하세요:\n"
+            "    pip uninstall -y torch torchvision\n"
+            "    pip install torch==2.11.0 torchvision "
+            "--index-url https://download.pytorch.org/whl/cu128",
+            file=sys.stderr,
+        )
+        return 2
+
     dcm_dir = args.input.expanduser().resolve()
     # 가중치 루트 (--model 미지정 시 segPipeline/model 기본)
     model_root = (
@@ -474,6 +509,10 @@ def main() -> int:
             moved: list[Path] = []
             for vol in volumes:
                 dst = output_dir / vol.name
+                # Windows 에서 shutil.move 는 대상 파일이 이미 있으면 실패하므로
+                # 재실행(resume) 시 기존 파일을 먼저 제거
+                if dst.is_file():
+                    dst.unlink()
                 shutil.move(str(vol), str(dst))
                 moved.append(dst)
             volumes = moved

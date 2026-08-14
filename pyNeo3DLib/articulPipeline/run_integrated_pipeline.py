@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -222,6 +223,38 @@ def build_planes_command(case_stem: str, output_dir: Path) -> list[str]:
     return cmd
 
 
+# ── GPU pre-check ───────────────────────────────────────────────────────
+
+CUDA_INSTALL_HINT = (
+    "CUDA 지원 torch 가 설치되어 있지 않습니다 (CPU 전용 빌드 감지).\n"
+    "GPU 버전으로 재설치하세요:\n"
+    "    pip uninstall -y torch torchvision\n"
+    "    pip install torch==2.11.0 torchvision "
+    "--index-url https://download.pytorch.org/whl/cu128"
+)
+
+
+def clear_inherited_gpu_hide() -> None:
+    """상속받은 ``CUDA_VISIBLE_DEVICES`` 가 GPU 를 전부 숨기면 제거.
+
+    구버전 pyNeo3DLib 패키지 임포트 시 ``CUDA_VISIBLE_DEVICES='-1'`` 이
+    설정되어 자식 프로세스로 상속되는 경우가 있었다. 값이 GPU 를 완전히
+    숨키는('-1', 빈 문자열) 경우에만 제거하고, 정상적인 디바이스 선택
+    값('0', '0,1' 등)은 건드리지 않는다. torch 임포트 전에 호출해야 한다.
+    """
+    if "CUDA_VISIBLE_DEVICES" in os.environ and os.environ["CUDA_VISIBLE_DEVICES"].strip() in ("-1", ""):
+        os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+
+
+def check_gpu_available() -> bool:
+    """현재 Python 환경에서 CUDA 사용 가능 여부 반환 (세그멘테이션 전 사전 점검)."""
+    try:
+        import torch
+    except ImportError:
+        return False
+    return torch.cuda.is_available()
+
+
 # ── Execution ───────────────────────────────────────────────────────────
 
 def _print(stage: str, case_stem: str, message: str, indent: int = 2) -> None:
@@ -267,6 +300,10 @@ def run_pipeline(
     """
     _runner = runner if runner is not None else run_subprocess
 
+    # 구버전 패키지 임포트로 상속된 GPU 숨김 환경변수 정리 (torch 임포트 전).
+    # 여기서 정리해야 아래 서브프로세스(segments) 에도 정리된 환경이 상속된다.
+    clear_inherited_gpu_hide()
+
     output_dir.mkdir(parents=True, exist_ok=True)
 
     failures: dict[str, list[str]] = {
@@ -277,6 +314,13 @@ def run_pipeline(
         "plane": [],
     }
     total_cleaned = 0
+
+    # ── GPU 사전 점검: 세그멘테이션 추론은 GPU 전용 ─────────────────────
+    # CPU 전용 torch 가 깔려 있으면 처음부터 중단 — CPU 로 전체 파이프라인이
+    # 도는 것을 방지하고 재설치 방법을 바로 안내한다.
+    if not skip_seg and not check_gpu_available():
+        print(f"[ERROR] {CUDA_INSTALL_HINT}", file=sys.stderr, flush=True)
+        return 2, failures
 
     # ── Stage 1: Segmentation ──────────────────────────────────────────
     if not skip_seg:
@@ -528,7 +572,28 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _configure_stdio_utf8() -> None:
+    """표준 출력을 UTF-8 로 전환 — 리다이렉트 시 인코딩 충돌 방지.
+
+    Windows 에서 ``> log.txt`` 등으로 리다이렉트하면 stdout 인코딩이
+    로케일 기본값(cp949)이 되어 장식 문자(═, ▶ 등) 출력 시
+    UnicodeEncodeError 로 파이프라인이 죽는다. UTF-8 이 아닌 스트림만
+    UTF-8(errors=replace) 로 재설정하고, 자식 프로세스에는
+    PYTHONIOENCODING=utf-8 을 전달해 같은 문제를 예방한다.
+    콘솔(이미 UTF-8) 실행 시에는 아무 것도 하지 않는다.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        enc = (getattr(stream, "encoding", "") or "").lower().replace("-", "")
+        if enc != "utf8":
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (AttributeError, OSError, ValueError):
+                pass
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
+
 def main(argv: list[str] | None = None) -> int:
+    _configure_stdio_utf8()
     args = build_parser().parse_args(argv)
 
     if not args.input.is_dir():

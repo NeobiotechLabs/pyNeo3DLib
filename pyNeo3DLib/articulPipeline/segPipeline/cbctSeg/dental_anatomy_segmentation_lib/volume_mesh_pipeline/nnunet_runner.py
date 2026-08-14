@@ -148,10 +148,24 @@ def _run_nnunet_predict_core(
     import torch
     from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
 
+    # 추론은 GPU 전용: CUDA 미설치 시 조용한 CPU 폴백 없이 즉시 실패.
     if device is None:
-        dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                "CUDA 지원 torch 가 설치되어 있지 않습니다 (CPU 전용 빌드 감지).\n"
+                "GPU 버전으로 재설치하세요:\n"
+                "    pip uninstall -y torch torchvision\n"
+                "    pip install torch==2.11.0 torchvision "
+                "--index-url https://download.pytorch.org/whl/cu128"
+            )
+        dev = torch.device("cuda")
     else:
         dev = torch.device(device)
+        if dev.type == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError(
+                "CUDA 디바이스가 요청되었지만 torch.cuda.is_available() 이 False 입니다. "
+                "CUDA 지원 torch 빌드를 설치하세요."
+            )
 
     perform_on_device = dev.type == "cuda"
 
