@@ -411,14 +411,17 @@ def run_pipeline(
             if rc == 0 and planes_json_path.is_file():
                 try:
                     planes_data = json.loads(planes_json_path.read_text(encoding="utf-8"))
+                    # 유효한 JSON 이라도 dict 가 아니면 (null/list/문자열 등) 파싱 오류 처리
+                    if not isinstance(planes_data, dict):
+                        raise ValueError(f"planes JSON 이 dict 가 아님 ({type(planes_data).__name__})")
                     if planes_data.get("computed", False):
                         _print("planes", stem, "완료 (computed=true)", 1)
                     else:
                         # 랜드마크 일부 누락 → NaN 처리 되었지만 파이프라인은 계속
-                        missing = planes_data.get("missing", [])
-                        _print("planes", stem, f"부분 실패 (missing: {', '.join(missing)}) → NaN 표기", 1)
+                        missing = planes_data.get("missing") or []
+                        _print("planes", stem, f"부분 실패 (missing: {', '.join(map(str, missing))}) → NaN 표기", 1)
                         failures["plane"].append(stem)
-                except (json.JSONDecodeError, KeyError) as e:
+                except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
                     _print("planes", stem, f"파싱 오류 ({e}) → 실패", 1)
                     failures["plane"].append(stem)
             else:
