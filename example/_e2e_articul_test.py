@@ -1,4 +1,4 @@
-"""E2E smoke: 실제 real_Input.json 경로로 정합 후 통합 파이프라인 흐름 검증.
+"""E2E smoke: 실제 real_Input.json 경로로 통합 파이프라인 흐름 검증.
 
 registration.py 의 __run_articul_pipeline 이 하는 일과 동일하게
 bridge.run_articul_pipeline(cbct.path, pipeline_results.path) 를 실행하고
