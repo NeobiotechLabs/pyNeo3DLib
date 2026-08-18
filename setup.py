@@ -31,8 +31,11 @@ setup(
         "imageio",
         "trimesh",
         "retina-face==0.0.14",
-        "tensorflow==2.12.0",
-        "keras==2.12.0",
+        # TF 2.12는 numpy<1.24를 요구하여 numpy 1.26.4 및
+        # nibabel(>=1.25)/monai(>=1.24)와 해결 불가능한 충돌이 발생함.
+        # TF 2.15는 numpy>=1.23.5,<2.0을 허용하며 Keras 2 계열 마지막 버전임.
+        "tensorflow==2.15.1",
+        "keras==2.15.0",
         "scikit-image==0.22.0",
         "qdrant-client==1.15.1",
         "pydicom==3.0.1",
