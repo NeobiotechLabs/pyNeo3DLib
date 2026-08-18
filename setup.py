@@ -10,7 +10,14 @@ setup(
         "pyNeo3DLib": ["*.stl"]
     },
     install_requires=[
-        "numpy",
+        "numpy==1.26.4",
+        "torch==2.11.0+cu128",
+        "torchvision==0.26.0+cu128",
+        "itk==5.4.7",
+        "SimpleITK==2.5.6",
+        "nibabel==5.4.2",
+        "monai==1.6.0",
+        "nnunetv2==2.8.1",
         "fastapi",
         "uvicorn[standard]",
         "uvicorn",
